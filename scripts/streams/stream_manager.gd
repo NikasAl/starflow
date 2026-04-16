@@ -8,7 +8,12 @@ var _active_streams: Array[ShipStream3D] = []
 func _ready() -> void:
         EventBus.stream_destroyed.connect(_on_stream_destroyed)
 
-func create_stream(source: Planet3D, target: Planet3D, owner_id: int, ship_count: int) -> ShipStream3D:
+func create_stream(
+        source: Planet3D,
+        target: Planet3D,
+        owner_id: int,
+        ship_count: int
+) -> ShipStream3D:
         var stream := ShipStream3D.new()
         stream.source = source
         stream.target = target

@@ -2,9 +2,10 @@ extends Node
 
 ## Audio Manager — управление звуками (Autoload).
 
-var _music_player: AudioStreamPlayer
-var _sfx_players: Array[AudioStreamPlayer] = []
 const MAX_SFX_CHANNELS: int = 8
+
+var _music_player: AudioStreamPlayer = null
+var _sfx_players: Array[AudioStreamPlayer] = []
 
 func _ready() -> void:
 	_music_player = AudioStreamPlayer.new()

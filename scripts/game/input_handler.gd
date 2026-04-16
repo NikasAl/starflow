@@ -22,7 +22,9 @@ var _hovered_planet: Planet3D = null
 
 func _ready() -> void:
 	if camera == null:
-		push_warning("InputHandler: камера не назначена — обработка ввода не будет работать.")
+		push_warning(
+			"InputHandler: камера не назначена — ввод не работает."
+		)
 	if planets_container == null:
 		push_warning("InputHandler: контейнер планет не назначен.")
 
@@ -44,7 +46,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _handle_mouse_button(mb: InputEventMouseButton) -> void:
-	# Правая и средняя кнопки —handled камерой, не перехватываем
+	# Правая и средняя кнопки обрабатываются камерой, не перехватываем
 	if mb.button_index != MOUSE_BUTTON_LEFT:
 		return
 	if not mb.pressed:
@@ -65,16 +67,14 @@ func _handle_mouse_button(mb: InputEventMouseButton) -> void:
 			_deselect()
 		return
 
-	# Клик по своей планете
+	# Клик по своей планете — выделяем
 	if planet.owner_id == Constants.PlayerId.PLAYER:
-		# Если уже выбрана другая планета и shift не нажат — переприсваиваем
 		_select_planet(planet)
 		return
 
-	# Клик по чужой планете при наличии выбранной — создаём поток
+	# Клик по чужой/нейтральной планете при наличии выделенной — поток
 	if _selected_planet != null and _selected_planet != planet:
 		_create_stream(_selected_planet, planet)
-		# Shift удерживает выделение источника
 		if not shift_held:
 			_deselect()
 
@@ -89,8 +89,10 @@ func _handle_double_click(planet: Planet3D) -> void:
 
 
 func _handle_mouse_hover() -> void:
-	# Пропускаем наведение во время перетаскивания правой/средней кнопкой
-	if Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) or Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE):
+	# Пропускаем наведение во время перетаскивания кнопками
+	if Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
+		return
+	if Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE):
 		return
 
 	var planet: Planet3D = _raycast_planet()
@@ -115,7 +117,6 @@ func _handle_mouse_hover() -> void:
 func _select_planet(planet: Planet3D) -> void:
 	if _selected_planet == planet:
 		return
-	# Снимаем подсветку с предыдущей планеты
 	if _selected_planet != null and is_instance_valid(_selected_planet):
 		_selected_planet.unhighlight()
 	_selected_planet = planet
@@ -133,7 +134,9 @@ func _deselect() -> void:
 
 func _create_stream(source: Planet3D, target: Planet3D) -> void:
 	var ship_count: int = maxi(source.pending_ships, 1)
-	GameManager.stream_manager.create_stream(source, target, source.owner_id, ship_count)
+	GameManager.stream_manager.create_stream(
+		source, target, source.owner_id, ship_count
+	)
 	source.pending_ships = 0
 
 
@@ -159,8 +162,7 @@ func _raycast_planet() -> Planet3D:
 
 	var space_state: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
 	var query := PhysicsRayQueryParameters3D.create(ray_origin, ray_end)
-	# Коллизионная маска 1 (слой по умолчанию для планет)
-	query.collision_mask = 1
+	query.collision_mask = 1  # Слой по умолчанию для планет
 
 	var result: Dictionary = space_state.intersect_ray(query)
 	if result.is_empty():
@@ -170,7 +172,6 @@ func _raycast_planet() -> Planet3D:
 	if collider == null:
 		return null
 
-	# Поднимаемся по дереву предков, чтобы найти узел Planet3D
 	return _find_planet_ancestor(collider)
 
 
