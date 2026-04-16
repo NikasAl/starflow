@@ -77,7 +77,8 @@ starflow/
 │   ├── fonts/             # Шрифты
 │   └── shaders/           # Шейдеры
 └── docs/                  # Документация
-    └── Star_Flow_Command_GDD.md
+    ├── Star_Flow_Command_GDD.md
+    └── Godot_Agent_Guide.md
 ```
 
 ## Управление

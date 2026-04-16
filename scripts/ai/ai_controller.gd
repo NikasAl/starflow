@@ -43,9 +43,35 @@ func _gather_game_state() -> void:
 ## Private Methods ##
 
 func _build_behavior_tree() -> void:
-        # Корневой селектор: приоритет обороны, затем расширение, затем атака
+        # Корневой селектор: приоритет обороны → атака → расширение → укрепление → консолидация
         _behavior_tree = BTSelector.new()
-        # TODO: собрать дерево из подузлов при реализации конкретных стратегий
+
+        # Ветвь защиты: проверка угрозы → действие защиты
+        var defense_sequence := BTSequence.new()
+        defense_sequence.children = [
+                CheckThreat.new(),
+                DefendPlanet.new(),
+        ]
+
+        # Ветвь атаки: поиск возможности → действие атаки
+        var attack_sequence := BTSequence.new()
+        attack_sequence.children = [
+                CheckOpportunity.new(),
+                AttackPlanet.new(),
+        ]
+
+        # Листья расширения, укрепления и консолидации
+        var expand_leaf := Expand.new()
+        var reinforce_leaf := ReinforceWeakest.new()
+        var consolidate_leaf := Consolidate.new()
+
+        _behavior_tree.children = [
+                defense_sequence,
+                attack_sequence,
+                expand_leaf,
+                reinforce_leaf,
+                consolidate_leaf,
+        ]
 
 func _on_planet_captured(planet: Planet3D, new_owner_id: int) -> void:
         if new_owner_id == player_id:
