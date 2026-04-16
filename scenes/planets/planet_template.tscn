@@ -1,0 +1,25 @@
+[gd_scene load_steps=2 format=3 uid="uid://planet_template"]
+
+[ext_resource type="Script" path="res://scripts/planets/planet3d.gd" id="1_planet"]
+
+[node name="Planet" type="Node3D"]
+script = ExtResource("1_planet")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_planet")
+
+[node name="HighlightMesh" type="MeshInstance3D" parent="."]
+visible = false
+mesh = SubResource("SphereMesh_highlight")
+
+[sub_resource type="SphereMesh" id="SphereMesh_planet"]
+radius = 1.0
+height = 2.0
+radial_segments = 32
+rings = 16
+
+[sub_resource type="SphereMesh" id="SphereMesh_highlight"]
+radius = 1.3
+height = 2.6
+radial_segments = 32
+rings = 16
