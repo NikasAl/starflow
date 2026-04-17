@@ -1,18 +1,21 @@
 // ============================================================
-// Star Flow Command — Planet Logic (pure data, no Three.js)
+// Star Flow Command — Planet Logic
 // ============================================================
 
 import {
-  type PlanetData, type OwnerId,
+  type PlanetData, type OwnerId, planetPower,
   PLAYER, AI_1, AI_2, NEUTRAL,
 } from './types';
 import {
   WORLD_SIZE, PLANET_MIN_DISTANCE,
-  PLANET_RADII, PLANET_MAX_SHIPS, PLANET_PRODUCTION,
-  PLANET_COUNT, STARTING_SHIPS, NEUTRAL_SHIPS,
+  PLANET_RADII, PLANET_MAX_SHIPS,
+  PLANET_FIGHTER_PRODUCTION, PLANET_CRUISER_PRODUCTION,
+  PLANET_COUNT,
+  STARTING_FIGHTERS, STARTING_CRUISERS,
+  NEUTRAL_FIGHTERS, NEUTRAL_CRUISERS,
+  ROUTE_FIGHTERS_PER_BATCH, ROUTE_CRUISERS_PER_BATCH,
 } from './constants';
 
-/** Generate planet names */
 const PLANET_NAMES = [
   'Terra Nova', 'Kepler-7b', 'Proxima', 'Andoria', 'Vulcan',
   'Rigel Prime', 'Centauri', 'Sirius', 'Vega', 'Altair',
@@ -20,7 +23,6 @@ const PLANET_NAMES = [
   'Arcturus', 'Aldebaran', 'Spica', 'Regulus', 'Procyon',
 ];
 
-/** Check if a position is too close to existing planets */
 function tooClose(x: number, z: number, planets: PlanetData[]): boolean {
   for (const p of planets) {
     const dx = p.x - x;
@@ -30,23 +32,18 @@ function tooClose(x: number, z: number, planets: PlanetData[]): boolean {
   return false;
 }
 
-/** Random position on the XZ plane within world bounds */
 function randomPosition(planets: PlanetData[]): { x: number; z: number } {
-  const half = WORLD_SIZE / 2;
-  let attempts = 0;
-  while (attempts < 500) {
+  for (let attempts = 0; attempts < 500; attempts++) {
     const x = (Math.random() - 0.5) * WORLD_SIZE * 0.8;
     const z = (Math.random() - 0.5) * WORLD_SIZE * 0.8;
-    if (!tooClose(x, z, planets)) {
-      return { x, z };
-    }
-    attempts++;
+    if (!tooClose(x, z, planets)) return { x, z };
   }
-  // Fallback: grid placement
-  return { x: (Math.random() - 0.5) * WORLD_SIZE * 0.8, z: (Math.random() - 0.5) * WORLD_SIZE * 0.8 };
+  return {
+    x: (Math.random() - 0.5) * WORLD_SIZE * 0.8,
+    z: (Math.random() - 0.5) * WORLD_SIZE * 0.8,
+  };
 }
 
-/** Pick a random tier weighted toward small planets */
 function randomTier(): 1 | 2 | 3 {
   const r = Math.random();
   if (r < 0.5) return 1;
@@ -61,7 +58,6 @@ export function generateMap(aiCount: number = 2): PlanetData[] {
   if (aiCount >= 1) owners.push(AI_1);
   if (aiCount >= 2) owners.push(AI_2);
 
-  // Place starting planets for each faction far apart
   for (let i = 0; i < owners.length; i++) {
     const angle = (i / owners.length) * Math.PI * 2;
     const dist = WORLD_SIZE * 0.25;
@@ -74,14 +70,15 @@ export function generateMap(aiCount: number = 2): PlanetData[] {
       x, y: 0, z,
       radius: PLANET_RADII[tier],
       owner: owners[i],
-      ships: STARTING_SHIPS,
+      fighters: STARTING_FIGHTERS,
+      cruisers: STARTING_CRUISERS,
       maxShips: PLANET_MAX_SHIPS[tier],
-      productionRate: PLANET_PRODUCTION[tier],
+      fighterProduction: PLANET_FIGHTER_PRODUCTION[tier],
+      cruiserProduction: PLANET_CRUISER_PRODUCTION[tier],
       tier,
     });
   }
 
-  // Fill remaining with neutral/contested planets
   for (let i = owners.length; i < PLANET_COUNT; i++) {
     const pos = randomPosition(planets);
     const tier = randomTier();
@@ -91,9 +88,11 @@ export function generateMap(aiCount: number = 2): PlanetData[] {
       x: pos.x, y: 0, z: pos.z,
       radius: PLANET_RADII[tier],
       owner: NEUTRAL,
-      ships: NEUTRAL_SHIPS + Math.floor(Math.random() * 10),
+      fighters: NEUTRAL_FIGHTERS + Math.floor(Math.random() * 6),
+      cruisers: NEUTRAL_CRUISERS + Math.floor(Math.random() * 3),
       maxShips: PLANET_MAX_SHIPS[tier],
-      productionRate: PLANET_PRODUCTION[tier],
+      fighterProduction: PLANET_FIGHTER_PRODUCTION[tier],
+      cruiserProduction: PLANET_CRUISER_PRODUCTION[tier],
       tier,
     });
   }
@@ -101,58 +100,78 @@ export function generateMap(aiCount: number = 2): PlanetData[] {
   return planets;
 }
 
-/** Update planet production: add ships based on elapsed time */
+/** Update planet production: add fighters and cruisers over time */
 export function updateProduction(planet: PlanetData, dt: number): void {
   if (planet.owner === NEUTRAL) return;
-  if (planet.ships >= planet.maxShips) return;
+  const totalWeight = planet.fighters + planet.cruisers * 2;
+  if (totalWeight >= planet.maxShips) return;
 
-  planet.ships += planet.productionRate * dt;
-  if (planet.ships > planet.maxShips) {
-    planet.ships = planet.maxShips;
+  planet.fighters += planet.fighterProduction * dt;
+  planet.cruisers += planet.cruiserProduction * dt;
+
+  // Cap by max weight
+  if (planet.fighters + planet.cruisers * 2 > planet.maxShips) {
+    // Reduce proportionally
+    const excess = (planet.fighters + planet.cruisers * 2) - planet.maxShips;
+    // Remove fighters first (cheaper)
+    const fighterReduction = Math.min(excess, planet.fighters - 0);
+    planet.fighters -= fighterReduction;
+    const remaining = excess - fighterReduction;
+    planet.cruisers -= remaining / 2;
+    if (planet.fighters < 0) planet.fighters = 0;
+    if (planet.cruisers < 0) planet.cruisers = 0;
   }
 }
 
-/** Send ships from one planet to another. Returns the fleet if successful. */
-export function launchFleet(
-  source: PlanetData,
-  targetId: string,
-  tx: number, tz: number,
-): { ships: number; sourceId: string; targetId: string } | null {
-  const sendCount = Math.floor(source.ships * 0.7);
-  if (sendCount < 1) return null;
+/** Launch a batch from source planet for route sending */
+export function launchRouteBatch(source: PlanetData): { fighters: number; cruisers: number } | null {
+  const f = Math.min(Math.floor(source.fighters), ROUTE_FIGHTERS_PER_BATCH);
+  const c = Math.min(Math.floor(source.cruisers), ROUTE_CRUISERS_PER_BATCH);
+  if (f === 0 && c === 0) return null;
 
-  source.ships -= sendCount;
+  source.fighters -= f;
+  source.cruisers -= c;
 
-  return {
-    ships: sendCount,
-    sourceId: source.id,
-    targetId,
-  };
+  return { fighters: f, cruisers: c };
 }
 
-/** Resolve combat when a fleet arrives at a planet */
-export function resolveCombat(planet: PlanetData, attackerShips: number, attackerOwner: OwnerId): PlanetData {
-  const planetData = { ...planet };
+/** Resolve combat when a fleet arrives */
+export function resolveCombat(planet: PlanetData, attackerFighters: number, attackerCruisers: number, attackerOwner: OwnerId): PlanetData {
+  const p = { ...planet };
+  const attackPower = attackerFighters + attackerCruisers * 2;
+  const defendPower = p.fighters + p.cruisers * 2;
 
-  if (planetData.owner === attackerOwner) {
-    // Reinforce — just add ships
-    planetData.ships += attackerShips;
-    if (planetData.ships > planetData.maxShips) {
-      planetData.ships = planetData.maxShips;
+  if (p.owner === attackerOwner) {
+    // Reinforce
+    p.fighters += attackerFighters;
+    p.cruisers += attackerCruisers;
+    // Cap
+    const total = p.fighters + p.cruisers * 2;
+    if (total > p.maxShips) {
+      const ratio = p.maxShips / total;
+      p.fighters = Math.floor(p.fighters * ratio);
+      p.cruisers = Math.floor(p.cruisers * ratio);
     }
   } else {
-    // Attack — mutual destruction
-    if (attackerShips > planetData.ships) {
+    // Attack — mutual destruction by weight
+    if (attackPower > defendPower) {
       // Attacker wins
-      const remaining = Math.floor(attackerShips - planetData.ships * 0.7);
-      planetData.owner = attackerOwner;
-      planetData.ships = remaining;
+      const remainingPower = attackPower - defendPower;
+      p.owner = attackerOwner;
+      // Distribute remaining as fighters (simpler)
+      p.fighters = remainingPower;
+      p.cruisers = 0;
     } else {
       // Defender holds
-      planetData.ships = Math.floor(planetData.ships - attackerShips * 0.7);
+      const remainingPower = defendPower - attackPower;
+      // Remove proportionally from defenders
+      const ratio = remainingPower / defendPower;
+      p.fighters = Math.floor(p.fighters * ratio);
+      p.cruisers = Math.floor(p.cruisers * ratio);
     }
-    if (planetData.ships < 0) planetData.ships = 0;
+    if (p.fighters < 0) p.fighters = 0;
+    if (p.cruisers < 0) p.cruisers = 0;
   }
 
-  return planetData;
+  return p;
 }

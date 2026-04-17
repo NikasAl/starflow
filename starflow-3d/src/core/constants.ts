@@ -2,7 +2,7 @@
 // Star Flow Command — Game Constants
 // ============================================================
 
-/** World bounds — planets spawn within this area */
+/** World bounds */
 export const WORLD_SIZE = 80;
 
 /** Minimum distance between planet centers */
@@ -10,71 +10,89 @@ export const PLANET_MIN_DISTANCE = 18;
 
 /** Planet visual radii by tier */
 export const PLANET_RADII: Record<1 | 2 | 3, number> = {
-  1: 1.2,   // small
-  2: 1.8,   // medium
-  3: 2.5,   // large
+  1: 1.2,
+  2: 1.8,
+  3: 2.5,
 };
 
-/** Ship capacity by tier */
+/** Max total ship weight by tier */
 export const PLANET_MAX_SHIPS: Record<1 | 2 | 3, number> = {
   1: 50,
   2: 100,
   3: 200,
 };
 
-/** Production rate (ships per second) by tier */
-export const PLANET_PRODUCTION: Record<1 | 2 | 3, number> = {
-  1: 0.8,
-  2: 1.5,
-  3: 2.5,
+/** Fighter production rate (per second) by tier */
+export const PLANET_FIGHTER_PRODUCTION: Record<1 | 2 | 3, number> = {
+  1: 1.2,
+  2: 2.0,
+  3: 3.0,
+};
+
+/** Cruiser production rate (per second) by tier */
+export const PLANET_CRUISER_PRODUCTION: Record<1 | 2 | 3, number> = {
+  1: 0.4,
+  2: 0.7,
+  3: 1.2,
 };
 
 /** How many planets on the map */
 export const PLANET_COUNT = 12;
 
-/** Starting ships on owned planets */
-export const STARTING_SHIPS = 20;
+/** Starting fighters on owned planets */
+export const STARTING_FIGHTERS = 15;
 
-/** Ships on neutral planets */
-export const NEUTRAL_SHIPS = 10;
+/** Starting cruisers on owned planets */
+export const STARTING_CRUISERS = 4;
+
+/** Starting ships on neutral planets */
+export const NEUTRAL_FIGHTERS = 8;
+export const NEUTRAL_CRUISERS = 2;
 
 /** Fleet speed — world units per second */
 export const FLEET_SPEED = 15;
 
-/** Camera defaults */
+// ---- Route system ----
+
+/** How often a route sends a batch (seconds) */
+export const ROUTE_SEND_INTERVAL = 2.0;
+
+/** How many fighters per batch (small constant, routes are continuous) */
+export const ROUTE_FIGHTERS_PER_BATCH = 3;
+
+/** How many cruisers per batch */
+export const ROUTE_CRUISERS_PER_BATCH = 1;
+
+// ---- Camera ----
+
 export const CAM_DEFAULT_DISTANCE = 60;
 export const CAM_DEFAULT_THETA = 0;
-export const CAM_DEFAULT_PHI = 0.8;   // ~45 degrees
+export const CAM_DEFAULT_PHI = 0.8;
 export const CAM_MIN_DISTANCE = 20;
 export const CAM_MAX_DISTANCE = 150;
 export const CAM_ZOOM_SPEED = 2;
-export const CAM_ROTATE_SPEED = 0.005;
-export const CAM_PAN_SPEED = 0.3;
 
-/** Selection ring animation */
+// ---- Selection ----
+
 export const SELECTION_RING_COLOR = 0x00ff88;
 export const SELECTION_RING_RADIUS_MULTIPLIER = 1.6;
 
-/** Number of particles per stream visual */
-export const STREAM_PARTICLE_COUNT = 8;
+// ---- Streams ----
 
-/** Particle size for ship streams */
+export const STREAM_PARTICLE_COUNT = 8;
 export const STREAM_PARTICLE_SIZE = 0.3;
 
-/** Ambient light intensity */
-export const AMBIENT_LIGHT = 0.3;
+// ---- Lights ----
 
-/** Directional light intensity */
+export const AMBIENT_LIGHT = 0.3;
 export const DIRECTIONAL_LIGHT = 0.9;
 
-/** Background color (deep space) */
-export const BACKGROUND_COLOR = 0x0a0a1a;
+// ---- Scene ----
 
-/** Star field: how many background stars */
+export const BACKGROUND_COLOR = 0x0a0a1a;
 export const STAR_COUNT = 2000;
 
-/** AI decision interval in seconds */
-export const AI_THINK_INTERVAL = 3.0;
+// ---- AI ----
 
-/** Minimum ships AI needs before attacking */
+export const AI_THINK_INTERVAL = 3.0;
 export const AI_MIN_ATTACK_SHIPS = 8;

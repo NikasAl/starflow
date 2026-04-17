@@ -38,22 +38,45 @@ export interface PlanetData {
   radius: number;
   /** Current owner */
   owner: OwnerId;
-  /** Ships stationed on the planet */
-  ships: number;
-  /** Max ships the planet can hold */
+  /** Fighter count (weight 1 each) */
+  fighters: number;
+  /** Cruiser count (weight 2 each) */
+  cruisers: number;
+  /** Max total ship weight */
   maxShips: number;
-  /** Base production rate (ships per second) */
-  productionRate: number;
+  /** Fighter production rate (fighters per second) */
+  fighterProduction: number;
+  /** Cruiser production rate (cruisers per second) */
+  cruiserProduction: number;
   /** Planet size tier 1-3 (small, medium, large) */
   tier: 1 | 2 | 3;
+}
+
+/** Helper: total attack power of a planet */
+export function planetPower(p: PlanetData): number {
+  return p.fighters + p.cruisers * 2;
+}
+
+/** Helper: total weight on a planet */
+export function planetWeight(p: PlanetData): number {
+  return p.fighters + p.cruisers * 2;
+}
+
+/** Helper: check if planet has any ships */
+export function planetHasShips(p: PlanetData): boolean {
+  return p.fighters > 0 || p.cruisers > 0;
 }
 
 /** Data for a fleet moving between planets */
 export interface FleetData {
   id: string;
   owner: OwnerId;
-  /** How many ships */
-  ships: number;
+  /** Fighter count */
+  fighters: number;
+  /** Cruiser count */
+  cruisers: number;
+  /** Total weight for combat */
+  get power(): number;
   /** Source planet id */
   sourceId: string;
   /** Target planet id */
@@ -73,16 +96,25 @@ export interface StreamData {
   id: string;
   fleetId: string;
   owner: OwnerId;
-  /** Source position */
   sx: number; sy: number; sz: number;
-  /** Target position */
   tx: number; ty: number; tz: number;
-  /** Bezier control point (offset perpendicular) */
   cx: number; cy: number; cz: number;
-  /** Life progress 0..1 */
   progress: number;
-  /** Total stream duration in seconds */
   duration: number;
+}
+
+/** A persistent route between two planets — ships sent periodically */
+export interface ShipRoute {
+  id: string;
+  owner: OwnerId;
+  sourceId: string;
+  targetId: string;
+  /** Seconds until next batch */
+  sendTimer: number;
+  /** How many fighters per batch */
+  fightersPerBatch: number;
+  /** How many cruisers per batch */
+  cruisersPerBatch: number;
 }
 
 /** Overall game state */
@@ -90,7 +122,9 @@ export interface GameState {
   planets: PlanetData[];
   fleets: FleetData[];
   streams: StreamData[];
-  /** Which planet the player has selected (null = none) */
+  /** Persistent ship routes */
+  routes: ShipRoute[];
+  /** Which planet the player is selecting as source (null = none) */
   selectedPlanetId: string | null;
   /** Game phase */
   phase: 'playing' | 'won' | 'lost';
@@ -100,15 +134,11 @@ export interface GameState {
   aiCount: number;
 }
 
-/** Camera state (separate from Three.js camera for clarity) */
+/** Camera state */
 export interface CameraState {
-  /** Target orbit center (x, z plane) */
   targetX: number;
   targetZ: number;
-  /** Orbital angle around Y axis */
   theta: number;
-  /** Angle above horizon */
   phi: number;
-  /** Distance from target */
   distance: number;
 }

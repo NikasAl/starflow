@@ -7,19 +7,21 @@ import { FLEET_SPEED } from './constants';
 
 let fleetCounter = 0;
 
-/** Create a new fleet heading from source to target */
+/** Create a new fleet */
 export function createFleet(
   owner: OwnerId,
-  ships: number,
+  fighters: number,
+  cruisers: number,
   sourceId: string,
   targetId: string,
   sx: number, sy: number, sz: number,
   tx: number, ty: number, tz: number,
 ): FleetData {
-  return {
+  const fleet: FleetData = {
     id: `fleet_${++fleetCounter}`,
     owner,
-    ships,
+    fighters,
+    cruisers,
     sourceId,
     targetId,
     progress: 0,
@@ -27,14 +29,16 @@ export function createFleet(
     x: sx,
     y: sy,
     z: sz,
+    get power() { return this.fighters + this.cruisers * 2; },
   };
+  return fleet;
 }
 
 /** Update fleet position. Returns true if arrived. */
 export function updateFleet(
   fleet: FleetData,
-  sx: number, sy: number, sz: number,  // source position
-  tx: number, ty: number, tz: number,  // target position
+  sx: number, sy: number, sz: number,
+  tx: number, ty: number, tz: number,
   dt: number,
 ): boolean {
   const dx = tx - sx;
@@ -52,10 +56,9 @@ export function updateFleet(
     fleet.x = tx;
     fleet.y = ty;
     fleet.z = tz;
-    return true; // arrived
+    return true;
   }
 
-  // Interpolate position
   fleet.x = sx + dx * fleet.progress;
   fleet.y = sy + dy * fleet.progress + Math.sin(fleet.progress * Math.PI) * 3;
   fleet.z = sz + dz * fleet.progress;

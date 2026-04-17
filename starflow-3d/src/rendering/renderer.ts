@@ -1,12 +1,12 @@
 // ============================================================
-// Star Flow Command — 3D Renderer (Three.js)
+// Star Flow Command — 3D Renderer (Three.js) + HTML HUD
 // ============================================================
 
 import * as THREE from 'three';
 import {
   type GameState, type PlanetData, type FleetData, type StreamData,
-  type CameraState, type OwnerId,
-  OWNER_COLORS, OWNER_NAMES,
+  type CameraState, type ShipRoute, type OwnerId,
+  OWNER_COLORS, OWNER_NAMES, planetPower,
   PLAYER,
 } from '../core/types';
 import {
@@ -19,28 +19,23 @@ import {
 import { getGameStats } from '../game/state';
 
 // ============================================================
-// Scene setup
+// Three.js scene globals
 // ============================================================
 
 let scene: THREE.Scene;
 let camera: THREE.PerspectiveCamera;
 let renderer: THREE.WebGLRenderer;
 
-// Planet meshes keyed by planet id
 const planetMeshes = new Map<string, THREE.Mesh>();
-// Planet glow rings keyed by id
 const planetGlows = new Map<string, THREE.Mesh>();
-// Selection ring
 let selectionRing: THREE.Mesh | null = null;
-// Ship sprites for fleets
 const fleetSprites = new Map<string, THREE.Group>();
-// Stream particles
 const streamGroups = new Map<string, THREE.Points>();
-
-// Ship count labels (sprite text)
 const planetLabels = new Map<string, THREE.Sprite>();
 
-// Camera state
+// Route lines (persistent beams between planets)
+const routeLines = new Map<string, THREE.Line>();
+
 const camState: CameraState = {
   targetX: 0,
   targetZ: 0,
@@ -49,7 +44,6 @@ const camState: CameraState = {
   distance: CAM_DEFAULT_DISTANCE,
 };
 
-// Drag state
 let isDragging = false;
 let dragStartX = 0;
 let dragStartY = 0;
@@ -59,56 +53,44 @@ let dragStartTargetX = 0;
 let dragStartTargetZ = 0;
 let mouseDownTime = 0;
 
-// HUD canvas
-let hudCanvas: HTMLCanvasElement;
-let hudCtx: CanvasRenderingContext2D;
-let hudTexture: THREE.CanvasTexture;
-let hudSprite: THREE.Sprite;
+// HTML HUD element
+let hudElement: HTMLDivElement;
 
-// Click callback
 let onPlanetClick: ((planetId: string) => void) | null = null;
 
-// Raycaster
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 
-/** Initialize the Three.js scene */
+// ============================================================
+// Init
+// ============================================================
+
 export function initRenderer(canvas: HTMLCanvasElement): void {
-  // Scene
   scene = new THREE.Scene();
   scene.background = new THREE.Color(BACKGROUND_COLOR);
 
-  // Camera
   camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 500);
   updateCamera();
 
-  // Renderer
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
 
   // Lights
-  const ambient = new THREE.AmbientLight(0xffffff, AMBIENT_LIGHT);
-  scene.add(ambient);
+  scene.add(new THREE.AmbientLight(0xffffff, AMBIENT_LIGHT));
 
-  const dirLight = new THREE.DirectionalLight(0xffffff, DIRECTIONAL_LIGHT);
-  dirLight.position.set(30, 50, 20);
-  scene.add(dirLight);
+  const dir = new THREE.DirectionalLight(0xffffff, DIRECTIONAL_LIGHT);
+  dir.position.set(30, 50, 20);
+  scene.add(dir);
 
-  const dirLight2 = new THREE.DirectionalLight(0x4466aa, 0.3);
-  dirLight2.position.set(-20, 30, -10);
-  scene.add(dirLight2);
+  const dir2 = new THREE.DirectionalLight(0x4466aa, 0.3);
+  dir2.position.set(-20, 30, -10);
+  scene.add(dir2);
 
-  // Star field background
   createStarField();
-
-  // Grid plane (subtle reference grid)
   createGrid();
+  createHTMLHUD();
 
-  // HUD
-  createHUD();
-
-  // Events
   canvas.addEventListener('pointerdown', onPointerDown);
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerup', onPointerUp);
@@ -117,76 +99,128 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
 }
 
 function createStarField(): void {
-  const geometry = new THREE.BufferGeometry();
-  const positions = new Float32Array(STAR_COUNT * 3);
-  const sizes = new Float32Array(STAR_COUNT);
-
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(STAR_COUNT * 3);
   for (let i = 0; i < STAR_COUNT; i++) {
     const r = 150 + Math.random() * 200;
-    const theta = Math.random() * Math.PI * 2;
-    const phi = Math.acos(2 * Math.random() - 1);
-    positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-    positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-    positions[i * 3 + 2] = r * Math.cos(phi);
-    sizes[i] = 0.5 + Math.random() * 1.5;
+    const t = Math.random() * Math.PI * 2;
+    const p = Math.acos(2 * Math.random() - 1);
+    pos[i * 3] = r * Math.sin(p) * Math.cos(t);
+    pos[i * 3 + 1] = r * Math.sin(p) * Math.sin(t);
+    pos[i * 3 + 2] = r * Math.cos(p);
   }
-
-  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-
-  const material = new THREE.PointsMaterial({
-    color: 0xffffff,
-    size: 0.8,
-    sizeAttenuation: true,
-    transparent: true,
-    opacity: 0.8,
-  });
-
-  scene.add(new THREE.Points(geometry, material));
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  scene.add(new THREE.Points(geo, new THREE.PointsMaterial({
+    color: 0xffffff, size: 0.8, sizeAttenuation: true, transparent: true, opacity: 0.8,
+  })));
 }
 
 function createGrid(): void {
-  const gridHelper = new THREE.GridHelper(200, 40, 0x1a1a3a, 0x0d0d2a);
-  gridHelper.position.y = -1;
-  (gridHelper.material as THREE.Material).transparent = true;
-  (gridHelper.material as THREE.Material).opacity = 0.3;
-  scene.add(gridHelper);
+  const g = new THREE.GridHelper(200, 40, 0x1a1a3a, 0x0d0d2a);
+  g.position.y = -1;
+  (g.material as THREE.Material).transparent = true;
+  (g.material as THREE.Material).opacity = 0.3;
+  scene.add(g);
 }
 
-function createHUD(): void {
-  hudCanvas = document.createElement('canvas');
-  hudCanvas.width = 512;
-  hudCanvas.height = 256;
-  hudCtx = hudCanvas.getContext('2d')!;
-  hudTexture = new THREE.CanvasTexture(hudCanvas);
-  hudTexture.minFilter = THREE.LinearFilter;
+// ============================================================
+// HTML HUD — screen-fixed overlay
+// ============================================================
 
-  const hudMaterial = new THREE.SpriteMaterial({
-    map: hudTexture,
-    transparent: true,
-    depthTest: false,
-  });
-  hudSprite = new THREE.Sprite(hudMaterial);
-  hudSprite.scale.set(40, 20, 1);
-  hudSprite.position.set(0, 30, -30);
-  scene.add(hudSprite);
+function createHTMLHUD(): void {
+  hudElement = document.createElement('div');
+  hudElement.id = 'game-hud';
+  hudElement.style.cssText = `
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 100;
+    pointer-events: none;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: #fff;
+    user-select: none;
+  `;
+  document.body.appendChild(hudElement);
+}
+
+function updateHTMLHUD(state: GameState): void {
+  const stats = getGameStats(state);
+
+  const owners: [number, string, number][] = [
+    [1, 'You', 0x4488ff],
+    [2, 'Crimson', 0xff4444],
+    [3, 'Emerald', 0x44cc44],
+    [0, 'Neutral', 0x888888],
+  ];
+
+  let html = `<div style="
+    background: rgba(0,0,0,0.7);
+    border-radius: 10px;
+    padding: 12px 16px;
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255,255,255,0.1);
+    min-width: 200px;
+  ">`;
+
+  // Timer
+  html += `<div style="font-size:13px; color:rgba(255,255,255,0.5); margin-bottom:6px;">
+    ${Math.floor(state.time / 60)}:${String(Math.floor(state.time % 60)).padStart(2, '0')}
+  </div>`;
+
+  for (const [id, name, color] of owners) {
+    const s = stats[id as OwnerId];
+    if (!s) continue;
+    const ch = '#' + color.toString(16).padStart(6, '0');
+    html += `<div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; font-size:13px;">
+      <div style="width:10px; height:10px; border-radius:50%; background:${ch}; flex-shrink:0;"></div>
+      <span style="min-width:55px;">${name}</span>
+      <span style="color:rgba(255,255,255,0.7);">${s.planets}p</span>
+      <span style="color:${ch === '#888888' ? '#aaa' : '#66bbff'}; font-size:11px;">
+        ${s.fighters}F+${s.cruisers}C
+      </span>
+    </div>`;
+  }
+
+  // Active player routes
+  const playerRoutes = state.routes.filter(r => r.owner === PLAYER);
+  if (playerRoutes.length > 0) {
+    html += `<div style="margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.1); font-size:11px; color:#00ff88;">
+      Routes: ${playerRoutes.length} active
+    </div>`;
+  }
+
+  // Phase
+  if (state.phase === 'won') {
+    html += `<div style="font-size:20px; font-weight:bold; color:#00ff88; text-align:center; margin-top:10px;">VICTORY!</div>`;
+  } else if (state.phase === 'lost') {
+    html += `<div style="font-size:20px; font-weight:bold; color:#ff4444; text-align:center; margin-top:10px;">DEFEAT</div>`;
+  }
+
+  // Selected hint
+  if (state.selectedPlanetId) {
+    const p = state.planets.find(pl => pl.id === state.selectedPlanetId);
+    if (p) {
+      html += `<div style="margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.1); font-size:12px; color:#00ff88;">
+        ${p.name}: ${Math.floor(p.fighters)}F + ${Math.floor(p.cruisers)}C<br>
+        <span style="color:rgba(255,255,255,0.5);">Click target to create route</span>
+      </div>`;
+    }
+  }
+
+  html += `</div>`;
+  hudElement.innerHTML = html;
 }
 
 // ============================================================
 // Planet rendering
 // ============================================================
 
-/** Create a 3D mesh for a planet */
 export function addPlanet(planet: PlanetData): void {
-  // Main sphere
   const geometry = new THREE.SphereGeometry(Math.max(0.1, planet.radius), 32, 24);
   const color = OWNER_COLORS[planet.owner];
 
   const material = new THREE.MeshPhongMaterial({
-    color,
-    shininess: 60,
-    emissive: color,
-    emissiveIntensity: 0.15,
+    color, shininess: 60, emissive: color, emissiveIntensity: 0.15,
   });
 
   const mesh = new THREE.Mesh(geometry, material);
@@ -195,31 +229,27 @@ export function addPlanet(planet: PlanetData): void {
   scene.add(mesh);
   planetMeshes.set(planet.id, mesh);
 
-  // Glow ring around planet
-  const glowGeometry = new THREE.RingGeometry(
+  // Glow ring
+  const glowGeo = new THREE.RingGeometry(
     Math.max(0.1, planet.radius * 1.1),
     Math.max(0.2, planet.radius * 1.3),
     32,
   );
-  const glowMaterial = new THREE.MeshBasicMaterial({
-    color,
-    transparent: true,
-    opacity: 0.3,
-    side: THREE.DoubleSide,
+  const glowMat = new THREE.MeshBasicMaterial({
+    color, transparent: true, opacity: 0.3, side: THREE.DoubleSide,
   });
-  const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+  const glow = new THREE.Mesh(glowGeo, glowMat);
   glow.position.set(planet.x, planet.y + 0.05, planet.z);
   glow.rotation.x = -Math.PI / 2;
   scene.add(glow);
   planetGlows.set(planet.id, glow);
 
-  // Ship count label
   addPlanetLabel(planet);
 }
 
 function addPlanetLabel(planet: PlanetData): void {
   const canvas = document.createElement('canvas');
-  canvas.width = 128;
+  canvas.width = 160;
   canvas.height = 64;
   const ctx = canvas.getContext('2d')!;
   drawPlanetLabel(ctx, planet);
@@ -227,34 +257,49 @@ function addPlanetLabel(planet: PlanetData): void {
   const texture = new THREE.CanvasTexture(canvas);
   texture.minFilter = THREE.LinearFilter;
 
-  const material = new THREE.SpriteMaterial({
-    map: texture,
-    transparent: true,
-    depthTest: false,
-  });
-
-  const sprite = new THREE.Sprite(material);
-  sprite.scale.set(6, 3, 1);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: texture, transparent: true, depthTest: false,
+  }));
+  sprite.scale.set(7, 3, 1);
   sprite.position.set(planet.x, planet.radius + 1.5, planet.z);
   scene.add(sprite);
   planetLabels.set(planet.id, sprite);
 }
 
 function drawPlanetLabel(ctx: CanvasRenderingContext2D, planet: PlanetData): void {
-  ctx.clearRect(0, 0, 128, 64);
-  ctx.font = 'bold 28px Arial';
+  ctx.clearRect(0, 0, 160, 64);
+
+  const f = Math.floor(planet.fighters);
+  const c = Math.floor(planet.cruisers);
+
+  // Two-line label: fighters on top, cruisers below
+  ctx.font = 'bold 22px Arial';
   ctx.textAlign = 'center';
 
   const colorHex = '#' + OWNER_COLORS[planet.owner].toString(16).padStart(6, '0');
-  ctx.fillStyle = colorHex;
-  ctx.strokeStyle = '#000000';
+
+  // Fighters line
+  ctx.fillStyle = '#66bbff';
+  ctx.strokeStyle = '#000';
   ctx.lineWidth = 3;
-  const text = String(Math.floor(planet.ships));
-  ctx.strokeText(text, 64, 40);
-  ctx.fillText(text, 64, 40);
+  ctx.strokeText(`${f}F`, 55, 28);
+  ctx.fillText(`${f}F`, 55, 28);
+
+  // Cruisers line
+  ctx.fillStyle = '#ffaa44';
+  ctx.strokeText(`${c}C`, 105, 28);
+  ctx.fillText(`${c}C`, 105, 28);
+
+  // Total power small
+  const power = f + c * 2;
+  ctx.font = '14px Arial';
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 2;
+  ctx.strokeText(`pw:${power}`, 80, 50);
+  ctx.fillText(`pw:${power}`, 80, 50);
 }
 
-/** Update a planet mesh (owner color change, ship count) */
 export function updatePlanet(planet: PlanetData): void {
   const mesh = planetMeshes.get(planet.id);
   if (!mesh) return;
@@ -264,43 +309,23 @@ export function updatePlanet(planet: PlanetData): void {
   (mesh.material as THREE.MeshPhongMaterial).emissive.setHex(color);
 
   const glow = planetGlows.get(planet.id);
-  if (glow) {
-    (glow.material as THREE.MeshBasicMaterial).color.setHex(color);
-  }
+  if (glow) (glow.material as THREE.MeshBasicMaterial).color.setHex(color);
 
-  // Update label
   const sprite = planetLabels.get(planet.id);
   if (sprite) {
     const canvas = (sprite.material as THREE.SpriteMaterial).map!.image as HTMLCanvasElement;
-    const ctx = canvas.getContext('2d')!;
-    drawPlanetLabel(ctx, planet);
+    drawPlanetLabel(canvas.getContext('2d')!, planet);
     (sprite.material as THREE.SpriteMaterial).map!.needsUpdate = true;
   }
 }
 
-/** Remove a planet mesh from the scene */
 export function removePlanet(id: string): void {
   const mesh = planetMeshes.get(id);
-  if (mesh) {
-    scene.remove(mesh);
-    mesh.geometry.dispose();
-    (mesh.material as THREE.Material).dispose();
-    planetMeshes.delete(id);
-  }
+  if (mesh) { scene.remove(mesh); mesh.geometry.dispose(); (mesh.material as THREE.Material).dispose(); planetMeshes.delete(id); }
   const glow = planetGlows.get(id);
-  if (glow) {
-    scene.remove(glow);
-    glow.geometry.dispose();
-    (glow.material as THREE.Material).dispose();
-    planetGlows.delete(id);
-  }
+  if (glow) { scene.remove(glow); glow.geometry.dispose(); (glow.material as THREE.Material).dispose(); planetGlows.delete(id); }
   const label = planetLabels.get(id);
-  if (label) {
-    scene.remove(label);
-    (label.material as THREE.SpriteMaterial).map!.dispose();
-    (label.material as THREE.SpriteMaterial).dispose();
-    planetLabels.delete(id);
-  }
+  if (label) { scene.remove(label); (label.material as THREE.SpriteMaterial).map!.dispose(); (label.material as THREE.SpriteMaterial).dispose(); planetLabels.delete(id); }
 }
 
 // ============================================================
@@ -308,47 +333,79 @@ export function removePlanet(id: string): void {
 // ============================================================
 
 export function updateSelection(planetId: string | null): void {
-  // Remove old ring
   if (selectionRing) {
     scene.remove(selectionRing);
     selectionRing.geometry.dispose();
     (selectionRing.material as THREE.Material).dispose();
     selectionRing = null;
   }
-
   if (!planetId) return;
 
   const planet = planetMeshes.get(planetId);
   if (!planet) return;
 
   const radius = (planet.geometry as THREE.SphereGeometry).parameters?.radius || 1.5;
-  const ringRadius = radius * SELECTION_RING_RADIUS_MULTIPLIER;
+  const rr = radius * SELECTION_RING_RADIUS_MULTIPLIER;
 
-  const geometry = new THREE.RingGeometry(
-    Math.max(0.1, ringRadius),
-    Math.max(0.2, ringRadius + 0.2),
-    32,
-  );
-  const material = new THREE.MeshBasicMaterial({
-    color: SELECTION_RING_COLOR,
-    transparent: true,
-    opacity: 0.8,
-    side: THREE.DoubleSide,
+  const geo = new THREE.RingGeometry(Math.max(0.1, rr), Math.max(0.2, rr + 0.2), 32);
+  const mat = new THREE.MeshBasicMaterial({
+    color: SELECTION_RING_COLOR, transparent: true, opacity: 0.8, side: THREE.DoubleSide,
   });
 
-  selectionRing = new THREE.Mesh(geometry, material);
+  selectionRing = new THREE.Mesh(geo, mat);
   selectionRing.position.copy(planet.position);
   selectionRing.position.y += 0.1;
   selectionRing.rotation.x = -Math.PI / 2;
   scene.add(selectionRing);
 }
 
-/** Animate selection ring (pulse) */
 function animateSelection(time: number): void {
   if (!selectionRing) return;
-  const scale = 1.0 + Math.sin(time * 4) * 0.1;
-  selectionRing.scale.set(scale, scale, 1);
+  const s = 1.0 + Math.sin(time * 4) * 0.1;
+  selectionRing.scale.set(s, s, 1);
   (selectionRing.material as THREE.MeshBasicMaterial).opacity = 0.5 + Math.sin(time * 3) * 0.3;
+}
+
+// ============================================================
+// Route lines (persistent beams between planets)
+// ============================================================
+
+export function addRouteLine(route: ShipRoute): void {
+  const source = planetMeshes.get(route.sourceId);
+  const target = planetMeshes.get(route.targetId);
+  if (!source || !target) return;
+
+  const points = [source.position.clone(), target.position.clone()];
+  const geometry = new THREE.BufferGeometry().setFromPoints(points);
+
+  const color = OWNER_COLORS[route.owner];
+  const material = new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.4,
+    linewidth: 1,
+  });
+
+  const line = new THREE.Line(geometry, material);
+  scene.add(line);
+  routeLines.set(route.id, line);
+}
+
+export function removeRouteLine(routeId: string): void {
+  const line = routeLines.get(routeId);
+  if (line) {
+    scene.remove(line);
+    line.geometry.dispose();
+    (line.material as THREE.Material).dispose();
+    routeLines.delete(routeId);
+  }
+}
+
+/** Animate route lines (pulse) */
+function animateRoutes(time: number): void {
+  for (const [id, line] of routeLines) {
+    (line.material as THREE.LineBasicMaterial).opacity = 0.2 + Math.sin(time * 2 + id.length) * 0.15;
+  }
 }
 
 // ============================================================
@@ -359,59 +416,54 @@ export function addFleet(fleet: FleetData): void {
   const group = new THREE.Group();
   group.userData = { fleetId: fleet.id };
 
-  // Central sphere for fleet
+  const color = OWNER_COLORS[fleet.owner];
+
+  // Central sphere
   const geom = new THREE.SphereGeometry(0.5, 12, 8);
-  const mat = new THREE.MeshPhongMaterial({
-    color: OWNER_COLORS[fleet.owner],
-    emissive: OWNER_COLORS[fleet.owner],
-    emissiveIntensity: 0.4,
-    transparent: true,
-    opacity: 0.9,
-  });
-  const sphere = new THREE.Mesh(geom, mat);
-  group.add(sphere);
+  group.add(new THREE.Mesh(geom, new THREE.MeshPhongMaterial({
+    color, emissive: color, emissiveIntensity: 0.4, transparent: true, opacity: 0.9,
+  })));
 
   // Glow
-  const glowGeom = new THREE.SphereGeometry(0.9, 12, 8);
-  const glowMat = new THREE.MeshBasicMaterial({
-    color: OWNER_COLORS[fleet.owner],
-    transparent: true,
-    opacity: 0.15,
-  });
-  group.add(new THREE.Mesh(glowGeom, glowMat));
+  group.add(new THREE.Mesh(
+    new THREE.SphereGeometry(0.9, 12, 8),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.15 }),
+  ));
 
   group.position.set(fleet.x, fleet.y, fleet.z);
   scene.add(group);
   fleetSprites.set(fleet.id, group);
 
   // Fleet label
-  const labelCanvas = document.createElement('canvas');
-  labelCanvas.width = 64;
-  labelCanvas.height = 32;
-  const ctx = labelCanvas.getContext('2d')!;
-  ctx.font = 'bold 20px Arial';
+  const lc = document.createElement('canvas');
+  lc.width = 96;
+  lc.height = 32;
+  const ctx = lc.getContext('2d')!;
+  const ch = '#' + color.toString(16).padStart(6, '0');
+
+  ctx.font = 'bold 16px Arial';
   ctx.textAlign = 'center';
-  const colorHex = '#' + OWNER_COLORS[fleet.owner].toString(16).padStart(6, '0');
-  ctx.fillStyle = colorHex;
   ctx.strokeStyle = '#000';
   ctx.lineWidth = 2;
-  const txt = String(fleet.ships);
-  ctx.strokeText(txt, 32, 22);
-  ctx.fillText(txt, 32, 22);
+  // Fighters
+  ctx.fillStyle = '#66bbff';
+  ctx.strokeText(`${fleet.fighters}F`, 28, 20);
+  ctx.fillText(`${fleet.fighters}F`, 28, 20);
+  // Cruisers
+  ctx.fillStyle = '#ffaa44';
+  ctx.strokeText(`${fleet.cruisers}C`, 68, 20);
+  ctx.fillText(`${fleet.cruisers}C`, 68, 20);
 
-  const tex = new THREE.CanvasTexture(labelCanvas);
-  const spriteMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
-  const label = new THREE.Sprite(spriteMat);
-  label.scale.set(3, 1.5, 1);
-  label.position.y = 1.2;
-  group.add(label);
+  const tex = new THREE.CanvasTexture(lc);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+  sprite.scale.set(4, 1.5, 1);
+  sprite.position.y = 1.2;
+  group.add(sprite);
 }
 
 export function updateFleetPosition(fleet: FleetData): void {
   const group = fleetSprites.get(fleet.id);
-  if (group) {
-    group.position.set(fleet.x, fleet.y, fleet.z);
-  }
+  if (group) group.position.set(fleet.x, fleet.y, fleet.z);
 }
 
 export function removeFleet(id: string): void {
@@ -419,60 +471,38 @@ export function removeFleet(id: string): void {
   if (group) {
     scene.remove(group);
     group.traverse(child => {
-      if (child instanceof THREE.Mesh) {
-        child.geometry.dispose();
-        (child.material as THREE.Material).dispose();
-      }
-      if (child instanceof THREE.Sprite) {
-        (child.material as THREE.SpriteMaterial).map?.dispose();
-        (child.material as THREE.SpriteMaterial).dispose();
-      }
+      if (child instanceof THREE.Mesh) { child.geometry.dispose(); (child.material as THREE.Material).dispose(); }
+      if (child instanceof THREE.Sprite) { (child.material as THREE.SpriteMaterial).map?.dispose(); (child.material as THREE.SpriteMaterial).dispose(); }
     });
     fleetSprites.delete(id);
   }
 }
 
 export function addStream(stream: StreamData): void {
-  const geometry = new THREE.BufferGeometry();
-  const positions = new Float32Array(STREAM_PARTICLE_COUNT * 3);
-  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
-  const material = new THREE.PointsMaterial({
-    color: OWNER_COLORS[stream.owner],
-    size: STREAM_PARTICLE_SIZE,
-    transparent: true,
-    opacity: 0.6,
-    sizeAttenuation: true,
-  });
-
-  const points = new THREE.Points(geometry, material);
-  scene.add(points);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(STREAM_PARTICLE_COUNT * 3), 3));
+  scene.add(new THREE.Points(geo, new THREE.PointsMaterial({
+    color: OWNER_COLORS[stream.owner], size: STREAM_PARTICLE_SIZE,
+    transparent: true, opacity: 0.6, sizeAttenuation: true,
+  })));
+  // Find the just-added points
+  const points = scene.children[scene.children.length - 1] as THREE.Points;
   streamGroups.set(stream.id, points);
 }
 
 export function updateStream(stream: StreamData): void {
   const points = streamGroups.get(stream.id);
   if (!points) return;
+  const pos = points.geometry.attributes.position.array as Float32Array;
 
-  const positions = points.geometry.attributes.position.array as Float32Array;
-  const count = STREAM_PARTICLE_COUNT;
-
-  for (let i = 0; i < count; i++) {
-    // Each particle at a different progress along the curve
-    const t = Math.max(0, stream.progress - (i / count) * 0.3);
-    if (t < 0) {
-      positions[i * 3] = 0;
-      positions[i * 3 + 1] = -100;
-      positions[i * 3 + 2] = 0;
-      continue;
-    }
-    // Quadratic Bezier: B(t) = (1-t)^2*P0 + 2(1-t)t*P1 + t^2*P2
+  for (let i = 0; i < STREAM_PARTICLE_COUNT; i++) {
+    const t = Math.max(0, stream.progress - (i / STREAM_PARTICLE_COUNT) * 0.3);
+    if (t < 0) { pos[i * 3] = 0; pos[i * 3 + 1] = -100; pos[i * 3 + 2] = 0; continue; }
     const omt = 1 - t;
-    positions[i * 3] = omt * omt * stream.sx + 2 * omt * t * stream.cx + t * t * stream.tx;
-    positions[i * 3 + 1] = omt * omt * stream.sy + 2 * omt * t * stream.cy + t * t * stream.ty;
-    positions[i * 3 + 2] = omt * omt * stream.sz + 2 * omt * t * stream.cz + t * t * stream.tz;
+    pos[i * 3] = omt * omt * stream.sx + 2 * omt * t * stream.cx + t * t * stream.tx;
+    pos[i * 3 + 1] = omt * omt * stream.sy + 2 * omt * t * stream.cy + t * t * stream.ty;
+    pos[i * 3 + 2] = omt * omt * stream.sz + 2 * omt * t * stream.cz + t * t * stream.tz;
   }
-
   points.geometry.attributes.position.needsUpdate = true;
 }
 
@@ -487,78 +517,6 @@ export function removeStream(id: string): void {
 }
 
 // ============================================================
-// HUD
-// ============================================================
-
-function updateHUD(state: GameState): void {
-  const stats = getGameStats(state);
-  const w = hudCanvas.width;
-  const h = hudCanvas.height;
-
-  hudCtx.clearRect(0, 0, w, h);
-
-  // Semi-transparent background
-  hudCtx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-  hudCtx.roundRect(0, 0, w, h, 12);
-  hudCtx.fill();
-
-  hudCtx.font = 'bold 18px Arial';
-  hudCtx.textAlign = 'left';
-  hudCtx.fillStyle = '#ffffff';
-  hudCtx.fillText(`Time: ${Math.floor(state.time)}s`, 16, 28);
-
-  // Stats
-  const entries: Array<{ name: string; color: string; stats: { planets: number; ships: number } }> = [];
-  const owners: [number, string, number][] = [
-    [0, 'Neutral', 0x888888],
-    [1, 'You', 0x4488ff],
-    [2, 'Crimson', 0xff4444],
-    [3, 'Emerald', 0x44cc44],
-  ];
-  for (const [id, name, color] of owners) {
-    const s = stats[id as OwnerId];
-    if (s) {
-      entries.push({ name, color: '#' + color.toString(16).padStart(6, '0'), stats: s });
-    }
-  }
-
-  let y = 52;
-  for (const entry of entries) {
-    hudCtx.fillStyle = entry.color;
-    hudCtx.fillRect(16, y - 14, 10, 10);
-    hudCtx.fillStyle = '#ffffff';
-    hudCtx.fillText(`${entry.name}: ${entry.stats.planets}p / ${entry.stats.ships}s`, 32, y);
-    y += 22;
-  }
-
-  // Phase indicator
-  if (state.phase === 'won') {
-    hudCtx.font = 'bold 28px Arial';
-    hudCtx.textAlign = 'center';
-    hudCtx.fillStyle = '#00ff88';
-    hudCtx.fillText('VICTORY!', w / 2, h - 16);
-  } else if (state.phase === 'lost') {
-    hudCtx.font = 'bold 28px Arial';
-    hudCtx.textAlign = 'center';
-    hudCtx.fillStyle = '#ff4444';
-    hudCtx.fillText('DEFEAT', w / 2, h - 16);
-  }
-
-  // Selected planet hint
-  if (state.selectedPlanetId) {
-    const planet = state.planets.find(p => p.id === state.selectedPlanetId);
-    if (planet) {
-      hudCtx.font = '16px Arial';
-      hudCtx.textAlign = 'center';
-      hudCtx.fillStyle = SELECTION_RING_COLOR.toString(16).padStart(6, '0') ? '#00ff88' : '#ffffff';
-      hudCtx.fillText(`Selected: ${planet.name} (${Math.floor(planet.ships)} ships) - Click target`, w / 2, h - 4);
-    }
-  }
-
-  hudTexture.needsUpdate = true;
-}
-
-// ============================================================
 // Camera
 // ============================================================
 
@@ -566,7 +524,6 @@ function updateCamera(): void {
   const x = camState.targetX + camState.distance * Math.sin(camState.phi) * Math.cos(camState.theta);
   const y = camState.distance * Math.cos(camState.phi);
   const z = camState.targetZ + camState.distance * Math.sin(camState.phi) * Math.sin(camState.theta);
-
   camera.position.set(x, y, z);
   camera.lookAt(camState.targetX, 0, camState.targetZ);
 }
@@ -578,53 +535,38 @@ function onResize(): void {
 }
 
 // ============================================================
-// Input handling
+// Input
 // ============================================================
 
 function onPointerDown(e: PointerEvent): void {
   isDragging = false;
-  dragStartX = e.clientX;
-  dragStartY = e.clientY;
-  dragStartTheta = camState.theta;
-  dragStartPhi = camState.phi;
-  dragStartTargetX = camState.targetX;
-  dragStartTargetZ = camState.targetZ;
+  dragStartX = e.clientX; dragStartY = e.clientY;
+  dragStartTheta = camState.theta; dragStartPhi = camState.phi;
+  dragStartTargetX = camState.targetX; dragStartTargetZ = camState.targetZ;
   mouseDownTime = performance.now();
 }
 
 function onPointerMove(e: PointerEvent): void {
   const dx = e.clientX - dragStartX;
   const dy = e.clientY - dragStartY;
-
-  if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-    isDragging = true;
-  }
-
+  if (Math.abs(dx) > 3 || Math.abs(dy) > 3) isDragging = true;
   if (!isDragging) return;
 
   if (e.buttons === 1) {
-    // Left button: rotate + pan
     if (e.shiftKey) {
-      // Pan
-      const panScale = camState.distance * 0.003;
-      camState.targetX = dragStartTargetX - dx * panScale * Math.cos(camState.theta) + dy * panScale * Math.sin(camState.theta);
-      camState.targetZ = dragStartTargetZ - dx * panScale * Math.sin(camState.theta) - dy * panScale * Math.cos(camState.theta);
+      const s = camState.distance * 0.003;
+      camState.targetX = dragStartTargetX - dx * s * Math.cos(camState.theta) + dy * s * Math.sin(camState.theta);
+      camState.targetZ = dragStartTargetZ - dx * s * Math.sin(camState.theta) - dy * s * Math.cos(camState.theta);
     } else {
-      // Rotate
       camState.theta = dragStartTheta - dx * 0.005;
       camState.phi = Math.max(0.2, Math.min(Math.PI / 2 - 0.1, dragStartPhi + dy * 0.005));
     }
   }
-
   updateCamera();
 }
 
 function onPointerUp(e: PointerEvent): void {
-  const elapsed = performance.now() - mouseDownTime;
-  if (!isDragging && elapsed < 300) {
-    // It was a click, not a drag
-    handleClick(e);
-  }
+  if (!isDragging && performance.now() - mouseDownTime < 300) handleClick(e);
   isDragging = false;
 }
 
@@ -634,21 +576,14 @@ function handleClick(e: PointerEvent): void {
   mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
   raycaster.setFromCamera(mouse, camera);
-
-  // Check planet intersections
   const meshes = Array.from(planetMeshes.values());
   const intersects = raycaster.intersectObjects(meshes);
 
   if (intersects.length > 0) {
-    const planetId = intersects[0].object.userData.planetId;
-    if (planetId && onPlanetClick) {
-      onPlanetClick(planetId);
-    }
-  } else {
-    // Clicked empty space — deselect
-    if (onPlanetClick) {
-      onPlanetClick('__deselect__');
-    }
+    const pid = intersects[0].object.userData.planetId;
+    if (pid && onPlanetClick) onPlanetClick(pid);
+  } else if (onPlanetClick) {
+    onPlanetClick('__deselect__');
   }
 }
 
@@ -659,56 +594,32 @@ function onWheel(e: WheelEvent): void {
   updateCamera();
 }
 
-export function setPlanetClickCallback(cb: (planetId: string) => void): void {
-  onPlanetClick = cb;
-}
-
-export function getCameraState(): CameraState {
-  return { ...camState };
-}
+export function setPlanetClickCallback(cb: (planetId: string) => void): void { onPlanetClick = cb; }
+export function getCameraState(): CameraState { return { ...camState }; }
 
 // ============================================================
 // Main render loop
 // ============================================================
 
-/** Sync all visuals with game state */
 export function syncVisuals(state: GameState, time: number): void {
-  // Update planet visuals
-  for (const planet of state.planets) {
-    updatePlanet(planet);
-  }
+  for (const planet of state.planets) updatePlanet(planet);
 
-  // Animate selection
   animateSelection(time);
+  animateRoutes(time);
 
-  // Update fleet positions
-  for (const fleet of state.fleets) {
-    updateFleetPosition(fleet);
-  }
+  for (const fleet of state.fleets) updateFleetPosition(fleet);
+  for (const stream of state.streams) updateStream(stream);
 
-  // Update streams
-  for (const stream of state.streams) {
-    updateStream(stream);
-  }
+  for (const mesh of planetMeshes.values()) mesh.rotation.y += 0.003;
 
-  // Rotate planets slowly
-  for (const mesh of planetMeshes.values()) {
-    mesh.rotation.y += 0.003;
-  }
+  updateHTMLHUD(state);
 
-  // Update HUD
-  updateHUD(state);
-
-  // Render
   renderer.render(scene, camera);
 }
 
-/** Get the renderer (for main loop) */
-export function getRenderer(): THREE.WebGLRenderer {
-  return renderer;
-}
+export function getRenderer(): THREE.WebGLRenderer { return renderer; }
 
-/** Dispose of everything */
 export function dispose(): void {
   renderer.dispose();
+  if (hudElement && hudElement.parentNode) hudElement.parentNode.removeChild(hudElement);
 }

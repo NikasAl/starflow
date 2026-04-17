@@ -1,62 +1,68 @@
 // ============================================================
 // Star Flow Command — Main Game Class
-// Orchestrates state, AI, rendering, and input
 // ============================================================
 
-import { type GameState, type PlanetData } from '../core/types';
+import { type GameState } from '../core/types';
 import { createGameState, updateGame, handlePlayerAction } from '../game/state';
 import { type AIState, createAIs } from '../core/ai';
 import {
   initRenderer,
   addPlanet,
-  removePlanet,
   addFleet,
   removeFleet,
   addStream,
   removeStream,
+  addRouteLine,
+  removeRouteLine,
   updateSelection,
   syncVisuals,
   setPlanetClickCallback,
   dispose,
 } from '../rendering/renderer';
 
-/** Track which fleets/streams have been added to the scene */
 const knownFleets = new Set<string>();
 const knownStreams = new Set<string>();
-const knownPlanets = new Set<string>();
+const knownRoutes = new Set<string>();
 
 let gameState: GameState;
 let aiStates: AIState[];
 let running = false;
 let lastTime = 0;
 
-/** Initialize and start the game */
 export function startGame(canvas: HTMLCanvasElement): void {
-  // Init state
-  gameState = createGameState(2); // 2 AI opponents
+  gameState = createGameState(2);
   aiStates = createAIs(2);
 
-  // Init 3D renderer
   initRenderer(canvas);
 
-  // Add all initial planets to the scene
   for (const planet of gameState.planets) {
     addPlanet(planet);
-    knownPlanets.add(planet.id);
   }
 
-  // Set click handler
   setPlanetClickCallback((planetId: string) => {
     if (planetId === '__deselect__') {
       gameState.selectedPlanetId = null;
       updateSelection(null);
       return;
     }
-    handlePlayerAction(gameState, planetId);
+
+    const result = handlePlayerAction(gameState, planetId);
+
+    // Handle route removals from renderer
+    for (const rid of result.routeRemoved) {
+      removeRouteLine(rid);
+      knownRoutes.delete(rid);
+    }
+
+    // Handle route addition
+    if (result.routeAdded) {
+      addRouteLine(result.routeAdded);
+      knownRoutes.add(result.routeAdded.id);
+    }
+
     updateSelection(gameState.selectedPlanetId);
   });
 
-  // Start loop
   running = true;
   lastTime = performance.now();
   requestAnimationFrame(gameLoop);
@@ -65,16 +71,15 @@ export function startGame(canvas: HTMLCanvasElement): void {
 function gameLoop(now: number): void {
   if (!running) return;
 
-  const dt = Math.min((now - lastTime) / 1000, 0.1); // cap delta time
+  const dt = Math.min((now - lastTime) / 1000, 0.1);
   lastTime = now;
 
-  // Update game logic
-  const prevFleetCount = gameState.fleets.length;
-  const prevStreamCount = gameState.streams.length;
+  // Snapshot routes before update (to detect AI route changes)
+  const prevRouteIds = new Set(gameState.routes.map(r => r.id));
 
   updateGame(gameState, aiStates, dt);
 
-  // Sync new fleets to renderer
+  // Sync new fleets
   for (const fleet of gameState.fleets) {
     if (!knownFleets.has(fleet.id)) {
       addFleet(fleet);
@@ -82,7 +87,7 @@ function gameLoop(now: number): void {
     }
   }
 
-  // Sync new streams to renderer
+  // Sync new streams
   for (const stream of gameState.streams) {
     if (!knownStreams.has(stream.id)) {
       addStream(stream);
@@ -90,29 +95,40 @@ function gameLoop(now: number): void {
     }
   }
 
+  // Sync route lines (AI may have added/removed routes)
+  for (const route of gameState.routes) {
+    if (!knownRoutes.has(route.id)) {
+      addRouteLine(route);
+      knownRoutes.add(route.id);
+    }
+  }
+  for (const rid of knownRoutes) {
+    if (!gameState.routes.find(r => r.id === rid)) {
+      removeRouteLine(rid);
+      knownRoutes.delete(rid);
+    }
+  }
+
   // Clean up arrived fleets
-  for (const fleetId of knownFleets) {
-    if (!gameState.fleets.find(f => f.id === fleetId)) {
-      removeFleet(fleetId);
-      knownFleets.delete(fleetId);
+  for (const fid of knownFleets) {
+    if (!gameState.fleets.find(f => f.id === fid)) {
+      removeFleet(fid);
+      knownFleets.delete(fid);
     }
   }
 
   // Clean up finished streams
-  for (const streamId of knownStreams) {
-    if (!gameState.streams.find(s => s.id === streamId)) {
-      removeStream(streamId);
-      knownStreams.delete(streamId);
+  for (const sid of knownStreams) {
+    if (!gameState.streams.find(s => s.id === sid)) {
+      removeStream(sid);
+      knownStreams.delete(sid);
     }
   }
 
-  // Render
   syncVisuals(gameState, now / 1000);
-
   requestAnimationFrame(gameLoop);
 }
 
-/** Stop the game */
 export function stopGame(): void {
   running = false;
   dispose();

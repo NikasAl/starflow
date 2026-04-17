@@ -3,106 +3,111 @@
 // ============================================================
 
 import {
-  type PlanetData, type OwnerId,
+  type PlanetData, type ShipRoute, type OwnerId, planetPower,
   PLAYER, AI_1, AI_2,
 } from './types';
-import { AI_THINK_INTERVAL, AI_MIN_ATTACK_SHIPS } from './constants';
+import {
+  AI_THINK_INTERVAL, AI_MIN_ATTACK_SHIPS,
+  ROUTE_SEND_INTERVAL, ROUTE_FIGHTERS_PER_BATCH, ROUTE_CRUISERS_PER_BATCH,
+} from './constants';
 
-/** AI state per faction */
 export interface AIState {
   owner: OwnerId;
   thinkTimer: number;
-  /** Which strategy mode */
-  mode: 'expand' | 'attack' | 'defend';
+  /** Active route IDs */
+  activeRouteIds: Set<string>;
 }
 
-/** Create AI states for the game */
+let routeCounter = 1000;
+
 export function createAIs(count: number): AIState[] {
   const states: AIState[] = [];
   for (let i = 0; i < count; i++) {
     states.push({
-      owner: (i + 2) as OwnerId,  // AI_1 = 2, AI_2 = 3
-      thinkTimer: AI_THINK_INTERVAL * Math.random(), // stagger
-      mode: 'expand',
+      owner: (i + 2) as OwnerId,
+      thinkTimer: AI_THINK_INTERVAL * Math.random(),
+      activeRouteIds: new Set(),
     });
   }
   return states;
 }
 
-/** Update AI thinking. Returns fleet launch commands: [sourceId, targetId] */
+/**
+ * Update AI: think about creating/canceling routes.
+ * Returns route changes: { add, remove }
+ */
 export function updateAI(
   ai: AIState,
   planets: PlanetData[],
+  routes: ShipRoute[],
   dt: number,
-): Array<{ sourceId: string; targetId: string }> {
-  const commands: Array<{ sourceId: string; targetId: string }> = [];
+): { addRoutes: ShipRoute[]; removeRouteIds: string[] } {
+  const result = { addRoutes: [] as ShipRoute[], removeRouteIds: [] as string[] };
 
   ai.thinkTimer -= dt;
-  if (ai.thinkTimer > 0) return commands;
+  if (ai.thinkTimer > 0) return result;
   ai.thinkTimer = AI_THINK_INTERVAL + Math.random() * 2;
 
-  // Gather my planets and enemy/neutral planets
   const myPlanets = planets.filter(p => p.owner === ai.owner);
-  const targetPlanets = planets.filter(p => p.owner !== ai.owner);
+  const otherPlanets = planets.filter(p => p.owner !== ai.owner);
 
-  if (myPlanets.length === 0 || targetPlanets.length === 0) return commands;
+  if (myPlanets.length === 0 || otherPlanets.length === 0) return result;
 
-  // Find the strongest planet with enough ships
-  const sorted = [...myPlanets].sort((a, b) => b.ships - a.ships);
-  const source = sorted.find(p => p.ships >= AI_MIN_ATTACK_SHIPS);
-  if (!source) return commands;
+  // My current routes
+  const myRoutes = routes.filter(r => r.owner === ai.owner && ai.activeRouteIds.has(r.id));
+  const mySources = new Set(myRoutes.map(r => r.sourceId));
 
-  // Strategy decision
-  const totalMyShips = myPlanets.reduce((s, p) => s + p.ships, 0);
-  const totalEnemyShips = targetPlanets.reduce((s, p) => s + p.ships, 0);
+  // Find planets with ships but no route
+  const idlePlanets = myPlanets.filter(p =>
+    planetPower(p) >= AI_MIN_ATTACK_SHIPS && !mySources.has(p.id)
+  );
 
-  if (totalMyShips > totalEnemyShips * 1.5) {
-    ai.mode = 'attack';
-  } else if (myPlanets.length <= 2) {
-    ai.mode = 'expand';
-  } else {
-    ai.mode = Math.random() > 0.5 ? 'attack' : 'defend';
-  }
+  // Strategy: have up to N active routes
+  const maxRoutes = Math.min(myPlanets.length - 1, 3);
 
-  // Find target based on strategy
-  let target: PlanetData | undefined;
+  if (myRoutes.length < maxRoutes && idlePlanets.length > 0) {
+    // Pick strongest idle planet as source
+    const source = [...idlePlanets].sort((a, b) => planetPower(b) - planetPower(a))[0];
 
-  if (ai.mode === 'expand') {
-    // Target nearest neutral with fewest ships
-    const neutrals = targetPlanets
-      .filter(p => p.owner === 0)
+    // Pick target: nearest planet with fewest ships (that's not ours)
+    const targets = otherPlanets
+      .filter(t => t.id !== source.id)
       .sort((a, b) => {
         const dA = dist(a, source);
         const dB = dist(b, source);
-        return (dA + a.ships * 2) - (dB + b.ships * 2);
+        return (dA + planetPower(a) * 2) - (dB + planetPower(b) * 2);
       });
-    target = neutrals[0];
-  } else if (ai.mode === 'attack') {
-    // Target weakest enemy planet
-    const enemies = targetPlanets
-      .filter(p => p.owner !== 0)
-      .sort((a, b) => (a.ships + dist(a, source) * 0.5) - (b.ships + dist(b, source) * 0.5));
-    target = enemies[0];
-  } else {
-    // Defend: reinforce weakest own planet
-    const weakest = myPlanets.sort((a, b) => a.ships - b.ships);
-    target = weakest[0];
-    // Don't reinforce self
-    if (target.id === source.id) {
-      target = undefined;
+
+    if (targets.length > 0) {
+      const target = targets[0];
+      const route: ShipRoute = {
+        id: `route_${++routeCounter}`,
+        owner: ai.owner,
+        sourceId: source.id,
+        targetId: target.id,
+        sendTimer: 0,
+        fightersPerBatch: ROUTE_FIGHTERS_PER_BATCH,
+        cruisersPerBatch: ROUTE_CRUISERS_PER_BATCH,
+      };
+      result.addRoutes.push(route);
+      ai.activeRouteIds.add(route.id);
     }
   }
 
-  if (!target) {
-    // Fallback: random target
-    target = targetPlanets[Math.floor(Math.random() * targetPlanets.length)];
+  // Occasionally remove old routes and retarget
+  if (myRoutes.length > 0 && Math.random() < 0.2) {
+    // Remove route if target already captured
+    const captured = myRoutes.find(r => {
+      const target = planets.find(p => p.id === r.targetId);
+      return target && target.owner === ai.owner;
+    });
+    if (captured) {
+      result.removeRouteIds.push(captured.id);
+      ai.activeRouteIds.delete(captured.id);
+    }
   }
 
-  if (target) {
-    commands.push({ sourceId: source.id, targetId: target.id });
-  }
-
-  return commands;
+  return result;
 }
 
 function dist(a: PlanetData, b: PlanetData): number {
