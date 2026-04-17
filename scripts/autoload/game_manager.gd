@@ -49,23 +49,23 @@ func start_level(config: Resource = null) -> void:
                 return
         _clear_level()
         _generate_level()
-        change_state(GameStateScript.State.PLAYING)
+        change_state(GameStateScript.EState.PLAYING)
         score_tracker.reset_scores()
         EventBus.level_started.emit(current_level_config)
 
 
 func pause_game() -> void:
-        change_state(GameStateScript.State.PAUSED)
+        change_state(GameStateScript.EState.PAUSED)
         get_tree().paused = true
 
 
 func resume_game() -> void:
-        change_state(GameStateScript.State.PLAYING)
+        change_state(GameStateScript.EState.PLAYING)
         get_tree().paused = false
 
 
 func check_victory_condition() -> void:
-        if game_state.current_state != GameStateScript.State.PLAYING:
+        if game_state.current_state != GameStateScript.EState.PLAYING:
                 return
         var alive_players: Array[int] = []
         for planet in all_planets:
@@ -74,7 +74,7 @@ func check_victory_condition() -> void:
                                 alive_players.append(planet.owner_id)
         if alive_players.size() == 1:
                 var winner: int = alive_players[0]
-                change_state(GameStateScript.State.VICTORY)
+                change_state(GameStateScript.EState.VICTORY)
                 victory.emit(winner)
                 EventBus.victory.emit(winner)
 

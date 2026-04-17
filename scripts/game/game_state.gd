@@ -3,9 +3,11 @@ extends RefCounted
 
 ## Состояние игры (Game State) — чистая логика без привязки к нодам.
 
-enum State { MENU, TUTORIAL, PLAYING, PAUSED, VICTORY, DEFEAT }
+## Renamed from 'State' to 'EState' to avoid conflict with class_name State (state.gd)
+## В Godot 4.5 глобальный class_name State затеняет локальный enum State.
+enum EState { MENU, TUTORIAL, PLAYING, PAUSED, VICTORY, DEFEAT }
 
-var current_state: State = State.MENU
+var current_state: EState = EState.MENU
 var elapsed_time: float = 0.0
 var planets: Array = []  ## Planet3D[] — без типизации для совместимости с Godot 4.5
 var streams: Array = []  ## ShipStream3D[] — без типизации для совместимости с Godot 4.5
@@ -26,11 +28,11 @@ func reset_scores() -> void:
 
 
 func get_state_name() -> String:
-        return State.keys()[current_state]
+        return EState.keys()[current_state]
 
 
 func is_active() -> bool:
-        return current_state == State.PLAYING
+        return current_state == EState.PLAYING
 
 
 func add_score(player_id: int, amount: int) -> void:

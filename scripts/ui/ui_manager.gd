@@ -80,9 +80,9 @@ func _hide_notification() -> void:
 
 func _on_game_state_changed(_old_state: int, new_state: int) -> void:
         match new_state:
-                _GameStateScript.State.PAUSED:
+                _GameStateScript.EState.PAUSED:
                         show_pause_menu()
-                _GameStateScript.State.PLAYING:
+                _GameStateScript.EState.PLAYING:
                         hide_pause_menu()
 
 

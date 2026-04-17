@@ -34,7 +34,7 @@ func _unhandled_input(event: InputEvent) -> void:
         # Не обрабатываем ввод, если игра не активна
         if GameManager == null or GameManager.game_state == null:
                 return
-        if GameManager.game_state.current_state != _GameStateScript.State.PLAYING:
+        if GameManager.game_state.current_state != _GameStateScript.EState.PLAYING:
                 return
         if event is InputEventMouseButton:
                 _handle_mouse_button(event as InputEventMouseButton)
