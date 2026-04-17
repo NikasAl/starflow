@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://forum.godotengine.org/t/autoload-in-plugin-lead-to-parseerror-when-adding-it-in-a-fresh-project/127746",
+    "name": "Autoload in plugin lead to ParseError when adding it in a fresh",
+    "snippet": "14 Nov 2025 — The plugin works correctly after a project reload when the autoload is enabled at least once, but fails with parse and class resolution errors ... Read more",
+    "host_name": "forum.godotengine.org",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://forum.godotengine.org/t/error-on-static-typing-and-custom-classes/15326",
+    "name": "error on static typing and custom classes - Archive",
+    "snippet": "3 Sept 2020 — I have a problem , i'm making a position list that uses linked nodes, the thing is that if define the static type of a parameter with the same type of the class. Read more",
+    "host_name": "forum.godotengine.org",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.reddit.com/r/godot/comments/1o451p9/autload_throwing_could_not_find_type_in_current",
+    "name": "Autload throwing \"Could not find type in current scope",
+    "snippet": "Parser Error: Could not find type \"SomeCustomClass\" in the current scope. The error always points to the first signal defined in my Events ... Read more",
+    "host_name": "www.reddit.com",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/godotengine/godot/issues/83119",
+    "name": "AutoLoad fails to load in an unintuitive way · Issue #83119",
+    "snippet": "10 Oct 2023 — Conclusion: When an AutoLoad preloads scenes that use other singletons that haven't been loaded yet, it causes a crash and gives you some error ... Read more",
+    "host_name": "github.com",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.facebook.com/groups/godotengine/posts/3089232241213349",
+    "name": "Why is custom Signal in child class not recognized",
+    "snippet": "Found a solution . Adding it as a User Signal instead of ADD_SIGNAL seems to work. In the LandoLandscape Contructor method I added...",
+    "host_name": "www.facebook.com",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://forum.godotengine.org/t/custom-signal-not-connected/90586",
+    "name": "Custom signal not connected? - Programming",
+    "snippet": "5 Nov 2024 — I am currently trying to make a custom signal in a global autoload , sending the signal between two scenes. I've tried following guides, and it has worked ... Read more",
+    "host_name": "forum.godotengine.org",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.godotengine.org/en/4.5/tutorials/scripting/singletons_autoload.html",
+    "name": "Singletons (Autoload) — Godot Engine (4.5) documentation in",
+    "snippet": "Act like a singleton, since GDScript does not support global variables by design. Autoloading nodes and scripts can give us these characteristics. Note. Godot ... Read more",
+    "host_name": "docs.godotengine.org",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://stackoverflow.com/questions/76957945/gdscript-autoload-doesnt-seem-to-be-working",
+    "name": "(GDscript) Autoload doesn't seem to be working",
+    "snippet": "I'm trying to set up a basic global script with some variables in godot 4.1. I've added my script to autoload and enabled global variables. Read more",
+    "host_name": "stackoverflow.com",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://forum.godotengine.org/t/how-to-preload-or-otherwise-include-one-script-in-another-without-type-warnings-or-errors/73506",
+    "name": "How to preload or otherwise include one script in another",
+    "snippet": "23 Jul 2024 — I'm trying to write a plugin that has a few different classes . I have my project GDScript settings configured to warn and error on typing issues ... Read more",
+    "host_name": "forum.godotengine.org",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://godotforums.org/d/33595-is-this-a-bug-errors-with-autoloads-in-godot-4",
+    "name": "Is this a bug? Errors with autoloads in Godot 4",
+    "snippet": "11 Apr 2023 — I have a script that is autoloaded called \"state\". The script extends a Node. It just has some basic funcs, nothing relevant. Read more",
+    "host_name": "godotforums.org",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]

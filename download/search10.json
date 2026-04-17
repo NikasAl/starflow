@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://github.com/godotengine/godot/issues/81867",
+    "name": "\"FIle not found\" errors after deleting folder containing",
+    "snippet": "Sep 18, 2023 — \"FIle not found\" errors after deleting folder containing GDScript file with custom class_name #81867 ... Autoload fails Godot 4.6 SproutyLabs/ ...",
+    "host_name": "github.com",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://forum.godotengine.org/t/why-i-am-getting-this-error/117034",
+    "name": "Why I am getting this error? - Help - Godot Forum",
+    "snippet": "22 Jul 2025 — If you want to use variables from other scripts, those variables must be static, or you need to set the script as a global autoload singleton .",
+    "host_name": "forum.godotengine.org",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/godotengine/godot/issues/51145",
+    "name": "Autoload not available from a class it uses for variable type",
+    "snippet": "1 Aug 2021 — Issue description. This was a bit confusing to find , but I have autoload singleton like this for example : extends Node var test: TestClass.",
+    "host_name": "github.com",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.godotengine.org/en/latest/tutorials/scripting/singletons_autoload.html",
+    "name": "Singletons (Autoload) - Godot Docs",
+    "snippet": "Godot won't make an Autoload a \"true\" singleton as per the singleton design pattern. It may still be instanced more than once by the user if desired. Tip. If ...",
+    "host_name": "docs.godotengine.org",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.reddit.com/r/godot/comments/16c9np2/godot_singleton_autoload_not_working_on_project",
+    "name": "Godot singleton / autoload not working on project export",
+    "snippet": "I have a global autoload file, res://Global.gd, that is enabled as a Global variable. I am exporting my project exe and pck file in my Godot project directory ...",
+    "host_name": "www.reddit.com",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://forum.godotengine.org/t/i-had-a-problem-with-the-class-inventoryitem-when-i-want-to-load-inventory-of-my-game-in-godot-4-2/69367",
+    "name": "I had a problem with the class \"InventoryItem\" when I want to",
+    "snippet": "30 Jun 2024 — I got a error very similar to the previous one, Parser Error: Class “InventoryItem” hides an autoload singleton . What should I do to solve this ...",
+    "host_name": "forum.godotengine.org",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/godotengine/godot/issues/109572",
+    "name": "Godot doesn't go looking for the class description in the file",
+    "snippet": "13 Aug 2025 — Godot doesn't go looking for the class description in the file and pull it through for when you use the Singleton namespace. #109572. New issue.",
+    "host_name": "github.com",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://godotforums.org/d/33595-is-this-a-bug-errors-with-autoloads-in-godot-4",
+    "name": "Is this a bug? Errors with autoloads in Godot 4",
+    "snippet": "11 Apr 2023 — When I go to add \" class_name State\" I get the error 'class State hides an autoload singleton \". Any known workarounds? If I go to delete the ...",
+    "host_name": "godotforums.org",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://forum.godotengine.org/t/cross-language-and-autoload/72135",
+    "name": "Cross-Language and Autoload - Programming",
+    "snippet": "15 Jul 2024 — I'm new of godot and i'm trying to implement some cross-language code. Here is my problem, i'm working in C# but i have one addon in gdscript .",
+    "host_name": "forum.godotengine.org",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/godotengine/godot/issues/77643",
+    "name": "Autoload global variables behaving inconsistently,",
+    "snippet": "29 May 2023 — Creating an autoload from a .tscn file will cause the singleton node referenced by the global variable to be unconvertible to the type of the ...",
+    "host_name": "github.com",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]

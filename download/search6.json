@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://forum.godotengine.org/t/why-i-am-getting-this-error/117034",
+    "name": "Why I am getting this error? - Help - Godot Forum",
+    "snippet": "Jul 22, 2025 — Line 4: Could not find type “DataTypes” in the current scope . ... class_name which prevents you from using it anywhere than as an Autoload .\nIf you want to use variables from other scripts, those variables must be static, or you need to set the script as a global autoload singleton. Missing: 4.5 | Show results with: 4.5",
+    "host_name": "forum.godotengine.org",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.reddit.com/r/godot/comments/1o451p9/autload_throwing_could_not_find_type_in_current",
+    "name": "Autload throwing \"Could not find type in current scope\" error  - Reddit",
+    "snippet": "Parser Error: Could not find type \"SomeCustomClass\" in the current scope. The error always points to the first signal defined in my Events ... Missing: 4.5 class_name",
+    "host_name": "www.reddit.com",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/godotengine/godot/issues/51145",
+    "name": "Autoload not available from a class it uses for variable type #51145",
+    "snippet": "Steps to reproduce · Add autoload with variable of type SomeCustomClass · Create instance of SomeCustomClass · In the SomeCustomClass script, try ... Missing: 4.5 signal parameters",
+    "host_name": "github.com",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://forum.godotengine.org/t/how-to-match-class-type/114356",
+    "name": "How to match Class type - Programming - Godot Forum",
+    "snippet": "You can use the get_class() method, although it won't work with classes declared with class_name . match object.get_class(): \"Node3D\": ...",
+    "host_name": "forum.godotengine.org",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://forum.godotengine.org/t/variable-in-autoloaded-script-is-not-being-detected/65520",
+    "name": "Variable in Autoloaded Script is Not Being Detected - Godot Forum",
+    "snippet": "I've been attempting to play an audio stream when the player enters a scene if a variable is true. I've declared the variable in my Global script. Missing: 4.5 class_name signal parameters",
+    "host_name": "forum.godotengine.org",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/godotengine/godot/issues/110908",
+    "name": "Autoload naming broken in 4.5 · Issue #110908 · godotengine/godot",
+    "snippet": "Autoloads are not given a class name in PascalCase. in 4.4 and earlier versions, autoload script files would be written in snake_case , and ...",
+    "host_name": "github.com",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.godotengine.org/en/stable/tutorials/best_practices/autoloads_versus_internal_nodes.html",
+    "name": "Autoloads versus regular nodes - Godot Docs",
+    "snippet": "An autoload is only a tool that makes a node load automatically as a child of the root of your scene tree, regardless of your game's node structure or which ...",
+    "host_name": "docs.godotengine.org",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://forum.godotengine.org/t/how-to-connect-signals-via-code-autoload/74408",
+    "name": "How to connect Signals via Code (Autoload)? - Help - Godot Forum",
+    "snippet": "From Level script, get a ref to your autoloaded node, should be in the tree of your scene. then do someting like: myRefToAutoload.",
+    "host_name": "forum.godotengine.org",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.godotengine.org/en/4.4/tutorials/scripting/gdscript/gdscript_basics.html",
+    "name": "GDScript reference — Godot Engine (4.4) documentation in English",
+    "snippet": "GDScript is a high-level, object-oriented, imperative, and gradually typed programming language built for Godot. It uses an indentation-based syntax similar ...",
+    "host_name": "docs.godotengine.org",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/static_typing.html",
+    "name": "Static typing in GDScript - Godot Docs",
+    "snippet": "In this guide, you will learn: how to use static typing in GDScript;, that static types can help you avoid bugs;, that static typing improves your ...",
+    "host_name": "docs.godotengine.org",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]

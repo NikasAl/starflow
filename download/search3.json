@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://godotengine.org/releases/4.5",
+    "name": "Godot 4.5, making dreams accessible",
+    "snippet": "Making dreams accessible. From mind-blowing effects now made possible by the stencil buffer to accessible descriptions of your GUI elements that opens up ...",
+    "host_name": "godotengine.org",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://godotengine.org/article/maintenance-release-godot-4-5-2",
+    "name": "Maintenance release: Godot 4.5.2",
+    "snippet": "A significant update for 4.5 users with important rendering bug fixes, especially for mobile and D3D12. Missing: class_name 2025",
+    "host_name": "godotengine.org",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://godotengine.org/article/dev-snapshot-godot-4-5-dev-5",
+    "name": "Dev snapshot: Godot 4.5 dev 5",
+    "snippet": "This is likely to be our final development snapshot of the 4.5 release cycle. As we enter the home stretch of new features, bugs are naturally going to follow ...",
+    "host_name": "godotengine.org",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/godotengine/godot/blob/master/CHANGELOG.md",
+    "name": "godot/CHANGELOG.md at master · godotengine/godot - GitHub",
+    "snippet": "This file lists all changes made between the current feature branch and the previous feature release. It is equivalent to the listings on our interactive ...",
+    "host_name": "github.com",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.reddit.com/r/godot/comments/1lew9zn/dev_snapshot_godot_45_beta_1",
+    "name": "Dev snapshot: Godot 4.5 beta 1 - Reddit",
+    "snippet": "Note: The GDScript team is planning to change the abstract keyword to an @abstract annotation during the 4.5 beta phase. I really don't ... Missing: registration | Show results with: registration",
+    "host_name": "www.reddit.com",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.godotengine.org/en/4.5/classes/class_%40gdscript.html",
+    "name": "@GDScript — Godot Engine (4.5) documentation in English",
+    "snippet": "Note: Custom resources and nodes should be registered as global classes using class_name , since the Inspector currently only supports global classes.",
+    "host_name": "docs.godotengine.org",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://godotengine.org/article/maintenance-release-godot-4-5-1",
+    "name": "Maintenance release: Godot 4.5.1",
+    "snippet": "See our interactive changelog for the complete list of changes since the 4.5-stable release. ... GDScript: LSP: Fix repeated restart attempts (GH- ... Missing: class_name | Show results with: class_name",
+    "host_name": "godotengine.org",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.youtube.com/watch?v=Q3HibQT0OdM",
+    "name": "Godot 4.5 is HERE! -- What's New? - YouTube",
+    "snippet": "Rejoice, the wait for Godot is finally over... Godot 4.5 that is! Godot Engine 4.5 has just been released and it's packed with new features. Missing: notes GDScript class_name registration 2025",
+    "host_name": "www.youtube.com",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://steamdb.info/patchnotes/19990499",
+    "name": "Godot 4.5, making dreams accessible - SteamDB",
+    "snippet": "We invite you to take a look over at the 4.5 release page for an overview of the main changes in Godot 4.5: Godot 4.5 Release Notes. As usual ...",
+    "host_name": "steamdb.info",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://godotengine.org/article/release-candidate-godot-4-5-rc-1",
+    "name": "Release candidate: Godot 4.5 RC 1",
+    "snippet": "See our interactive changelog for the complete list of changes since the previous 4.5-beta7 snapshot. ... Previous Godot XR update - August 2025. Missing: class_name registration",
+    "host_name": "godotengine.org",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]

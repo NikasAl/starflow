@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://docs.godotengine.org/en/stable/tutorials/migrating/upgrading_to_godot_4.5.html",
+    "name": "Upgrading from Godot 4.4 to Godot 4.5 - Godot Docs",
+    "snippet": "This article indicates whether each breaking change affects GDScript and whether the C# breaking change is binary compatible or source compatible: Binary ...",
+    "host_name": "docs.godotengine.org",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.godotengine.org/en/stable/tutorials/migrating/upgrading_to_godot_4.6.html",
+    "name": "Upgrading from Godot 4.5 to Godot 4.6",
+    "snippet": "This article indicates whether each breaking change affects GDScript and whether the C# breaking change is binary compatible or source compatible: Binary ...",
+    "host_name": "docs.godotengine.org",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.godotengine.org/en/4.5/tutorials/scripting/singletons_autoload.html",
+    "name": "Singletons (Autoload) — Godot Engine (4.5) documentation in",
+    "snippet": "Act like a singleton, since GDScript does not support global variables by design. Autoloading nodes and scripts can give us these characteristics. Note. Godot ...",
+    "host_name": "docs.godotengine.org",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.godotengine.org/en/stable/getting_started/step_by_step/signals.html",
+    "name": "Using signals - Godot Docs",
+    "snippet": "In this lesson, we will look at signals . They are messages that nodes emit when something specific happens to them, like a button being pressed.",
+    "host_name": "docs.godotengine.org",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.godotengine.org/en/4.5/tutorials/scripting/gdscript/static_typing.html",
+    "name": "Static typing in GDScript - Godot Docs",
+    "snippet": "In this guide, you will learn: how to use static typing in GDScript ;, that static types can help you avoid bugs;, that static typing improves your ...",
+    "host_name": "docs.godotengine.org",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.godotengine.org/en/stable/tutorials/best_practices/autoloads_versus_internal_nodes.html",
+    "name": "Autoloads versus regular nodes - Godot Docs",
+    "snippet": "An autoload is only a tool that makes a node load automatically as a child of the root of your scene tree, regardless of your game's node structure or which ...",
+    "host_name": "docs.godotengine.org",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/gdscript_styleguide.html",
+    "name": "GDScript style guide - Godot Docs",
+    "snippet": "This style guide lists conventions to write elegant GDScript . The goal is to encourage writing clean, readable code and promote consistency across projects, ...",
+    "host_name": "docs.godotengine.org",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.godotengine.org/en/4.5/tutorials/editor/project_settings.html",
+    "name": "Project Settings — Godot Engine (4.5) documentation in English",
+    "snippet": "There are dozens of settings you can change to control a project's execution, including physics, rendering, and windowing settings.",
+    "host_name": "docs.godotengine.org",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.godotengine.org/en/4.5/classes/class_variant.html",
+    "name": "Variant — Godot Engine (4.5) documentation in English",
+    "snippet": "GDScript automatically wrap values in them. It keeps all data in plain Variants by default and then optionally enforces custom static typing rules on variable ...",
+    "host_name": "docs.godotengine.org",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.godotengine.org/en/latest/tutorials/scripting/singletons_autoload.html",
+    "name": "Singletons (Autoload) - Godot Docs",
+    "snippet": "When autoloading a script, a Node will be created and the script will be attached to it. This node will be added to the root viewport before any other scenes ...",
+    "host_name": "docs.godotengine.org",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]

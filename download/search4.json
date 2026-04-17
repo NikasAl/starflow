@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://www.scribd.com/document/752533028/cektitle",
+    "name": "Troubleshooting Common Development Errors | PDF",
+    "snippet": "Error in Symfony with Overblog: Could not find type with alias &quot;Query&quot; ... In Qt, can I use parameter references（&amp;） as parameters of signal ...",
+    "host_name": "www.scribd.com",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/godotengine/godot/issues/48624",
+    "name": "Calling a singleton function doesn't show autocompletion in the editor",
+    "snippet": "Class \"GameManager\" hides an autoload singleton. which makes sense because you know have a redundant declaration (singleton class and singleton ...",
+    "host_name": "github.com",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/godotengine/godot/issues/83246",
+    "name": "File name displayed in Enums from autoload scripts for docs inside",
+    "snippet": "You cannot, you will get this error when you attach the autoload script to the Project \"Class \"Globals\" hides an autoload singleton\". you can ...",
+    "host_name": "github.com",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.resetera.com/threads/godot-game-engine-ot-yes-the-name-is-from-the-play.766229/page-10",
+    "name": "Godot (Game Engine) |OT| Yes, the name is from the play - ResetEra",
+    "snippet": "RocketDarkness if I try to add a class_name to my Inventory Manager I get the error \"Class \"InventoryManager\" hides an autoload singleton.",
+    "host_name": "www.resetera.com",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/godotengine/godot/issues/84579",
+    "name": "Attempting to use --doctool --gdscript-docs gives error Class \"class",
+    "snippet": "... (class_name) && ProjectSettings::get_singleton()->get_autoload(class_name).is_singleton) {. push_error(vformat(R\"(Class \"%s\" hides an autoload singleton.) ...",
+    "host_name": "github.com",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://forum.godotengine.org/t/i-had-a-problem-with-the-class-inventoryitem-when-i-want-to-load-inventory-of-my-game-in-godot-4-2/69367",
+    "name": "I had a problem with the class \"InventoryItem\" when I want to load",
+    "snippet": "Autoload names are defined in the interface, not the script. Otherwise, you're duplicating a class name that's already part of gdscript. Missing: 4.5 | Show results with: 4.5",
+    "host_name": "forum.godotengine.org",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.godotengine.org/en/latest/tutorials/scripting/singletons_autoload.html",
+    "name": "Singletons (Autoload) - Godot Docs",
+    "snippet": "Godot won't make an Autoload a \"true\" singleton as per the singleton design pattern. It may still be instanced more than once by the user if desired. Tip. If ...",
+    "host_name": "docs.godotengine.org",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.reddit.com/r/godot/comments/12brde4/classs_somename_hides_a_global_script_class",
+    "name": "Classs \"SomeName\" hides a global script class : r/godot - Reddit",
+    "snippet": "For anyone else who is running into this issue, first make sure that you are not defining a class_name in your script that you want to Autoload. Godot singleton / autoload not working on project export and moved ... Unable to access singletons in script : r/godot - Reddit More results from www.reddit.com",
+    "host_name": "www.reddit.com",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/godotengine/godot/issues/51145",
+    "name": "Autoload not available from a class it uses for variable type #51145",
+    "snippet": "The error says that the autoload is null, but it isn't true. It might be some weird cyclic reference, but this is a code that was fine in 3.x. Missing: hides | Show results with: hides",
+    "host_name": "github.com",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://godotforums.org/d/33595-is-this-a-bug-errors-with-autoloads-in-godot-4",
+    "name": "Is this a bug? Errors with autoloads in Godot 4",
+    "snippet": "When I go to add \"class_name State\" I get the error 'class State hides an autoload singleton\". Any known workarounds? If I go to delete the ... Missing: 4.5 | Show results with: 4.5",
+    "host_name": "godotforums.org",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]
