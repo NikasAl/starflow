@@ -3,6 +3,7 @@ extends RefCounted
 
 ## Разрешитель боев — статическая логика столкновений кораблей у планет.
 
+
 static func resolve_arrival(planet: Planet3D, arriving_owner_id: int, ship_count: int) -> void:
 	if not is_instance_valid(planet):
 		return

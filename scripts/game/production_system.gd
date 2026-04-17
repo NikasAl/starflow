@@ -15,26 +15,51 @@ func _process(delta: float) -> void:
 	if GameManager == null or GameManager.all_planets.is_empty():
 		return
 
-	# Очистка устаревших записей (планеты могли быть удалены)
+		# Очистка устаревших записей (планеты могли быть удалены)
+
+		# Пропускаем нейтральные планеты
+
+		# Инициализация накопителя при первом обращении
+
+		# Накопление производства
+
+		# Спавн кораблей при достижении порога (1 корабль)
 	_cleanup_stale_accumulators()
 
 	for planet: Planet3D in GameManager.all_planets:
 		if not is_instance_valid(planet):
 			continue
 
-		# Пропускаем нейтральные планеты
-		if planet.owner_id == Constants.PlayerId.NONE:
+			# Пропускаем нейтральные планеты
+
+			# Инициализация накопителя при первом обращении
+
+			# Накопление производства
+
+			# Спавн кораблей при достижении порога (1 корабль)
+		if planet.owner_id == GameConstants.PlayerId.NONE:
 			continue
 
+			# Инициализация накопителя при первом обращении
+
+			# Накопление производства
+
+			# Спавн кораблей при достижении порога (1 корабль)
 		var rate: float = planet.get_production_rate()
 		if rate <= 0.0:
 			continue
 
-		# Инициализация накопителя при первом обращении
+			# Инициализация накопителя при первом обращении
+
+			# Накопление производства
+
+			# Спавн кораблей при достижении порога (1 корабль)
 		if not _production_accumulators.has(planet):
 			_production_accumulators[planet] = 0.0
 
-		# Накопление производства
+			# Накопление производства
+
+			# Спавн кораблей при достижении порога (1 корабль)
 		_production_accumulators[planet] += rate * delta
 
 		# Спавн кораблей при достижении порога (1 корабль)
@@ -52,6 +77,8 @@ func _spawn_ship_for_planet(planet: Planet3D) -> void:
 	if streams.size() > 0:
 		# Увеличиваем счётчик кораблей в существующем потоке
 		streams[0].ship_count += 1
+
+		# Нет активного потока — помещаем корабль в очередь на планете
 	else:
 		# Нет активного потока — помещаем корабль в очередь на планете
 		planet.pending_ships += 1

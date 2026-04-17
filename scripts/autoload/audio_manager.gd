@@ -7,6 +7,7 @@ const MAX_SFX_CHANNELS: int = 8
 var _music_player: AudioStreamPlayer = null
 var _sfx_players: Array[AudioStreamPlayer] = []
 
+
 func _ready() -> void:
 	_music_player = AudioStreamPlayer.new()
 	_music_player.bus = "Music"
@@ -18,11 +19,13 @@ func _ready() -> void:
 		add_child(player)
 		_sfx_players.append(player)
 
+
 func play_music(stream: AudioStream) -> void:
 	if _music_player.playing:
 		_music_player.stop()
 	_music_player.stream = stream
 	_music_player.play()
+
 
 func stop_music(fade_out: bool = false) -> void:
 	if fade_out:
@@ -32,6 +35,7 @@ func stop_music(fade_out: bool = false) -> void:
 		tween.tween_property(_music_player, "volume_db", 0.0, 0.0)
 	else:
 		_music_player.stop()
+
 
 func play_sfx(stream: AudioStream, volume_db: float = 0.0, pitch_scale: float = 1.0) -> void:
 	for player in _sfx_players:
@@ -43,8 +47,10 @@ func play_sfx(stream: AudioStream, volume_db: float = 0.0, pitch_scale: float = 
 			return
 	push_warning("AudioManager: все SFX каналы заняты")
 
+
 func set_music_volume(db: float) -> void:
 	_music_player.volume_db = db
+
 
 func set_sfx_volume(db: float) -> void:
 	for player in _sfx_players:

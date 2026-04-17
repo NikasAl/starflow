@@ -5,6 +5,7 @@ extends BTLeaf
 ## нейтральную планету в пределах разумной дистанции.
 ## Порог определяется через profile.aggression_factor.
 
+
 func tick(actor: Node, blackboard: Dictionary) -> Status:
 	var controller: AIController = actor as AIController
 	var ai_state: AIGameState = controller._game_state

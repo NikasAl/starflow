@@ -3,11 +3,9 @@ extends RefCounted
 
 ## Алгоритм выборки Пуассона в 3D (вариант на плоскости XZ).
 
+
 func generate(
-	point_count: int,
-	bounds: float,
-	min_distance: float,
-	rng: RandomNumberGenerator
+	point_count: int, bounds: float, min_distance: float, rng: RandomNumberGenerator
 ) -> PackedVector3Array:
 	var points: PackedVector3Array = []
 	if point_count == 0:
@@ -35,11 +33,7 @@ func generate(
 		for _attempt in max_attempts:
 			var angle := rng.randf() * TAU
 			var dist := rng.randf_range(min_distance, min_distance * 2.0)
-			var candidate := Vector3(
-				point.x + cos(angle) * dist,
-				0.0,
-				point.z + sin(angle) * dist
-			)
+			var candidate := Vector3(point.x + cos(angle) * dist, 0.0, point.z + sin(angle) * dist)
 			if abs(candidate.x) > half_bounds or abs(candidate.z) > half_bounds:
 				continue
 			if not _is_too_close(grid, candidate, min_distance, cell_size):
@@ -53,14 +47,13 @@ func generate(
 
 	return points
 
+
 func _grid_insert(grid: Dictionary, point: Vector3, cell_size: float) -> void:
-	var key := "%d,%d" % [
-		int(floor(point.x / cell_size)),
-		int(floor(point.z / cell_size))
-	]
+	var key := "%d,%d" % [int(floor(point.x / cell_size)), int(floor(point.z / cell_size))]
 	if not grid.has(key):
 		grid[key] = []
 	grid[key].append(point)
+
 
 func _is_too_close(grid: Dictionary, point: Vector3, min_dist: float, cell_size: float) -> bool:
 	var gx := int(floor(point.x / cell_size))

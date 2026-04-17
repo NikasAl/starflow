@@ -5,8 +5,8 @@ extends Resource
 
 @export var profile_name: String = "Default"
 @export var decision_interval: float = 1.5
-@export var strategy_type: int = Constants.StrategyType.BALANCED
-@export var weakness: int = Constants.PlayerId.NONE ## Уязвимость к определённому игроку
+@export var strategy_type: int = GameConstants.StrategyType.BALANCED
+@export var weakness: int = GameConstants.PlayerId.NONE  ## Уязвимость к определённому игроку
 @export var aggression_factor: float = 0.5
 @export var defense_priority: float = 0.5
 @export var expansion_priority: float = 0.5

@@ -5,6 +5,7 @@ extends RefCounted
 
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
+
 func generate(config: LevelConfig, parent_node: Node) -> void:
 	_rng.seed = config.seed if config.seed != 0 else _rng.randi()
 	var planet_positions: PackedVector3Array = _place_planets_poisson(
@@ -12,6 +13,7 @@ func generate(config: LevelConfig, parent_node: Node) -> void:
 	)
 	var PlanetScene := preload("res://scenes/planets/planet_template.tscn")
 	_assign_initial_owners(planet_positions, config, parent_node, PlanetScene)
+
 
 func _place_planets_poisson(count: int, map_size: float) -> PackedVector3Array:
 	var positions: PackedVector3Array = []
@@ -29,11 +31,9 @@ func _place_planets_poisson(count: int, map_size: float) -> PackedVector3Array:
 	positions = poisson_generator.generate(count, map_size, min_distance, _rng)
 	return positions
 
+
 func _assign_initial_owners(
-	positions: PackedVector3Array,
-	config: LevelConfig,
-	parent_node: Node,
-	planet_scene: PackedScene
+	positions: PackedVector3Array, config: LevelConfig, parent_node: Node, planet_scene: PackedScene
 ) -> void:
 	var player_start_indices: Array[int] = _get_start_positions(
 		positions.size(), config.ai_count + 1
@@ -51,6 +51,7 @@ func _assign_initial_owners(
 		parent_node.add_child(planet)
 		if GameManager:
 			GameManager.game_state.planets.append(planet)
+
 
 func _get_start_positions(total: int, player_count: int) -> Array[int]:
 	var indices: Array[int] = []

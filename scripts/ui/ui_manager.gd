@@ -12,6 +12,7 @@ var _notification_timer: Timer = null
 @onready var victory_screen: Control = %VictoryScreen
 @onready var defeat_screen: Control = %DefeatScreen
 
+
 func _ready() -> void:
 	EventBus.ui_show_planet_info.connect(_show_planet_info)
 	EventBus.ui_hide_planet_info.connect(_hide_planet_info)
@@ -26,31 +27,41 @@ func _ready() -> void:
 	_notification_timer.timeout.connect(_hide_notification)
 	add_child(_notification_timer)
 
+
 func show_planet_info(planet: Planet3D) -> void:
 	EventBus.ui_show_planet_info.emit(planet)
 
+
 func hide_planet_info() -> void:
 	EventBus.ui_hide_planet_info.emit()
+
 
 func show_pause_menu() -> void:
 	if pause_menu:
 		pause_menu.visible = true
 
+
 func hide_pause_menu() -> void:
 	if pause_menu:
 		pause_menu.visible = false
 
+
 ## Private Methods ##
+
 
 func _show_planet_info(_planet: Planet3D) -> void:
 	if not planet_info_panel:
 		return
+
+		# TODO: обновить текст в панели информацией о планете
 	planet_info_panel.visible = true
 	# TODO: обновить текст в панели информацией о планете
+
 
 func _hide_planet_info() -> void:
 	if planet_info_panel:
 		planet_info_panel.visible = false
+
 
 func _show_notification(message: String, duration: float) -> void:
 	if notification_label:
@@ -58,9 +69,11 @@ func _show_notification(message: String, duration: float) -> void:
 		notification_label.visible = true
 		_notification_timer.start(duration)
 
+
 func _hide_notification() -> void:
 	if notification_label:
 		notification_label.visible = false
+
 
 func _on_game_state_changed(_old_state: int, new_state: int) -> void:
 	match new_state:
@@ -69,14 +82,17 @@ func _on_game_state_changed(_old_state: int, new_state: int) -> void:
 		GameState.State.PLAYING:
 			hide_pause_menu()
 
+
 func _on_victory(_player_id: int) -> void:
 	if victory_screen:
 		victory_screen.visible = true
+
 
 func _on_defeat(_player_id: int) -> void:
 	if defeat_screen:
 		defeat_screen.visible = true
 
+
 func _on_score_changed(player_id: int, new_score: int) -> void:
-	if score_display and player_id == Constants.PlayerId.PLAYER:
+	if score_display and player_id == GameConstants.PlayerId.PLAYER:
 		score_display.text = "Очки: %d" % new_score

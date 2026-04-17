@@ -4,6 +4,7 @@ extends BTLeaf
 ## Проверяет, есть ли угроза для_owned планет.
 ## Если угроза найдена, сохраняет атакуемую планету в чёрном ящике и возвращает SUCCESS.
 
+
 func tick(actor: Node, blackboard: Dictionary) -> Status:
 	var controller: AIController = actor as AIController
 	var ai_state: AIGameState = controller._game_state

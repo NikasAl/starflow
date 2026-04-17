@@ -5,6 +5,7 @@ extends BTNode
 
 @export var children: Array[BTNode] = []
 
+
 func tick(actor: Node, blackboard: Dictionary) -> Status:
 	for child in children:
 		var result := child.tick(actor, blackboard)
@@ -16,6 +17,7 @@ func tick(actor: Node, blackboard: Dictionary) -> Status:
 			return status
 	status = Status.SUCCESS
 	return status
+
 
 func reset() -> void:
 	super.reset()

@@ -24,5 +24,5 @@ signal score_changed(player_id: int, new_score: int)
 
 # --- UI Events ---
 signal ui_show_planet_info(planet: Planet3D)
-signal ui_hide_planet_info()
+signal ui_hide_planet_info
 signal ui_show_notification(message: String, duration: float)

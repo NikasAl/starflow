@@ -7,7 +7,7 @@ config_version=5
 config/name="Star Flow Command"
 config/description="3D Space Strategy - Route ship streams to recolor planets"
 run/main_scene="res://scenes/main/main.tscn"
-config/features=PackedStringArray("4.3", "Forward Plus")
+config/features=PackedStringArray("4.5", "Forward Plus")
 
 [display]
 window/size/viewport_width=1280
@@ -46,7 +46,7 @@ pause_game={
 }
 
 [autoload]
-Constants="*res://scripts/autoload/constants.gd"
+GameConstants="*res://scripts/autoload/constants.gd"
 EventBus="*res://scripts/autoload/event_bus.gd"
 GameManager="*res://scripts/autoload/game_manager.gd"
 AudioManager="*res://scripts/autoload/audio_manager.gd"

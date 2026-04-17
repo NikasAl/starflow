@@ -1,4 +1,4 @@
-class_name Constants
+class_name GameConstants
 extends Node
 
 ## Глобальные константы и перечисления для Star Flow Command.

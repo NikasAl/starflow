@@ -8,7 +8,7 @@ extends Resource
 @export var ai_count: int = 2
 @export var map_size: float = 50.0
 @export var seed: int = 0
-@export var difficulty: int = Constants.Difficulty.MEDIUM
+@export var difficulty: int = GameConstants.Difficulty.MEDIUM
 @export var starting_conditions: Dictionary = {
 	"player_planets": 1,
 	"player_level": 3,

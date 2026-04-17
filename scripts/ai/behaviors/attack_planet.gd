@@ -4,6 +4,7 @@ extends BTLeaf
 ## Атакует целевую планету: создаёт поток с самой сильной owned-планеты
 ## на цель из чёрного ящика.
 
+
 func tick(actor: Node, blackboard: Dictionary) -> Status:
 	var controller: AIController = actor as AIController
 	var ai_state: AIGameState = controller._game_state
