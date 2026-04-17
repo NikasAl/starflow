@@ -1,0 +1,17 @@
+{
+  "name": "Star Flow Command",
+  "short_name": "StarFlow",
+  "description": "2D space strategy — route ship streams to capture planets",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#050510",
+  "theme_color": "#050510",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
