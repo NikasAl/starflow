@@ -17,6 +17,10 @@ import {
   STREAM_PARTICLE_SIZE, STREAM_PARTICLE_COUNT,
 } from '../core/constants';
 import { getGameStats } from '../game/state';
+import { generatePlanetTextures, type TextureSet } from '../core/texture-gen';
+
+// Store texture sets per planet for disposal
+const planetTextures = new Map<string, TextureSet>();
 
 // ============================================================
 // Three.js scene globals
@@ -75,6 +79,9 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.2;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   // Lights
   scene.add(new THREE.AmbientLight(0xffffff, AMBIENT_LIGHT));
@@ -216,11 +223,27 @@ function updateHTMLHUD(state: GameState): void {
 // ============================================================
 
 export function addPlanet(planet: PlanetData): void {
-  const geometry = new THREE.SphereGeometry(Math.max(0.1, planet.radius), 32, 24);
+  const geometry = new THREE.SphereGeometry(Math.max(0.1, planet.radius), 48, 32);
   const color = OWNER_COLORS[planet.owner];
 
-  const material = new THREE.MeshPhongMaterial({
-    color, shininess: 60, emissive: color, emissiveIntensity: 0.15,
+  // Generate procedural textures
+  const texSet = generatePlanetTextures(
+    planet.visualType,
+    planet.textureSeed,
+    color,
+  );
+  planetTextures.set(planet.id, texSet);
+
+  // PBR material with diffuse map + normal map
+  const material = new THREE.MeshStandardMaterial({
+    map: texSet.diffuse,
+    normalMap: texSet.normal,
+    normalScale: new THREE.Vector2(1.5, 1.5),
+    roughness: 0.7,
+    metalness: 0.1,
+    emissive: color,
+    emissiveIntensity: 0.08,
+    emissiveMap: texSet.emissive,
   });
 
   const mesh = new THREE.Mesh(geometry, material);
@@ -305,8 +328,9 @@ export function updatePlanet(planet: PlanetData): void {
   if (!mesh) return;
 
   const color = OWNER_COLORS[planet.owner];
-  (mesh.material as THREE.MeshPhongMaterial).color.setHex(color);
-  (mesh.material as THREE.MeshPhongMaterial).emissive.setHex(color);
+ const mat = mesh.material as THREE.MeshStandardMaterial;
+  mat.emissive.setHex(color);
+  mat.emissiveIntensity = 0.08;
 
   const glow = planetGlows.get(planet.id);
   if (glow) (glow.material as THREE.MeshBasicMaterial).color.setHex(color);
@@ -321,7 +345,20 @@ export function updatePlanet(planet: PlanetData): void {
 
 export function removePlanet(id: string): void {
   const mesh = planetMeshes.get(id);
-  if (mesh) { scene.remove(mesh); mesh.geometry.dispose(); (mesh.material as THREE.Material).dispose(); planetMeshes.delete(id); }
+  if (mesh) {
+    scene.remove(mesh);
+    mesh.geometry.dispose();
+    (mesh.material as THREE.Material).dispose();
+    planetMeshes.delete(id);
+  }
+  // Dispose textures
+  const tex = planetTextures.get(id);
+  if (tex) {
+    tex.diffuse.dispose();
+    tex.normal.dispose();
+    tex.emissive?.dispose();
+    planetTextures.delete(id);
+  }
   const glow = planetGlows.get(id);
   if (glow) { scene.remove(glow); glow.geometry.dispose(); (glow.material as THREE.Material).dispose(); planetGlows.delete(id); }
   const label = planetLabels.get(id);

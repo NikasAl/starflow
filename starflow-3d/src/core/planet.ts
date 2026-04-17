@@ -6,6 +6,7 @@ import {
   type PlanetData, type OwnerId, planetPower,
   PLAYER, AI_1, AI_2, NEUTRAL,
 } from './types';
+import { planetTypeForIndex } from './texture-gen';
 import {
   WORLD_SIZE, PLANET_MIN_DISTANCE,
   PLANET_RADII, PLANET_MAX_SHIPS,
@@ -76,6 +77,8 @@ export function generateMap(aiCount: number = 2): PlanetData[] {
       fighterProduction: PLANET_FIGHTER_PRODUCTION[tier],
       cruiserProduction: PLANET_CRUISER_PRODUCTION[tier],
       tier,
+      visualType: planetTypeForIndex(i, tier),
+      textureSeed: i * 1000 + 42,
     });
   }
 
@@ -94,6 +97,8 @@ export function generateMap(aiCount: number = 2): PlanetData[] {
       fighterProduction: PLANET_FIGHTER_PRODUCTION[tier],
       cruiserProduction: PLANET_CRUISER_PRODUCTION[tier],
       tier,
+      visualType: planetTypeForIndex(i, tier),
+      textureSeed: i * 1000 + 42,
     });
   }
 

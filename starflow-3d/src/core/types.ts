@@ -27,6 +27,8 @@ export const OWNER_NAMES: Record<OwnerId, string> = {
 };
 
 /** Core data for a planet — pure state, no Three.js */
+import { type PlanetVisualType } from './texture-gen';
+
 export interface PlanetData {
   id: string;
   name: string;
@@ -50,6 +52,10 @@ export interface PlanetData {
   cruiserProduction: number;
   /** Planet size tier 1-3 (small, medium, large) */
   tier: 1 | 2 | 3;
+  /** Procedural visual type for texture generation */
+  visualType: PlanetVisualType;
+  /** Seed for deterministic texture generation */
+  textureSeed: number;
 }
 
 /** Helper: total attack power of a planet */
