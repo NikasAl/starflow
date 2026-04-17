@@ -19,10 +19,29 @@ signal ship_arrived(ship_owner_id: int, ship_count: int)
 var pending_ships: int = 0
 var mesh_instance: MeshInstance3D
 var highlight_mesh: MeshInstance3D
+var _material: StandardMaterial3D  ## Кэшируем материал для обновления цвета
 
 
 func _ready() -> void:
 	mesh_instance = $MeshInstance3D
+	highlight_mesh = $HighlightMesh
+	## Создаём StandardMaterial3D если override material не задан
+	if mesh_instance and mesh_instance.get_surface_override_material_count() == 0:
+		_material = StandardMaterial3D.new()
+		_material.albedo_color = Color.WHITE
+		_material.roughness = 0.7
+		_material.metallic = 0.1
+		mesh_instance.set_surface_override_material(0, _material)
+	else:
+		_material = mesh_instance.get_surface_override_material(0)
+	## Материал для highlight-меша (полупрозрачный)
+	if highlight_mesh and highlight_mesh.get_surface_override_material_count() == 0:
+		var hl_mat = StandardMaterial3D.new()
+		hl_mat.albedo_color = Color(1.0, 1.0, 1.0, 0.3)
+		hl_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		hl_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		hl_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		highlight_mesh.set_surface_override_material(0, hl_mat)
 	_update_visuals()
 
 
@@ -83,11 +102,7 @@ func _check_upgrade_or_capture(attacker_id: int) -> void:
 func _update_visuals() -> void:
 	if not mesh_instance:
 		return
-
-		# TODO: Scale based on level
-	var mat := mesh_instance.get_surface_override_material(0)
-	if mat:
-		mat.albedo_color = GameConstants.PLAYER_COLORS.get(owner_id, Color.WHITE)
-		# TODO: Scale based on level
+	if _material:
+		_material.albedo_color = GameConstants.PLAYER_COLORS.get(owner_id, Color.WHITE)
 	var scale_factor := 0.8 + 0.2 * float(level) / float(max_level)
 	mesh_instance.scale = Vector3.ONE * scale_factor

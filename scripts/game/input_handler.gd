@@ -191,6 +191,8 @@ func _raycast_planet() -> Node3D:
 
         var space_state = get_viewport().get_world_3d().direct_space_state  ## Node не имеет get_world_3d(), нужен через Viewport
         var query := PhysicsRayQueryParameters3D.create(ray_origin, ray_end)
+        query.collide_with_areas = true  ## Планеты используют Area3D для детекции
+        query.collide_with_bodies = false  ## Не нужен для Area3D
         query.collision_mask = 1  # Слой по умолчанию для планет
 
         var result: Dictionary = space_state.intersect_ray(query)
