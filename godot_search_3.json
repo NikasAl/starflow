@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://docs.godotengine.org/en/latest/tutorials/scripting/singletons_autoload.html",
+    "name": "Singletons (Autoload) - Godot Docs",
+    "snippet": "To autoload a scene or script , start from the menu and navigate to Project > Project Settings > Globals > Autoload . ../../_images/autoload_tab.webp. Here you ... Read more\nGodot won't make an Autoload a \"true\" singleton as per the singleton design pattern. It may still be instanced more than once by the user if desired. Tip. If ...",
+    "host_name": "docs.godotengine.org",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.reddit.com/r/godot/comments/12brde4/classs_somename_hides_a_global_script_class",
+    "name": "Classs \"SomeName\" hides a global script class : r/godot",
+    "snippet": "For anyone else who is running into this issue, first make sure that you are not defining a class_name in your script that you want to Autoload . Read more",
+    "host_name": "www.reddit.com",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://forum.godotengine.org/t/class-class-name-hides-a-global-script-class/54359",
+    "name": "Class \"class_name\" hides a global script class",
+    "snippet": "3 Apr 2024 — having this error in my scripts “class “ class_name ” hides a global script class. if your global script is actually an AutoLoad , there's no need ... Read more\nApr 3, 2024 — having this error in my scripts “class “ class_name ” hides a global script class. if your global script is actually an AutoLoad , there's no need ...",
+    "host_name": "forum.godotengine.org",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://forum.godotengine.org/t/i-had-a-problem-with-the-class-inventoryitem-when-i-want-to-load-inventory-of-my-game-in-godot-4-2/69367",
+    "name": "I had a problem with the class \"InventoryItem\" when I want to",
+    "snippet": "30 Jun 2024 — I got a error very similar to the previous one, Parser Error: Class “InventoryItem” hides an autoload singleton . What should I do to solve ... Read more\nJun 30, 2024 — I got a error very similar to the previous one, Parser Error: Class “InventoryItem” hides an autoload singleton . What should I do to solve ...",
+    "host_name": "forum.godotengine.org",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://godotforums.org/d/33595-is-this-a-bug-errors-with-autoloads-in-godot-4",
+    "name": "Is this a bug? Errors with autoloads in Godot 4",
+    "snippet": "11 Apr 2023 — When I go to add \" class_name State\" I get the error 'class State hides an autoload singleton \". Any known workarounds? If I go to delete the ... Read more\nApr 11, 2023 — When I go to add \" class_name State\" I get the error 'class State hides an autoload singleton \". Any known workarounds? If I go to delete the ...",
+    "host_name": "godotforums.org",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/godotengine/godot/issues/48624",
+    "name": "Calling a singleton function doesn't show autocompletion",
+    "snippet": "10 May 2021 — Class \"GameManager\" hides an autoload singleton . which makes sense because you know have a redundant declaration (singleton class and singleton ... Read more\nMay 10, 2021 — Class \"GameManager\" hides an autoload singleton . which makes sense because you know have a redundant declaration (singleton class and singleton ...",
+    "host_name": "github.com",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://forum.godotengine.org/t/autoload-in-plugin-lead-to-parseerror-when-adding-it-in-a-fresh-project/127746",
+    "name": "Autoload in plugin lead to ParseError when adding it in a fresh",
+    "snippet": "14 Nov 2025 — The plugin works correctly after a project reload when the autoload is enabled at least once, but fails with parse and class resolution errors ... Read more",
+    "host_name": "forum.godotengine.org",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://forum.godotengine.org/t/how-to-automatically-set-a-script-as-singleton-autoload-in-gdextension/63671",
+    "name": "How to automatically set a script as Singleton / Autoload in",
+    "snippet": "27 May 2024 — Is there is a way to automatically set a script as Singleton (Autoload ) without having to manually set it in the editor GUI? Read more\nMay 27, 2024 — Is there is a way to automatically set a script as Singleton (Autoload) without having to manually set it in the editor GUI?",
+    "host_name": "forum.godotengine.org",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://forum.godotengine.org/t/why-i-am-getting-this-error/117034",
+    "name": "Why I am getting this error? - Help - Godot Forum",
+    "snippet": "22 Jul 2025 — If you want to use variables from other scripts , those variables must be static, or you need to set the script as a global autoload singleton . Read more\nJul 22, 2025 — If you want to use variables from other scripts, those variables must be static, or you need to set the script as a global autoload singleton .",
+    "host_name": "forum.godotengine.org",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/godotengine/godot/issues/75582",
+    "name": "Script Error: Autoload singletons conflict resource preloading",
+    "snippet": "1 Apr 2023 — I get script parsing errors because of some sort of race condition between loading resources and autoload singletons . Read more",
+    "host_name": "github.com",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]
