@@ -47,6 +47,7 @@ func _ready() -> void:
 
 
 func _auto_start() -> void:
+        print("[GameManager] _auto_start() called")
         if not initial_level_config:
                 initial_level_config = LevelConfigScript.new()
         start_level(initial_level_config)
@@ -94,6 +95,7 @@ func change_state(new_state: int) -> void:
         if old_state == new_state:
                 return
         game_state.current_state = new_state
+        print("[GameManager] State: %d → %d" % [old_state, new_state])
         state_changed.emit(new_state, old_state)
         EventBus.game_state_changed.emit(old_state, new_state)
 

@@ -10,12 +10,15 @@ var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 
 func generate(config: Resource, parent_node: Node) -> void:
+        print("[LevelGenerator] generate() called, planet_count=%d" % config.planet_count)
         _rng.seed = config.seed if config.seed != 0 else _rng.randi()
         var planet_positions: PackedVector3Array = _place_planets_poisson(
                 config.planet_count, config.map_size
         )
+        print("[LevelGenerator] Generated %d positions" % planet_positions.size())
         var PlanetScene := preload("res://scenes/planets/planet_template.tscn")
         _assign_initial_owners(planet_positions, config, parent_node, PlanetScene)
+        print("[LevelGenerator] Done. Planets in game_state: %d" % GameManager.game_state.planets.size())
 
 
 func _place_planets_poisson(count: int, map_size: float) -> PackedVector3Array:
