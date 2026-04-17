@@ -25,79 +25,79 @@ const LevelGeneratorScript := preload("res://scripts/levels/level_generator.gd")
 
 @export var initial_level_config: Resource
 
-var game_state: GameStateScript
-var stream_manager: StreamManagerScript
-var score_tracker: ScoreTrackerScript
+var game_state  ## GameState — без типизации, чтобы Godot 4.5 не проверял члены внешнего класса
+var stream_manager  ## StreamManager
+var score_tracker  ## ScoreTracker
 var current_level_config: Resource
 var all_planets: Array = []
 
 
 func _ready() -> void:
-	game_state = GameStateScript.new()
-	stream_manager = StreamManagerScript.new()
-	stream_manager.name = "StreamManager"
-	add_child(stream_manager)
-	score_tracker = ScoreTrackerScript.new()
-	score_tracker.name = "ScoreTracker"
-	add_child(score_tracker)
+        game_state = GameStateScript.new()
+        stream_manager = StreamManagerScript.new()
+        stream_manager.name = "StreamManager"
+        add_child(stream_manager)
+        score_tracker = ScoreTrackerScript.new()
+        score_tracker.name = "ScoreTracker"
+        add_child(score_tracker)
 
 
 func start_level(config: Resource = null) -> void:
-	current_level_config = config if config else initial_level_config
-	if not current_level_config:
-		push_error("GameManager: нет конфигурации уровня")
-		return
-	_clear_level()
-	_generate_level()
-	change_state(GameStateScript.State.PLAYING)
-	score_tracker.reset_scores()
-	EventBus.level_started.emit(current_level_config)
+        current_level_config = config if config else initial_level_config
+        if not current_level_config:
+                push_error("GameManager: нет конфигурации уровня")
+                return
+        _clear_level()
+        _generate_level()
+        change_state(GameStateScript.State.PLAYING)
+        score_tracker.reset_scores()
+        EventBus.level_started.emit(current_level_config)
 
 
 func pause_game() -> void:
-	change_state(GameStateScript.State.PAUSED)
-	get_tree().paused = true
+        change_state(GameStateScript.State.PAUSED)
+        get_tree().paused = true
 
 
 func resume_game() -> void:
-	change_state(GameStateScript.State.PLAYING)
-	get_tree().paused = false
+        change_state(GameStateScript.State.PLAYING)
+        get_tree().paused = false
 
 
 func check_victory_condition() -> void:
-	if game_state.current_state != GameStateScript.State.PLAYING:
-		return
-	var alive_players: Array[int] = []
-	for planet in all_planets:
-		if planet.owner_id != GameConstants.PlayerId.NONE:
-			if not alive_players.has(planet.owner_id):
-				alive_players.append(planet.owner_id)
-	if alive_players.size() == 1:
-		var winner: int = alive_players[0]
-		change_state(GameStateScript.State.VICTORY)
-		victory.emit(winner)
-		EventBus.victory.emit(winner)
+        if game_state.current_state != GameStateScript.State.PLAYING:
+                return
+        var alive_players: Array[int] = []
+        for planet in all_planets:
+                if planet.owner_id != GameConstants.PlayerId.NONE:
+                        if not alive_players.has(planet.owner_id):
+                                alive_players.append(planet.owner_id)
+        if alive_players.size() == 1:
+                var winner: int = alive_players[0]
+                change_state(GameStateScript.State.VICTORY)
+                victory.emit(winner)
+                EventBus.victory.emit(winner)
 
 
 func change_state(new_state: int) -> void:
-	var old_state: int = game_state.current_state
-	if old_state == new_state:
-		return
-	game_state.current_state = new_state
-	state_changed.emit(new_state, old_state)
-	EventBus.game_state_changed.emit(old_state, new_state)
+        var old_state: int = game_state.current_state
+        if old_state == new_state:
+                return
+        game_state.current_state = new_state
+        state_changed.emit(new_state, old_state)
+        EventBus.game_state_changed.emit(old_state, new_state)
 
 
 func _generate_level() -> void:
-	var generator := LevelGeneratorScript.new()
-	generator.generate(current_level_config, self)
-	all_planets = game_state.planets
+        var generator = LevelGeneratorScript.new()  ## Без := чтобы избежать type inference на внешнем классе
+        generator.generate(current_level_config, self)
+        all_planets = game_state.planets
 
 
 func _clear_level() -> void:
-	for planet in all_planets:
-		if is_instance_valid(planet):
-			planet.queue_free()
-	all_planets.clear()
-	game_state.planets.clear()
-	game_state.streams.clear()
+        for planet in all_planets:
+                if is_instance_valid(planet):
+                        planet.queue_free()
+        all_planets.clear()
+        game_state.planets.clear()
+        game_state.streams.clear()
