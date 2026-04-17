@@ -1,19 +1,20 @@
 class_name CheckThreat
 extends BTLeaf
 
-## Проверяет, есть ли угроза для_owned планет.
+## Проверяет, есть ли угроза для owned планет.
 ## Если угроза найдена, сохраняет атакуемую планету в чёрном ящике и возвращает SUCCESS.
+## ВАЖНО (Godot 4.5): все кастомные типы заменены на базовые.
 
 
 func tick(actor: Node, blackboard: Dictionary) -> Status:
-	var controller: AIController = actor as AIController
-	var ai_state: AIGameState = controller._game_state
+	var controller = actor  ## AIController
+	var ai_state = controller._game_state  ## AIGameState
 
 	# Ищем планету с максимальной угрозой
-	var worst_planet: Planet3D = null
+	var worst_planet = null  ## Planet3D
 	var worst_threat: float = 0.0
 
-	for planet: Planet3D in ai_state.own_planets:
+	for planet in ai_state.own_planets:
 		var threat: float = ai_state.threat_assessments.get(planet, 0.0)
 		if threat > worst_threat:
 			worst_threat = threat

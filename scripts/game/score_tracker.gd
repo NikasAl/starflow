@@ -27,7 +27,7 @@ func reset_scores() -> void:
 
 
 func on_planet_captured(player_id: int, planet: Node3D) -> void:
-        var points := 100 * planet.level
+        var points: int = 100 * planet.level  ## Явная типизация — Godot 4.5 не может вывести тип через Node3D
         _scores[player_id] = _scores.get(player_id, 0) + points
         _planet_capture_times[planet] = Time.get_ticks_msec() / 1000.0
         EventBus.score_changed.emit(player_id, _scores[player_id])

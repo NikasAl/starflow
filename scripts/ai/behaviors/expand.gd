@@ -3,57 +3,45 @@ extends BTLeaf
 
 ## Расширение: захватывает ближайшую нейтральную планету, отправляя поток
 ## с самой развитой owned-планеты.
+## ВАЖНО (Godot 4.5): все кастомные типы заменены на базовые.
 
 
 func tick(actor: Node, _blackboard: Dictionary) -> Status:
-	var controller: AIController = actor as AIController
-	var ai_state: AIGameState = controller._game_state
+	var controller = actor  ## AIController
+	var ai_state = controller._game_state  ## AIGameState
 
 	if ai_state.neutral_planets.is_empty() or ai_state.own_planets.is_empty():
 		return Status.FAILURE
 
-		# Ищем owned-планету с максимальным уровнем (самую развитую для отправки)
-
-		# Ищем ближайшую нейтральную планету
-
-		# Создаём поток расширения
-	var strongest: Planet3D = null
+	var strongest = null  ## Planet3D
 	var highest_level: int = -1
 
-	for planet: Planet3D in ai_state.own_planets:
+	for planet in ai_state.own_planets:
 		if planet.level > highest_level:
 			highest_level = planet.level
-			strongest = planet
+		 strongest = planet
 
-		# Ищем ближайшую нейтральную планету
-
-		# Создаём поток расширения
 	if strongest == null:
 		return Status.FAILURE
 
-		# Ищем ближайшую нейтральную планету
-
-		# Создаём поток расширения
-	var nearest: Planet3D = null
+	var nearest = null  ## Planet3D
 	var nearest_dist: float = INF
 
-	for neutral: Planet3D in ai_state.neutral_planets:
+	for neutral in ai_state.neutral_planets:
 		var dist: float = _get_distance(ai_state, strongest, neutral)
 		if dist < nearest_dist:
 			nearest_dist = dist
 			nearest = neutral
 
-		# Создаём поток расширения
 	if nearest == null:
 		return Status.FAILURE
 
-		# Создаём поток расширения
-	var stream_manager: StreamManager = GameManager.stream_manager
+	var stream_manager = GameManager.stream_manager  ## StreamManager
 	if stream_manager == null:
 		push_error("Expand: StreamManager не найден")
 		return Status.FAILURE
 	var ship_count: int = ceili(strongest.get_production_rate())
-	var result: ShipStream3D = stream_manager.create_stream(
+	var result = stream_manager.create_stream(
 		strongest, nearest, controller.player_id, ship_count
 	)
 
@@ -63,7 +51,7 @@ func tick(actor: Node, _blackboard: Dictionary) -> Status:
 
 
 ## Получает расстояние между двумя планетами из кэша.
-func _get_distance(ai_state: AIGameState, p1: Planet3D, p2: Planet3D) -> float:
+func _get_distance(ai_state, p1: Node3D, p2: Node3D) -> float:
 	var key_ab: String = "%s_%s" % [p1.name, p2.name]
 	var key_ba: String = "%s_%s" % [p2.name, p1.name]
 	if ai_state.distances.has(key_ab):

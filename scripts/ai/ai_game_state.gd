@@ -2,6 +2,7 @@ class_name AIGameState
 extends RefCounted
 
 ## Снимок игрового состояния для ИИ — used for decision making.
+## ВАЖНО (Godot 4.5): Planet3D и ShipStream3D заменены на Array (без типизации).
 
 ## Все планеты: {planet: Planet3D, owner: int, level: int, production: float}
 var all_planets: Array[Dictionary] = []
@@ -11,14 +12,12 @@ var all_streams: Array[Dictionary] = []
 var distances: Dictionary = {}
 ## Уровень угрозы для каждой owned-планеты: Planet3D -> float
 var threat_assessments: Dictionary = {}
-var own_planets: Array[Planet3D] = []
-var enemy_planets: Array[Planet3D] = []
-var neutral_planets: Array[Planet3D] = []
+var own_planets: Array = []  ## Array[Planet3D]
+var enemy_planets: Array = []  ## Array[Planet3D]
+var neutral_planets: Array = []  ## Array[Planet3D]
 
 
-func capture_snapshot(
-	ai_player_id: int, planets: Array[Planet3D], streams: Array[ShipStream3D]
-) -> void:
+func capture_snapshot(ai_player_id: int, planets: Array, streams: Array) -> void:
 	all_planets.clear()
 	own_planets.clear()
 	enemy_planets.clear()
@@ -43,9 +42,9 @@ func capture_snapshot(
 				enemy_planets.append(planet)
 	for i in range(all_planets.size()):
 		for j in range(i + 1, all_planets.size()):
-			var p1: Planet3D = all_planets[i]["planet"]
-			var p2: Planet3D = all_planets[j]["planet"]
-			var key := "%s_%s" % [p1.name, p2.name]
+			var p1 = all_planets[i]["planet"]
+			var p2 = all_planets[j]["planet"]
+			var key = "%s_%s" % [p1.name, p2.name]
 			distances[key] = p1.global_position.distance_to(p2.global_position)
 	all_streams.clear()
 	for stream in streams:

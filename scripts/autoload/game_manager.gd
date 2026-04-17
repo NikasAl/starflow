@@ -89,8 +89,8 @@ func change_state(new_state: int) -> void:
 
 
 func _generate_level() -> void:
-        var generator = LevelGeneratorScript.new()  ## Без := чтобы избежать type inference на внешнем классе
-        generator.generate(current_level_config, self)
+        var generator = LevelGeneratorScript.new()
+        generator.call("generate", current_level_config, self)  ## .call() обходит статическую проверку типов
         all_planets = game_state.planets
 
 

@@ -3,22 +3,23 @@ extends BTLeaf
 
 ## Оборона атакуемой планеты: создаёт поток с самой сильной owned-планеты
 ## на угрожаемую планету.
+## ВАЖНО (Godot 4.5): все кастомные типы заменены на базовые.
 
 
 func tick(actor: Node, blackboard: Dictionary) -> Status:
-	var controller: AIController = actor as AIController
-	var ai_state: AIGameState = controller._game_state
+	var controller = actor  ## AIController
+	var ai_state = controller._game_state  ## AIGameState
 
 	# Получаем атакуемую планету из чёрного ящика
-	var threatened_planet: Planet3D = blackboard.get("threatened_planet")
+	var threatened_planet = blackboard.get("threatened_planet")  ## Planet3D
 	if not threatened_planet or not is_instance_valid(threatened_planet):
 		return Status.FAILURE
 
 	# Ищем owned-планету с максимальной производительностью (для отправки подкреплений)
-	var best_source: Planet3D = null
+	var best_source = null  ## Planet3D
 	var best_production: float = -1.0
 
-	for planet: Planet3D in ai_state.own_planets:
+	for planet in ai_state.own_planets:
 		if planet == threatened_planet:
 			continue
 		var production: float = planet.get_production_rate()
@@ -30,13 +31,13 @@ func tick(actor: Node, blackboard: Dictionary) -> Status:
 		return Status.FAILURE
 
 	# Создаём оборонительный поток
-	var stream_manager: StreamManager = GameManager.stream_manager
+	var stream_manager = GameManager.stream_manager  ## StreamManager
 	if stream_manager == null:
 		push_error("DefendPlanet: StreamManager не найден")
 		return Status.FAILURE
 
 	var ship_count: int = ceili(best_production)
-	var result: ShipStream3D = stream_manager.create_stream(
+	var result = stream_manager.create_stream(
 		best_source, threatened_planet, controller.player_id, ship_count
 	)
 

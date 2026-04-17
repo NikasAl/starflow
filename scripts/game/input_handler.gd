@@ -189,7 +189,7 @@ func _raycast_planet() -> Node3D:
         var ray_direction: Vector3 = camera.project_ray_normal(mouse_pos)
         var ray_end: Vector3 = ray_origin + ray_direction * 1000.0
 
-        var space_state = get_world_3d().direct_space_state
+        var space_state = get_viewport().get_world_3d().direct_space_state  ## Node не имеет get_world_3d(), нужен через Viewport
         var query := PhysicsRayQueryParameters3D.create(ray_origin, ray_end)
         query.collision_mask = 1  # Слой по умолчанию для планет
 
