@@ -40,6 +40,16 @@ func _ready() -> void:
         score_tracker = ScoreTrackerScript.new()
         score_tracker.name = "ScoreTracker"
         add_child(score_tracker)
+        ## Автозапуск первого уровня с дефолтной конфигурацией
+        ## (временно, пока нет главного меню)
+        ## Используем call_deferred чтобы сцена успела загрузиться
+        call_deferred("_auto_start")
+
+
+func _auto_start() -> void:
+        if not initial_level_config:
+                initial_level_config = LevelConfigScript.new()
+        start_level(initial_level_config)
 
 
 func start_level(config: Resource = null) -> void:
@@ -90,7 +100,12 @@ func change_state(new_state: int) -> void:
 
 func _generate_level() -> void:
         var generator = LevelGeneratorScript.new()
-        generator.call("generate", current_level_config, self)  ## .call() обходит статическую проверку типов
+        ## Ищем контейнер планет в сцене (World/Planets из main.tscn)
+        var planets_container = get_tree().current_scene.find_child("Planets", true, false)
+        if not planets_container:
+                planets_container = self  ## fallback — добавим к GameManager
+
+        generator.call("generate", current_level_config, planets_container)
         all_planets = game_state.planets
 
 
