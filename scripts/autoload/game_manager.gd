@@ -2,55 +2,70 @@ extends Node
 
 ## Game Manager — главный контроллер игры (Autoload).
 ## Управляет состоянием игры, уровнем, проверкой победы/поражения.
+##
+## ВАЖНО (Godot 4.5): в autoload-скриптах class_name типов
+## может не быть в scope на момент парсинга. Используем preload()
+## для форсирования загрузки зависимых скриптов.
+## Порядок preload важен — зависимости должны идти первыми!
 
 signal state_changed(new_state: int, old_state: int)
 signal victory(player_id: int)
 signal defeat(player_id: int)
-signal level_started(level_config: LevelConfig)
+signal level_started(level_config)
 
-@export var initial_level_config: LevelConfig
+## Предзагрузка зависимостей для гарантии регистрации class_name.
+## Порядок важен: Planet3D и ShipStream3D — базовые, остальные зависят от них.
+const Planet3DScript := preload("res://scripts/planets/planet3d.gd")
+const ShipStream3DScript := preload("res://scripts/streams/ship_stream3d.gd")
+const LevelConfigScript := preload("res://scripts/levels/level_config.gd")
+const GameStateScript := preload("res://scripts/game/game_state.gd")
+const StreamManagerScript := preload("res://scripts/streams/stream_manager.gd")
+const ScoreTrackerScript := preload("res://scripts/game/score_tracker.gd")
+const LevelGeneratorScript := preload("res://scripts/levels/level_generator.gd")
 
-var game_state: GameState
-var stream_manager: StreamManager
-var score_tracker: ScoreTracker
-var current_level_config: LevelConfig
-var all_planets: Array[Planet3D] = []
+@export var initial_level_config: Resource
+
+var game_state: GameStateScript
+var stream_manager: StreamManagerScript
+var score_tracker: ScoreTrackerScript
+var current_level_config: Resource
+var all_planets: Array = []
 
 
 func _ready() -> void:
-	game_state = GameState.new()
-	stream_manager = StreamManager.new()
+	game_state = GameStateScript.new()
+	stream_manager = StreamManagerScript.new()
 	stream_manager.name = "StreamManager"
 	add_child(stream_manager)
-	score_tracker = ScoreTracker.new()
+	score_tracker = ScoreTrackerScript.new()
 	score_tracker.name = "ScoreTracker"
 	add_child(score_tracker)
 
 
-func start_level(config: LevelConfig = null) -> void:
+func start_level(config: Resource = null) -> void:
 	current_level_config = config if config else initial_level_config
 	if not current_level_config:
 		push_error("GameManager: нет конфигурации уровня")
 		return
 	_clear_level()
 	_generate_level()
-	change_state(GameState.State.PLAYING)
+	change_state(GameStateScript.State.PLAYING)
 	score_tracker.reset_scores()
 	EventBus.level_started.emit(current_level_config)
 
 
 func pause_game() -> void:
-	change_state(GameState.State.PAUSED)
+	change_state(GameStateScript.State.PAUSED)
 	get_tree().paused = true
 
 
 func resume_game() -> void:
-	change_state(GameState.State.PLAYING)
+	change_state(GameStateScript.State.PLAYING)
 	get_tree().paused = false
 
 
 func check_victory_condition() -> void:
-	if game_state.current_state != GameState.State.PLAYING:
+	if game_state.current_state != GameStateScript.State.PLAYING:
 		return
 	var alive_players: Array[int] = []
 	for planet in all_planets:
@@ -59,13 +74,13 @@ func check_victory_condition() -> void:
 				alive_players.append(planet.owner_id)
 	if alive_players.size() == 1:
 		var winner: int = alive_players[0]
-		change_state(GameState.State.VICTORY)
+		change_state(GameStateScript.State.VICTORY)
 		victory.emit(winner)
 		EventBus.victory.emit(winner)
 
 
 func change_state(new_state: int) -> void:
-	var old_state := game_state.current_state
+	var old_state: int = game_state.current_state
 	if old_state == new_state:
 		return
 	game_state.current_state = new_state
@@ -74,7 +89,7 @@ func change_state(new_state: int) -> void:
 
 
 func _generate_level() -> void:
-	var generator := LevelGenerator.new()
+	var generator := LevelGeneratorScript.new()
 	generator.generate(current_level_config, self)
 	all_planets = game_state.planets
 

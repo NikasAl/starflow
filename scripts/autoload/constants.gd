@@ -15,11 +15,11 @@ enum Difficulty { EASY, MEDIUM, HARD }
 
 ## Статический справочник цветов по PlayerId
 const PLAYER_COLORS: Dictionary = {
-        PlayerId.NONE: Color.WHITE,
-        PlayerId.PLAYER: Color(0.2, 0.6, 1.0),
-        PlayerId.AI_1: Color(1.0, 0.3, 0.2),
-        PlayerId.AI_2: Color(0.2, 1.0, 0.4),
-        PlayerId.AI_3: Color(1.0, 0.8, 0.2),
+	PlayerId.NONE: Color.WHITE,
+	PlayerId.PLAYER: Color(0.2, 0.6, 1.0),
+	PlayerId.AI_1: Color(1.0, 0.3, 0.2),
+	PlayerId.AI_2: Color(0.2, 1.0, 0.4),
+	PlayerId.AI_3: Color(1.0, 0.8, 0.2),
 }
 
 const BASE_SHIP_SPEED: float = 8.0
