@@ -15,6 +15,7 @@ import {
   NEUTRAL_POWER_MIN, NEUTRAL_POWER_MAX,
   PLANET_MAX_AUTO_POWER,
   PLANET_POWER_GROWTH_RATE,
+  PLANET_HEIGHT_MIN, PLANET_HEIGHT_MAX,
 } from './constants';
 
 const PLANET_NAMES = [
@@ -24,23 +25,30 @@ const PLANET_NAMES = [
   'Arcturus', 'Aldebaran', 'Spica', 'Regulus', 'Procyon',
 ];
 
-function tooClose(x: number, z: number, planets: PlanetData[]): boolean {
+function tooClose(x: number, y: number, z: number, planets: PlanetData[]): boolean {
   for (const p of planets) {
     const dx = p.x - x;
+    const dy = p.y - y;
     const dz = p.z - z;
-    if (Math.sqrt(dx * dx + dz * dz) < PLANET_MIN_DISTANCE) return true;
+    if (Math.sqrt(dx * dx + dy * dy + dz * dz) < PLANET_MIN_DISTANCE) return true;
   }
   return false;
 }
 
-function randomPosition(planets: PlanetData[]): { x: number; z: number } {
+function randomHeight(): number {
+  return PLANET_HEIGHT_MIN + Math.random() * (PLANET_HEIGHT_MAX - PLANET_HEIGHT_MIN);
+}
+
+function randomPosition(planets: PlanetData[]): { x: number; y: number; z: number } {
   for (let attempts = 0; attempts < 500; attempts++) {
     const x = (Math.random() - 0.5) * WORLD_SIZE * 0.8;
+    const y = randomHeight();
     const z = (Math.random() - 0.5) * WORLD_SIZE * 0.8;
-    if (!tooClose(x, z, planets)) return { x, z };
+    if (!tooClose(x, y, z, planets)) return { x, y, z };
   }
   return {
     x: (Math.random() - 0.5) * WORLD_SIZE * 0.8,
+    y: randomHeight(),
     z: (Math.random() - 0.5) * WORLD_SIZE * 0.8,
   };
 }
@@ -65,11 +73,12 @@ export function generateMap(aiCount: number = 2): PlanetData[] {
     const dist = WORLD_SIZE * 0.25;
     const x = Math.cos(angle) * dist;
     const z = Math.sin(angle) * dist;
+    const y = randomHeight();
     const tier = 2 as const;
     planets.push({
       id: `planet_${i}`,
       name: PLANET_NAMES[i % PLANET_NAMES.length],
-      x, y: 0, z,
+      x, y, z,
       radius: PLANET_RADII[tier],
       owner: owners[i],
       power: STARTING_POWER,
@@ -86,7 +95,7 @@ export function generateMap(aiCount: number = 2): PlanetData[] {
     planets.push({
       id: `planet_${i}`,
       name: PLANET_NAMES[i % PLANET_NAMES.length],
-      x: pos.x, y: 0, z: pos.z,
+      x: pos.x, y: pos.y, z: pos.z,
       radius: PLANET_RADII[tier],
       owner: NEUTRAL,
       power: NEUTRAL_POWER_MIN + Math.floor(Math.random() * (NEUTRAL_POWER_MAX - NEUTRAL_POWER_MIN + 1)),

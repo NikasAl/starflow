@@ -58,6 +58,13 @@ let dragStartTargetX = 0;
 let dragStartTargetZ = 0;
 let mouseDownTime = 0;
 
+// Pinch-to-zoom state (touch)
+let isPinching = false;
+let pinchStartDistance = 0;
+let pinchStartCamDistance = 0;
+let activeTouches = 0;
+let touchHandledByPinch = false;
+
 // HTML HUD element
 let hudElement: HTMLDivElement;
 
@@ -103,6 +110,10 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerup', onPointerUp);
   canvas.addEventListener('wheel', onWheel, { passive: false });
+  canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+  canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+  canvas.addEventListener('touchend', onTouchEnd, { passive: false });
+  canvas.addEventListener('touchcancel', onTouchEnd, { passive: false });
   window.addEventListener('resize', onResize);
 }
 
@@ -520,6 +531,11 @@ function onResize(): void {
 // ============================================================
 
 function onPointerDown(e: PointerEvent): void {
+  // Skip if touch is being handled by pinch gesture
+  if (touchHandledByPinch && e.pointerType === 'touch') {
+    touchHandledByPinch = false;
+    return;
+  }
   isDragging = false;
   dragStartX = e.clientX; dragStartY = e.clientY;
   dragStartTheta = camState.theta; dragStartPhi = camState.phi;
@@ -547,7 +563,7 @@ function onPointerMove(e: PointerEvent): void {
 }
 
 function onPointerUp(e: PointerEvent): void {
-  if (!isDragging && performance.now() - mouseDownTime < 300) handleClick(e);
+  if (!isDragging && performance.now() - mouseDownTime < 300 && !touchHandledByPinch) handleClick(e);
   isDragging = false;
 }
 
@@ -573,6 +589,51 @@ function onWheel(e: WheelEvent): void {
   camState.distance *= 1 + e.deltaY * 0.001 * CAM_ZOOM_SPEED;
   camState.distance = Math.max(CAM_MIN_DISTANCE, Math.min(CAM_MAX_DISTANCE, camState.distance));
   updateCamera();
+}
+
+// ============================================================
+// Pinch-to-zoom (touch gestures for mobile/Android)
+// ============================================================
+
+function getTouchDistance(t1: Touch, t2: Touch): number {
+  const dx = t1.clientX - t2.clientX;
+  const dy = t1.clientY - t2.clientY;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function onTouchStart(e: TouchEvent): void {
+  activeTouches = e.touches.length;
+
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    isPinching = true;
+    touchHandledByPinch = true;
+    pinchStartDistance = getTouchDistance(e.touches[0], e.touches[1]);
+    pinchStartCamDistance = camState.distance;
+    // Stop any pointer-based drag
+    isDragging = false;
+  }
+}
+
+function onTouchMove(e: TouchEvent): void {
+  if (e.touches.length === 2 && isPinching) {
+    e.preventDefault();
+    touchHandledByPinch = true;
+    const currentDist = getTouchDistance(e.touches[0], e.touches[1]);
+    const scale = pinchStartDistance / currentDist;
+    camState.distance = Math.max(
+      CAM_MIN_DISTANCE,
+      Math.min(CAM_MAX_DISTANCE, pinchStartCamDistance * scale)
+    );
+    updateCamera();
+  }
+}
+
+function onTouchEnd(e: TouchEvent): void {
+  activeTouches = e.touches.length;
+  if (e.touches.length < 2) {
+    isPinching = false;
+  }
 }
 
 export function setPlanetClickCallback(cb: (planetId: string) => void): void { onPlanetClick = cb; }

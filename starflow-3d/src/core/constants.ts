@@ -8,6 +8,10 @@ export const WORLD_SIZE = 80;
 /** Minimum distance between planet centers */
 export const PLANET_MIN_DISTANCE = 18;
 
+/** Height (Y-axis) variation range for planets */
+export const PLANET_HEIGHT_MIN = -10;
+export const PLANET_HEIGHT_MAX = 10;
+
 /** Planet visual radii by tier */
 export const PLANET_RADII: Record<1 | 2 | 3, number> = {
   1: 1.2,
@@ -68,7 +72,7 @@ export const CAM_DEFAULT_DISTANCE = 60;
 export const CAM_DEFAULT_THETA = 0;
 export const CAM_DEFAULT_PHI = 0.8;
 export const CAM_MIN_DISTANCE = 20;
-export const CAM_MAX_DISTANCE = 150;
+export const CAM_MAX_DISTANCE = 180;
 export const CAM_ZOOM_SPEED = 2;
 
 // ---- Selection ----
