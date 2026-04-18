@@ -3,18 +3,18 @@
 // ============================================================
 
 import {
-  type PlanetData, type OwnerId, planetPower,
+  type PlanetData, type OwnerId,
   PLAYER, AI_1, AI_2, NEUTRAL,
 } from './types';
 import { planetTypeForIndex } from './texture-gen';
 import {
   WORLD_SIZE, PLANET_MIN_DISTANCE,
-  PLANET_RADII, PLANET_MAX_SHIPS,
-  PLANET_FIGHTER_PRODUCTION, PLANET_CRUISER_PRODUCTION,
+  PLANET_RADII,
   PLANET_COUNT,
-  STARTING_FIGHTERS, STARTING_CRUISERS,
-  NEUTRAL_FIGHTERS, NEUTRAL_CRUISERS,
-  ROUTE_FIGHTERS_PER_BATCH, ROUTE_CRUISERS_PER_BATCH,
+  STARTING_POWER,
+  NEUTRAL_POWER_MIN, NEUTRAL_POWER_MAX,
+  PLANET_MAX_AUTO_POWER,
+  PLANET_POWER_GROWTH_RATE,
 } from './constants';
 
 const PLANET_NAMES = [
@@ -59,6 +59,7 @@ export function generateMap(aiCount: number = 2): PlanetData[] {
   if (aiCount >= 1) owners.push(AI_1);
   if (aiCount >= 2) owners.push(AI_2);
 
+  // Place faction starting planets evenly spaced
   for (let i = 0; i < owners.length; i++) {
     const angle = (i / owners.length) * Math.PI * 2;
     const dist = WORLD_SIZE * 0.25;
@@ -71,17 +72,14 @@ export function generateMap(aiCount: number = 2): PlanetData[] {
       x, y: 0, z,
       radius: PLANET_RADII[tier],
       owner: owners[i],
-      fighters: STARTING_FIGHTERS,
-      cruisers: STARTING_CRUISERS,
-      maxShips: PLANET_MAX_SHIPS[tier],
-      fighterProduction: PLANET_FIGHTER_PRODUCTION[tier],
-      cruiserProduction: PLANET_CRUISER_PRODUCTION[tier],
+      power: STARTING_POWER,
       tier,
       visualType: planetTypeForIndex(i, tier),
       textureSeed: i * 1000 + 42,
     });
   }
 
+  // Place neutral planets
   for (let i = owners.length; i < PLANET_COUNT; i++) {
     const pos = randomPosition(planets);
     const tier = randomTier();
@@ -91,11 +89,7 @@ export function generateMap(aiCount: number = 2): PlanetData[] {
       x: pos.x, y: 0, z: pos.z,
       radius: PLANET_RADII[tier],
       owner: NEUTRAL,
-      fighters: NEUTRAL_FIGHTERS + Math.floor(Math.random() * 6),
-      cruisers: NEUTRAL_CRUISERS + Math.floor(Math.random() * 3),
-      maxShips: PLANET_MAX_SHIPS[tier],
-      fighterProduction: PLANET_FIGHTER_PRODUCTION[tier],
-      cruiserProduction: PLANET_CRUISER_PRODUCTION[tier],
+      power: NEUTRAL_POWER_MIN + Math.floor(Math.random() * (NEUTRAL_POWER_MAX - NEUTRAL_POWER_MIN + 1)),
       tier,
       visualType: planetTypeForIndex(i, tier),
       textureSeed: i * 1000 + 42,
@@ -105,77 +99,40 @@ export function generateMap(aiCount: number = 2): PlanetData[] {
   return planets;
 }
 
-/** Update planet production: add fighters and cruisers over time */
-export function updateProduction(planet: PlanetData, dt: number): void {
+/** Update planet power: auto-grow up to PLANET_MAX_AUTO_POWER */
+export function updatePlanetGrowth(planet: PlanetData, dt: number): void {
   if (planet.owner === NEUTRAL) return;
-  const totalWeight = planet.fighters + planet.cruisers * 2;
-  if (totalWeight >= planet.maxShips) return;
+  if (planet.power >= PLANET_MAX_AUTO_POWER) return;
 
-  planet.fighters += planet.fighterProduction * dt;
-  planet.cruisers += planet.cruiserProduction * dt;
-
-  // Cap by max weight
-  if (planet.fighters + planet.cruisers * 2 > planet.maxShips) {
-    // Reduce proportionally
-    const excess = (planet.fighters + planet.cruisers * 2) - planet.maxShips;
-    // Remove fighters first (cheaper)
-    const fighterReduction = Math.min(excess, planet.fighters - 0);
-    planet.fighters -= fighterReduction;
-    const remaining = excess - fighterReduction;
-    planet.cruisers -= remaining / 2;
-    if (planet.fighters < 0) planet.fighters = 0;
-    if (planet.cruisers < 0) planet.cruisers = 0;
+  planet.power += PLANET_POWER_GROWTH_RATE * dt;
+  if (planet.power > PLANET_MAX_AUTO_POWER) {
+    planet.power = PLANET_MAX_AUTO_POWER;
   }
 }
 
-/** Launch a batch from source planet for route sending */
-export function launchRouteBatch(source: PlanetData): { fighters: number; cruisers: number } | null {
-  const f = Math.min(Math.floor(source.fighters), ROUTE_FIGHTERS_PER_BATCH);
-  const c = Math.min(Math.floor(source.cruisers), ROUTE_CRUISERS_PER_BATCH);
-  if (f === 0 && c === 0) return null;
-
-  source.fighters -= f;
-  source.cruisers -= c;
-
-  return { fighters: f, cruisers: c };
-}
-
-/** Resolve combat when a fleet arrives */
-export function resolveCombat(planet: PlanetData, attackerFighters: number, attackerCruisers: number, attackerOwner: OwnerId): PlanetData {
+/**
+ * Resolve missile arrival at a planet.
+ * - Same owner: power += strength
+ * - Different owner: power -= strength; if power <= 0, planet captured
+ */
+export function resolveMissileArrival(
+  planet: PlanetData,
+  missileStrength: number,
+  missileOwner: OwnerId,
+): PlanetData {
   const p = { ...planet };
-  const attackPower = attackerFighters + attackerCruisers * 2;
-  const defendPower = p.fighters + p.cruisers * 2;
 
-  if (p.owner === attackerOwner) {
-    // Reinforce
-    p.fighters += attackerFighters;
-    p.cruisers += attackerCruisers;
-    // Cap
-    const total = p.fighters + p.cruisers * 2;
-    if (total > p.maxShips) {
-      const ratio = p.maxShips / total;
-      p.fighters = Math.floor(p.fighters * ratio);
-      p.cruisers = Math.floor(p.cruisers * ratio);
-    }
+  if (p.owner === missileOwner) {
+    // Reinforce: increase power
+    p.power += missileStrength;
   } else {
-    // Attack — mutual destruction by weight
-    if (attackPower > defendPower) {
-      // Attacker wins
-      const remainingPower = attackPower - defendPower;
-      p.owner = attackerOwner;
-      // Distribute remaining as fighters (simpler)
-      p.fighters = remainingPower;
-      p.cruisers = 0;
-    } else {
-      // Defender holds
-      const remainingPower = defendPower - attackPower;
-      // Remove proportionally from defenders
-      const ratio = remainingPower / defendPower;
-      p.fighters = Math.floor(p.fighters * ratio);
-      p.cruisers = Math.floor(p.cruisers * ratio);
+    // Attack: decrease power
+    p.power -= missileStrength;
+    if (p.power <= 0) {
+      // Planet captured! Remaining power transfers to new owner
+      p.power = Math.abs(p.power);
+      p.owner = missileOwner;
     }
-    if (p.fighters < 0) p.fighters = 0;
-    if (p.cruisers < 0) p.cruisers = 0;
   }
 
   return p;

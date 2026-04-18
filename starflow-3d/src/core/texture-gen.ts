@@ -77,7 +77,7 @@ function ownerTint(ownerColor: number, base: number[]): number[] {
   const or = ((ownerColor >> 16) & 0xff) / 255;
   const og = ((ownerColor >> 8) & 0xff) / 255;
   const ob = (ownerColor & 0xff) / 255;
-  const t = 0.25;
+  const t = 0.4;  // Stronger owner color tint
   return [lerp(base[0], or, t), lerp(base[1], og, t), lerp(base[2], ob, t)];
 }
 

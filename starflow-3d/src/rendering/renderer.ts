@@ -4,9 +4,9 @@
 
 import * as THREE from 'three';
 import {
-  type GameState, type PlanetData, type FleetData, type StreamData,
+  type GameState, type PlanetData, type MissileData,
   type CameraState, type ShipRoute, type OwnerId,
-  OWNER_COLORS, OWNER_NAMES, planetPower,
+  OWNER_COLORS, OWNER_NAMES,
   PLAYER,
 } from '../core/types';
 import {
@@ -14,7 +14,7 @@ import {
   BACKGROUND_COLOR, STAR_COUNT, AMBIENT_LIGHT, DIRECTIONAL_LIGHT,
   CAM_DEFAULT_DISTANCE, CAM_DEFAULT_THETA, CAM_DEFAULT_PHI,
   CAM_MIN_DISTANCE, CAM_MAX_DISTANCE, CAM_ZOOM_SPEED,
-  STREAM_PARTICLE_SIZE, STREAM_PARTICLE_COUNT,
+  getMaxRoutesFromPlanet,
 } from '../core/constants';
 import { getGameStats } from '../game/state';
 import { generatePlanetTextures, type TextureSet } from '../core/texture-gen';
@@ -33,9 +33,10 @@ let renderer: THREE.WebGLRenderer;
 const planetMeshes = new Map<string, THREE.Mesh>();
 const planetGlows = new Map<string, THREE.Mesh>();
 let selectionRing: THREE.Mesh | null = null;
-const fleetSprites = new Map<string, THREE.Group>();
-const streamGroups = new Map<string, THREE.Points>();
 const planetLabels = new Map<string, THREE.Sprite>();
+
+// Missile meshes (cylinders)
+const missileMeshes = new Map<string, THREE.Group>();
 
 // Route lines (persistent beams between planets)
 const routeLines = new Map<string, THREE.Line>();
@@ -166,7 +167,7 @@ function updateHTMLHUD(state: GameState): void {
     padding: 12px 16px;
     backdrop-filter: blur(4px);
     border: 1px solid rgba(255,255,255,0.1);
-    min-width: 200px;
+    min-width: 220px;
   ">`;
 
   // Timer
@@ -183,7 +184,7 @@ function updateHTMLHUD(state: GameState): void {
       <span style="min-width:55px;">${name}</span>
       <span style="color:rgba(255,255,255,0.7);">${s.planets}p</span>
       <span style="color:${ch === '#888888' ? '#aaa' : '#66bbff'}; font-size:11px;">
-        ${s.fighters}F+${s.cruisers}C
+        pw:${s.power}
       </span>
     </div>`;
   }
@@ -193,6 +194,14 @@ function updateHTMLHUD(state: GameState): void {
   if (playerRoutes.length > 0) {
     html += `<div style="margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.1); font-size:11px; color:#00ff88;">
       Routes: ${playerRoutes.length} active
+    </div>`;
+  }
+
+  // Active missiles
+  const playerMissiles = state.missiles.filter(m => m.owner === PLAYER).length;
+  if (playerMissiles > 0) {
+    html += `<div style="font-size:11px; color:rgba(255,255,255,0.4);">
+      Missiles in flight: ${playerMissiles}
     </div>`;
   }
 
@@ -207,8 +216,10 @@ function updateHTMLHUD(state: GameState): void {
   if (state.selectedPlanetId) {
     const p = state.planets.find(pl => pl.id === state.selectedPlanetId);
     if (p) {
+      const maxR = getMaxRoutesFromPlanet(p.power);
+      const currentR = state.routes.filter(r => r.sourceId === p.id && r.owner === PLAYER).length;
       html += `<div style="margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.1); font-size:12px; color:#00ff88;">
-        ${p.name}: ${Math.floor(p.fighters)}F + ${Math.floor(p.cruisers)}C<br>
+        ${p.name}: power ${Math.floor(p.power)} (${currentR}/${maxR} routes)<br>
         <span style="color:rgba(255,255,255,0.5);">Click target to create route</span>
       </div>`;
     }
@@ -234,7 +245,7 @@ export function addPlanet(planet: PlanetData): void {
   );
   planetTextures.set(planet.id, texSet);
 
-  // PBR material with diffuse map + normal map
+  // PBR material with stronger emissive tint
   const material = new THREE.MeshStandardMaterial({
     map: texSet.diffuse,
     normalMap: texSet.normal,
@@ -242,7 +253,7 @@ export function addPlanet(planet: PlanetData): void {
     roughness: 0.7,
     metalness: 0.1,
     emissive: color,
-    emissiveIntensity: 0.08,
+    emissiveIntensity: 0.2,
     emissiveMap: texSet.emissive,
   });
 
@@ -259,7 +270,7 @@ export function addPlanet(planet: PlanetData): void {
     32,
   );
   const glowMat = new THREE.MeshBasicMaterial({
-    color, transparent: true, opacity: 0.3, side: THREE.DoubleSide,
+    color, transparent: true, opacity: 0.4, side: THREE.DoubleSide,
   });
   const glow = new THREE.Mesh(glowGeo, glowMat);
   glow.position.set(planet.x, planet.y + 0.05, planet.z);
@@ -292,35 +303,25 @@ function addPlanetLabel(planet: PlanetData): void {
 function drawPlanetLabel(ctx: CanvasRenderingContext2D, planet: PlanetData): void {
   ctx.clearRect(0, 0, 160, 64);
 
-  const f = Math.floor(planet.fighters);
-  const c = Math.floor(planet.cruisers);
-
-  // Two-line label: fighters on top, cruisers below
-  ctx.font = 'bold 22px Arial';
-  ctx.textAlign = 'center';
-
+  const pw = Math.floor(planet.power);
   const colorHex = '#' + OWNER_COLORS[planet.owner].toString(16).padStart(6, '0');
 
-  // Fighters line
-  ctx.fillStyle = '#66bbff';
+  // Power number — prominent
+  ctx.font = 'bold 30px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = colorHex;
   ctx.strokeStyle = '#000';
   ctx.lineWidth = 3;
-  ctx.strokeText(`${f}F`, 55, 28);
-  ctx.fillText(`${f}F`, 55, 28);
+  ctx.strokeText(`${pw}`, 80, 30);
+  ctx.fillText(`${pw}`, 80, 30);
 
-  // Cruisers line
-  ctx.fillStyle = '#ffaa44';
-  ctx.strokeText(`${c}C`, 105, 28);
-  ctx.fillText(`${c}C`, 105, 28);
-
-  // Total power small
-  const power = f + c * 2;
-  ctx.font = '14px Arial';
-  ctx.fillStyle = 'rgba(255,255,255,0.6)';
-  ctx.strokeStyle = '#000';
+  // Max routes indicator
+  const maxR = getMaxRoutesFromPlanet(planet.power);
+  ctx.font = '13px Arial';
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
   ctx.lineWidth = 2;
-  ctx.strokeText(`pw:${power}`, 80, 50);
-  ctx.fillText(`pw:${power}`, 80, 50);
+  ctx.strokeText(`max:${maxR} link`, 80, 52);
+  ctx.fillText(`max:${maxR} link`, 80, 52);
 }
 
 export function updatePlanet(planet: PlanetData): void {
@@ -328,9 +329,9 @@ export function updatePlanet(planet: PlanetData): void {
   if (!mesh) return;
 
   const color = OWNER_COLORS[planet.owner];
- const mat = mesh.material as THREE.MeshStandardMaterial;
+  const mat = mesh.material as THREE.MeshStandardMaterial;
   mat.emissive.setHex(color);
-  mat.emissiveIntensity = 0.08;
+  mat.emissiveIntensity = 0.2;
 
   const glow = planetGlows.get(planet.id);
   if (glow) (glow.material as THREE.MeshBasicMaterial).color.setHex(color);
@@ -343,26 +344,77 @@ export function updatePlanet(planet: PlanetData): void {
   }
 }
 
-export function removePlanet(id: string): void {
-  const mesh = planetMeshes.get(id);
-  if (mesh) {
-    scene.remove(mesh);
-    mesh.geometry.dispose();
-    (mesh.material as THREE.Material).dispose();
-    planetMeshes.delete(id);
+// ============================================================
+// Missile rendering (cylinders)
+// ============================================================
+
+export function addMissile(missile: MissileData): void {
+  const group = new THREE.Group();
+  group.userData = { missileId: missile.id };
+
+  const color = OWNER_COLORS[missile.owner];
+
+  // Cylinder body
+  const cylGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.8, 8);
+  const cylMat = new THREE.MeshStandardMaterial({
+    color,
+    emissive: color,
+    emissiveIntensity: 0.6,
+  });
+  const cylinder = new THREE.Mesh(cylGeo, cylMat);
+  group.add(cylinder);
+
+  // Nose cone (small sphere at front)
+  const noseGeo = new THREE.SphereGeometry(0.15, 8, 6);
+  const nose = new THREE.Mesh(noseGeo, cylMat.clone());
+  nose.position.y = 0.5;
+  group.add(nose);
+
+  // Engine glow at back
+  const engineGeo = new THREE.SphereGeometry(0.2, 8, 6);
+  const engineMat = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.35,
+  });
+  const engine = new THREE.Mesh(engineGeo, engineMat);
+  engine.position.y = -0.4;
+  group.add(engine);
+
+  // Orient cylinder toward target direction
+  const source = planetMeshes.get(missile.sourceId);
+  const target = planetMeshes.get(missile.targetId);
+  if (source && target) {
+    const dir = new THREE.Vector3()
+      .subVectors(target.position, source.position)
+      .normalize();
+    const quaternion = new THREE.Quaternion();
+    quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    group.quaternion.copy(quaternion);
   }
-  // Dispose textures
-  const tex = planetTextures.get(id);
-  if (tex) {
-    tex.diffuse.dispose();
-    tex.normal.dispose();
-    tex.emissive?.dispose();
-    planetTextures.delete(id);
+
+  group.position.set(missile.x, missile.y, missile.z);
+  scene.add(group);
+  missileMeshes.set(missile.id, group);
+}
+
+export function updateMissilePosition(missile: MissileData): void {
+  const group = missileMeshes.get(missile.id);
+  if (group) group.position.set(missile.x, missile.y, missile.z);
+}
+
+export function removeMissile(id: string): void {
+  const group = missileMeshes.get(id);
+  if (group) {
+    scene.remove(group);
+    group.traverse(child => {
+      if (child instanceof THREE.Mesh) {
+        child.geometry.dispose();
+        (child.material as THREE.Material).dispose();
+      }
+    });
+    missileMeshes.delete(id);
   }
-  const glow = planetGlows.get(id);
-  if (glow) { scene.remove(glow); glow.geometry.dispose(); (glow.material as THREE.Material).dispose(); planetGlows.delete(id); }
-  const label = planetLabels.get(id);
-  if (label) { scene.remove(label); (label.material as THREE.SpriteMaterial).map!.dispose(); (label.material as THREE.SpriteMaterial).dispose(); planetLabels.delete(id); }
 }
 
 // ============================================================
@@ -442,114 +494,6 @@ export function removeRouteLine(routeId: string): void {
 function animateRoutes(time: number): void {
   for (const [id, line] of routeLines) {
     (line.material as THREE.LineBasicMaterial).opacity = 0.2 + Math.sin(time * 2 + id.length) * 0.15;
-  }
-}
-
-// ============================================================
-// Fleet and Stream rendering
-// ============================================================
-
-export function addFleet(fleet: FleetData): void {
-  const group = new THREE.Group();
-  group.userData = { fleetId: fleet.id };
-
-  const color = OWNER_COLORS[fleet.owner];
-
-  // Central sphere
-  const geom = new THREE.SphereGeometry(0.5, 12, 8);
-  group.add(new THREE.Mesh(geom, new THREE.MeshPhongMaterial({
-    color, emissive: color, emissiveIntensity: 0.4, transparent: true, opacity: 0.9,
-  })));
-
-  // Glow
-  group.add(new THREE.Mesh(
-    new THREE.SphereGeometry(0.9, 12, 8),
-    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.15 }),
-  ));
-
-  group.position.set(fleet.x, fleet.y, fleet.z);
-  scene.add(group);
-  fleetSprites.set(fleet.id, group);
-
-  // Fleet label
-  const lc = document.createElement('canvas');
-  lc.width = 96;
-  lc.height = 32;
-  const ctx = lc.getContext('2d')!;
-  const ch = '#' + color.toString(16).padStart(6, '0');
-
-  ctx.font = 'bold 16px Arial';
-  ctx.textAlign = 'center';
-  ctx.strokeStyle = '#000';
-  ctx.lineWidth = 2;
-  // Fighters
-  ctx.fillStyle = '#66bbff';
-  ctx.strokeText(`${fleet.fighters}F`, 28, 20);
-  ctx.fillText(`${fleet.fighters}F`, 28, 20);
-  // Cruisers
-  ctx.fillStyle = '#ffaa44';
-  ctx.strokeText(`${fleet.cruisers}C`, 68, 20);
-  ctx.fillText(`${fleet.cruisers}C`, 68, 20);
-
-  const tex = new THREE.CanvasTexture(lc);
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
-  sprite.scale.set(4, 1.5, 1);
-  sprite.position.y = 1.2;
-  group.add(sprite);
-}
-
-export function updateFleetPosition(fleet: FleetData): void {
-  const group = fleetSprites.get(fleet.id);
-  if (group) group.position.set(fleet.x, fleet.y, fleet.z);
-}
-
-export function removeFleet(id: string): void {
-  const group = fleetSprites.get(id);
-  if (group) {
-    scene.remove(group);
-    group.traverse(child => {
-      if (child instanceof THREE.Mesh) { child.geometry.dispose(); (child.material as THREE.Material).dispose(); }
-      if (child instanceof THREE.Sprite) { (child.material as THREE.SpriteMaterial).map?.dispose(); (child.material as THREE.SpriteMaterial).dispose(); }
-    });
-    fleetSprites.delete(id);
-  }
-}
-
-export function addStream(stream: StreamData): void {
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(STREAM_PARTICLE_COUNT * 3), 3));
-  scene.add(new THREE.Points(geo, new THREE.PointsMaterial({
-    color: OWNER_COLORS[stream.owner], size: STREAM_PARTICLE_SIZE,
-    transparent: true, opacity: 0.6, sizeAttenuation: true,
-  })));
-  // Find the just-added points
-  const points = scene.children[scene.children.length - 1] as THREE.Points;
-  streamGroups.set(stream.id, points);
-}
-
-export function updateStream(stream: StreamData): void {
-  const points = streamGroups.get(stream.id);
-  if (!points) return;
-  const pos = points.geometry.attributes.position.array as Float32Array;
-
-  for (let i = 0; i < STREAM_PARTICLE_COUNT; i++) {
-    const t = Math.max(0, stream.progress - (i / STREAM_PARTICLE_COUNT) * 0.3);
-    if (t < 0) { pos[i * 3] = 0; pos[i * 3 + 1] = -100; pos[i * 3 + 2] = 0; continue; }
-    const omt = 1 - t;
-    pos[i * 3] = omt * omt * stream.sx + 2 * omt * t * stream.cx + t * t * stream.tx;
-    pos[i * 3 + 1] = omt * omt * stream.sy + 2 * omt * t * stream.cy + t * t * stream.ty;
-    pos[i * 3 + 2] = omt * omt * stream.sz + 2 * omt * t * stream.cz + t * t * stream.tz;
-  }
-  points.geometry.attributes.position.needsUpdate = true;
-}
-
-export function removeStream(id: string): void {
-  const points = streamGroups.get(id);
-  if (points) {
-    scene.remove(points);
-    points.geometry.dispose();
-    (points.material as THREE.Material).dispose();
-    streamGroups.delete(id);
   }
 }
 
@@ -644,8 +588,7 @@ export function syncVisuals(state: GameState, time: number): void {
   animateSelection(time);
   animateRoutes(time);
 
-  for (const fleet of state.fleets) updateFleetPosition(fleet);
-  for (const stream of state.streams) updateStream(stream);
+  for (const missile of state.missiles) updateMissilePosition(missile);
 
   for (const mesh of planetMeshes.values()) mesh.rotation.y += 0.003;
 

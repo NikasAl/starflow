@@ -1,42 +1,38 @@
 // ============================================================
-// Star Flow Command — Fleet Logic
+// Star Flow Command — Missile (Fleet) Logic
 // ============================================================
 
-import { type FleetData, type OwnerId } from './types';
-import { FLEET_SPEED } from './constants';
+import { type MissileData, type OwnerId } from './types';
+import { MISSILE_SPEED } from './constants';
 
-let fleetCounter = 0;
+let missileCounter = 0;
 
-/** Create a new fleet */
-export function createFleet(
+/** Create a new missile */
+export function createMissile(
   owner: OwnerId,
-  fighters: number,
-  cruisers: number,
+  strength: 1 | 2,
   sourceId: string,
   targetId: string,
   sx: number, sy: number, sz: number,
   tx: number, ty: number, tz: number,
-): FleetData {
-  const fleet: FleetData = {
-    id: `fleet_${++fleetCounter}`,
+): MissileData {
+  return {
+    id: `missile_${++missileCounter}`,
     owner,
-    fighters,
-    cruisers,
+    strength,
     sourceId,
     targetId,
     progress: 0,
-    speed: FLEET_SPEED,
+    speed: MISSILE_SPEED,
     x: sx,
     y: sy,
     z: sz,
-    get power() { return this.fighters + this.cruisers * 2; },
   };
-  return fleet;
 }
 
-/** Update fleet position. Returns true if arrived. */
-export function updateFleet(
-  fleet: FleetData,
+/** Update missile position in a straight line. Returns true if arrived. */
+export function updateMissile(
+  missile: MissileData,
   sx: number, sy: number, sz: number,
   tx: number, ty: number, tz: number,
   dt: number,
@@ -48,20 +44,21 @@ export function updateFleet(
 
   if (totalDist < 0.01) return true;
 
-  const moveAmount = (fleet.speed * dt) / totalDist;
-  fleet.progress += moveAmount;
+  const moveAmount = (missile.speed * dt) / totalDist;
+  missile.progress += moveAmount;
 
-  if (fleet.progress >= 1.0) {
-    fleet.progress = 1.0;
-    fleet.x = tx;
-    fleet.y = ty;
-    fleet.z = tz;
+  if (missile.progress >= 1.0) {
+    missile.progress = 1.0;
+    missile.x = tx;
+    missile.y = ty;
+    missile.z = tz;
     return true;
   }
 
-  fleet.x = sx + dx * fleet.progress;
-  fleet.y = sy + dy * fleet.progress + Math.sin(fleet.progress * Math.PI) * 3;
-  fleet.z = sz + dz * fleet.progress;
+  // Straight line movement (no arc)
+  missile.x = sx + dx * missile.progress;
+  missile.y = sy + dy * missile.progress;
+  missile.z = sz + dz * missile.progress;
 
   return false;
 }

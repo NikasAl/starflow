@@ -40,16 +40,8 @@ export interface PlanetData {
   radius: number;
   /** Current owner */
   owner: OwnerId;
-  /** Fighter count (weight 1 each) */
-  fighters: number;
-  /** Cruiser count (weight 2 each) */
-  cruisers: number;
-  /** Max total ship weight */
-  maxShips: number;
-  /** Fighter production rate (fighters per second) */
-  fighterProduction: number;
-  /** Cruiser production rate (cruisers per second) */
-  cruiserProduction: number;
+  /** Planet power (single value, replaces fighters/cruisers) */
+  power: number;
   /** Planet size tier 1-3 (small, medium, large) */
   tier: 1 | 2 | 3;
   /** Procedural visual type for texture generation */
@@ -58,77 +50,43 @@ export interface PlanetData {
   textureSeed: number;
 }
 
-/** Helper: total attack power of a planet */
-export function planetPower(p: PlanetData): number {
-  return p.fighters + p.cruisers * 2;
-}
-
-/** Helper: total weight on a planet */
-export function planetWeight(p: PlanetData): number {
-  return p.fighters + p.cruisers * 2;
-}
-
-/** Helper: check if planet has any ships */
-export function planetHasShips(p: PlanetData): boolean {
-  return p.fighters > 0 || p.cruisers > 0;
-}
-
-/** Data for a fleet moving between planets */
-export interface FleetData {
+/** A missile flying between planets */
+export interface MissileData {
   id: string;
   owner: OwnerId;
-  /** Fighter count */
-  fighters: number;
-  /** Cruiser count */
-  cruisers: number;
-  /** Total weight for combat */
-  get power(): number;
+  /** Missile strength: 1 or 2 */
+  strength: 1 | 2;
   /** Source planet id */
   sourceId: string;
   /** Target planet id */
   targetId: string;
   /** Movement progress 0..1 */
   progress: number;
-  /** Speed in units per second (world-space) */
+  /** Speed in world units per second */
   speed: number;
-  /** Current world position (interpolated) */
+  /** Current world position */
   x: number;
   y: number;
   z: number;
 }
 
-/** A ship stream visual — collection of particles along a Bezier curve */
-export interface StreamData {
-  id: string;
-  fleetId: string;
-  owner: OwnerId;
-  sx: number; sy: number; sz: number;
-  tx: number; ty: number; tz: number;
-  cx: number; cy: number; cz: number;
-  progress: number;
-  duration: number;
-}
-
-/** A persistent route between two planets — ships sent periodically */
+/** A persistent route between two planets — missiles sent periodically */
 export interface ShipRoute {
   id: string;
   owner: OwnerId;
   sourceId: string;
   targetId: string;
-  /** Seconds until next batch */
+  /** Seconds until next missile */
   sendTimer: number;
-  /** How many fighters per batch */
-  fightersPerBatch: number;
-  /** How many cruisers per batch */
-  cruisersPerBatch: number;
+  /** Missile strength for this route */
+  missileStrength: 1 | 2;
 }
 
 /** Overall game state */
 export interface GameState {
   planets: PlanetData[];
-  fleets: FleetData[];
-  streams: StreamData[];
-  /** Persistent ship routes */
+  missiles: MissileData[];
+  /** Persistent missile routes */
   routes: ShipRoute[];
   /** Which planet the player is selecting as source (null = none) */
   selectedPlanetId: string | null;

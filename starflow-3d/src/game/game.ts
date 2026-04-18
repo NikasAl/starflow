@@ -8,10 +8,8 @@ import { type AIState, createAIs } from '../core/ai';
 import {
   initRenderer,
   addPlanet,
-  addFleet,
-  removeFleet,
-  addStream,
-  removeStream,
+  addMissile,
+  removeMissile,
   addRouteLine,
   removeRouteLine,
   updateSelection,
@@ -20,8 +18,7 @@ import {
   dispose,
 } from '../rendering/renderer';
 
-const knownFleets = new Set<string>();
-const knownStreams = new Set<string>();
+const knownMissiles = new Set<string>();
 const knownRoutes = new Set<string>();
 
 let gameState: GameState;
@@ -74,24 +71,13 @@ function gameLoop(now: number): void {
   const dt = Math.min((now - lastTime) / 1000, 0.1);
   lastTime = now;
 
-  // Snapshot routes before update (to detect AI route changes)
-  const prevRouteIds = new Set(gameState.routes.map(r => r.id));
-
   updateGame(gameState, aiStates, dt);
 
-  // Sync new fleets
-  for (const fleet of gameState.fleets) {
-    if (!knownFleets.has(fleet.id)) {
-      addFleet(fleet);
-      knownFleets.add(fleet.id);
-    }
-  }
-
-  // Sync new streams
-  for (const stream of gameState.streams) {
-    if (!knownStreams.has(stream.id)) {
-      addStream(stream);
-      knownStreams.add(stream.id);
+  // Sync new missiles
+  for (const missile of gameState.missiles) {
+    if (!knownMissiles.has(missile.id)) {
+      addMissile(missile);
+      knownMissiles.add(missile.id);
     }
   }
 
@@ -109,19 +95,11 @@ function gameLoop(now: number): void {
     }
   }
 
-  // Clean up arrived fleets
-  for (const fid of knownFleets) {
-    if (!gameState.fleets.find(f => f.id === fid)) {
-      removeFleet(fid);
-      knownFleets.delete(fid);
-    }
-  }
-
-  // Clean up finished streams
-  for (const sid of knownStreams) {
-    if (!gameState.streams.find(s => s.id === sid)) {
-      removeStream(sid);
-      knownStreams.delete(sid);
+  // Clean up arrived missiles
+  for (const mid of knownMissiles) {
+    if (!gameState.missiles.find(m => m.id === mid)) {
+      removeMissile(mid);
+      knownMissiles.delete(mid);
     }
   }
 

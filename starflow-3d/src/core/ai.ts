@@ -1,20 +1,23 @@
 // ============================================================
 // Star Flow Command — AI Controller
+// Aggressively expands, attacks, and reinforces
 // ============================================================
 
 import {
-  type PlanetData, type ShipRoute, type OwnerId, planetPower,
-  PLAYER, AI_1, AI_2,
+  type PlanetData, type ShipRoute, type OwnerId,
+  PLAYER, AI_1, AI_2, NEUTRAL,
 } from './types';
 import {
-  AI_THINK_INTERVAL, AI_MIN_ATTACK_SHIPS,
-  ROUTE_SEND_INTERVAL, ROUTE_FIGHTERS_PER_BATCH, ROUTE_CRUISERS_PER_BATCH,
+  AI_THINK_INTERVAL,
+  getMaxRoutesFromPlanet,
+  getMissileStrength,
+  PLANET_MAX_AUTO_POWER,
 } from './constants';
 
 export interface AIState {
   owner: OwnerId;
   thinkTimer: number;
-  /** Active route IDs */
+  /** Active route IDs managed by this AI */
   activeRouteIds: Set<string>;
 }
 
@@ -25,16 +28,22 @@ export function createAIs(count: number): AIState[] {
   for (let i = 0; i < count; i++) {
     states.push({
       owner: (i + 2) as OwnerId,
-      thinkTimer: AI_THINK_INTERVAL * Math.random(),
+      thinkTimer: AI_THINK_INTERVAL * (0.3 + Math.random() * 0.7),
       activeRouteIds: new Set(),
     });
   }
   return states;
 }
 
+function dist(a: PlanetData, b: PlanetData): number {
+  const dx = a.x - b.x;
+  const dz = a.z - b.z;
+  return Math.sqrt(dx * dx + dz * dz);
+}
+
 /**
- * Update AI: think about creating/canceling routes.
- * Returns route changes: { add, remove }
+ * Update AI: actively create/remove routes to expand territory.
+ * Returns route changes: { addRoutes, removeRouteIds }
  */
 export function updateAI(
   ai: AIState,
@@ -46,72 +55,109 @@ export function updateAI(
 
   ai.thinkTimer -= dt;
   if (ai.thinkTimer > 0) return result;
-  ai.thinkTimer = AI_THINK_INTERVAL + Math.random() * 2;
+  ai.thinkTimer = AI_THINK_INTERVAL * (0.5 + Math.random() * 0.5);
 
   const myPlanets = planets.filter(p => p.owner === ai.owner);
-  const otherPlanets = planets.filter(p => p.owner !== ai.owner);
+  if (myPlanets.length === 0) return result;
 
-  if (myPlanets.length === 0 || otherPlanets.length === 0) return result;
-
-  // My current routes
+  // Get my current active routes
   const myRoutes = routes.filter(r => r.owner === ai.owner && ai.activeRouteIds.has(r.id));
-  const mySources = new Set(myRoutes.map(r => r.sourceId));
 
-  // Find planets with ships but no route
-  const idlePlanets = myPlanets.filter(p =>
-    planetPower(p) >= AI_MIN_ATTACK_SHIPS && !mySources.has(p.id)
-  );
+  // ---- Phase 1: Remove stale routes ----
 
-  // Strategy: have up to N active routes
-  const maxRoutes = Math.min(myPlanets.length - 1, 3);
-
-  if (myRoutes.length < maxRoutes && idlePlanets.length > 0) {
-    // Pick strongest idle planet as source
-    const source = [...idlePlanets].sort((a, b) => planetPower(b) - planetPower(a))[0];
-
-    // Pick target: nearest planet with fewest ships (that's not ours)
-    const targets = otherPlanets
-      .filter(t => t.id !== source.id)
-      .sort((a, b) => {
-        const dA = dist(a, source);
-        const dB = dist(b, source);
-        return (dA + planetPower(a) * 2) - (dB + planetPower(b) * 2);
-      });
-
-    if (targets.length > 0) {
-      const target = targets[0];
-      const route: ShipRoute = {
-        id: `route_${++routeCounter}`,
-        owner: ai.owner,
-        sourceId: source.id,
-        targetId: target.id,
-        sendTimer: 0,
-        fightersPerBatch: ROUTE_FIGHTERS_PER_BATCH,
-        cruisersPerBatch: ROUTE_CRUISERS_PER_BATCH,
-      };
-      result.addRoutes.push(route);
-      ai.activeRouteIds.add(route.id);
+  // Remove routes from planets we no longer own
+  for (const route of myRoutes) {
+    const source = planets.find(p => p.id === route.sourceId);
+    if (!source || source.owner !== ai.owner) {
+      result.removeRouteIds.push(route.id);
+      ai.activeRouteIds.delete(route.id);
     }
   }
 
-  // Occasionally remove old routes and retarget
-  if (myRoutes.length > 0 && Math.random() < 0.2) {
-    // Remove route if target already captured
-    const captured = myRoutes.find(r => {
-      const target = planets.find(p => p.id === r.targetId);
-      return target && target.owner === ai.owner;
-    });
-    if (captured) {
-      result.removeRouteIds.push(captured.id);
-      ai.activeRouteIds.delete(captured.id);
+  // Remove routes to own planets that are well-established (power > 12)
+  // Free up route slots for expansion
+  for (const route of myRoutes) {
+    if (result.removeRouteIds.includes(route.id)) continue;
+    const target = planets.find(p => p.id === route.targetId);
+    if (target && target.owner === ai.owner && target.power > 12) {
+      result.removeRouteIds.push(route.id);
+      ai.activeRouteIds.delete(route.id);
+    }
+  }
+
+  // ---- Phase 2: Recalculate active routes after removals ----
+
+  const activeRoutes = myRoutes.filter(r => !result.removeRouteIds.includes(r.id));
+
+  // Count outgoing routes per source planet
+  const routesFromSource = new Map<string, number>();
+  for (const r of activeRoutes) {
+    routesFromSource.set(r.sourceId, (routesFromSource.get(r.sourceId) || 0) + 1);
+  }
+
+  // Track existing targets per source (avoid duplicates)
+  const existingTargets = new Map<string, Set<string>>();
+  for (const r of activeRoutes) {
+    const targets = existingTargets.get(r.sourceId) || new Set();
+    targets.add(r.targetId);
+    existingTargets.set(r.sourceId, targets);
+  }
+
+  // ---- Phase 3: Add new routes from planets with spare capacity ----
+
+  // Sort owned planets by power descending (strongest first get routes)
+  const sortedPlanets = [...myPlanets].sort((a, b) => b.power - a.power);
+
+  for (const planet of sortedPlanets) {
+    if (planet.power < 2) continue; // Need at least some power to be useful
+
+    const currentCount = routesFromSource.get(planet.id) || 0;
+    const maxRoutes = getMaxRoutesFromPlanet(planet.power);
+    if (currentCount >= maxRoutes) continue;
+
+    const targets = existingTargets.get(planet.id) || new Set();
+
+    // Find best target: prefer close non-owned planets with low power
+    let bestTarget: PlanetData | null = null;
+    let bestScore = Infinity;
+
+    for (const candidate of planets) {
+      if (candidate.id === planet.id) continue;
+      if (targets.has(candidate.id)) continue;
+
+      const distance = dist(planet, candidate);
+
+      let score: number;
+      if (candidate.owner === ai.owner) {
+        // Reinforce weak own planets (lower priority than attacking)
+        score = distance * 1.5 + candidate.power * 3;
+      } else {
+        // Attack enemy/neutral planets — prefer close + weak
+        score = distance + candidate.power * 1.5;
+      }
+
+      if (score < bestScore) {
+        bestScore = score;
+        bestTarget = candidate;
+      }
+    }
+
+    if (bestTarget) {
+      const route: ShipRoute = {
+        id: `route_${++routeCounter}`,
+        owner: ai.owner,
+        sourceId: planet.id,
+        targetId: bestTarget.id,
+        sendTimer: 0, // send immediately
+        missileStrength: getMissileStrength(planet.tier),
+      };
+      result.addRoutes.push(route);
+      ai.activeRouteIds.add(route.id);
+      routesFromSource.set(planet.id, currentCount + 1);
+      targets.add(bestTarget.id);
+      existingTargets.set(planet.id, targets);
     }
   }
 
   return result;
-}
-
-function dist(a: PlanetData, b: PlanetData): number {
-  const dx = a.x - b.x;
-  const dz = a.z - b.z;
-  return Math.sqrt(dx * dx + dz * dz);
 }
