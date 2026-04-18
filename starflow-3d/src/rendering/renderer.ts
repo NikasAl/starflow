@@ -306,7 +306,7 @@ function addPlanetLabel(planet: PlanetData): void {
     map: texture, transparent: true, depthTest: false,
   }));
   sprite.scale.set(7, 3, 1);
-  sprite.position.set(planet.x, planet.radius + 1.5, planet.z);
+  sprite.position.set(planet.x, planet.y + planet.radius + 1.5, planet.z);
   scene.add(sprite);
   planetLabels.set(planet.id, sprite);
 }
