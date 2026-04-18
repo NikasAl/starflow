@@ -1,114 +1,79 @@
 # Star Flow Command
 
-**3D Space Strategy — Маршрутизируйте потоки кораблей, чтобы перекрасить планеты**
+**3D Space Strategy — Управляйте потоками ракет, захватывайте галактику**
 
 ---
 
 ## О проекте
 
-Star Flow Command — это 3D стратегическая игра, разработанная на Godot 4.3.
-Игрок управляет потоками кораблей между планетами, стремясь захватить всю галактику,
-противостояя ИИ-противникам с различным профилем поведения.
+Star Flow Command — это 3D стратегия в реальном времени, в которой игрок управляет маршрутами ракет между планетами, чтобы перекрасить всю галактику в свой цвет. Игра построена на системе «мощности» планет: каждая планета имеет единственный показатель — мощность, которая растёт, падает и определяет стратегическую ценность объекта.
 
-## Особенности
+## Версии проекта
 
-- **3D пространство** с орбитальной камерой
-- **Система потоков кораблей** по кривым Безье
-- **ИИ противники** с деревьями поведения (Behavior Tree)
-- **Процедурная генерация уровней** (Poisson Disk Sampling)
-- **Система производства и захвата планет**
-- **Event Bus** для слабосвязанной архитектуры
-- **Object Pool** для оптимизации производительности
+| Версия | Технологии | Статус |
+|--------|-----------|--------|
+| **starflow-3d** | Three.js + TypeScript + Vite + Capacitor | **Активная** — текущая разработка |
+| starflow-pwa | HTML5 Canvas 2D | Архив — прототип |
+| starflow-godot | Godot 4.3 + GDScript | Архив — заброшен из-за проблем с парсингом |
 
-## Требования
+Подробнее о текущей версии — [starflow-3d/README.md](starflow-3d/README.md)
 
-- [Godot Engine 4.3+](https://godotengine.org/download)
-- Для экспорта: целевая платформа (Windows/Linux/macOS)
+Полный игровой дизайн-документ — [docs/Star_Flow_Command_GDD.md](docs/Star_Flow_Command_GDD.md)
 
-## Установка и запуск
+## Быстрый старт (starflow-3d)
 
-1. Клонировать репозиторий:
-   ```bash
-   git clone https://github.com/NikasAl/starflow.git
-   cd starflow
-   ```
+```bash
+cd starflow-3d
+npm install
+npm run dev       # Dev server: http://localhost:3001
+npm run build     # Production build -> dist/
+```
 
-2. Открыть проект в Godot Editor 4.3+:
-   - Запустить Godot Editor
-   - Нажать «Import» и выбрать файл `project.godot`
-   - Или перетащить папку проекта в окно Godot Project Manager
+### Android сборка
 
-3. Запустить сцену:
-   - Нажать **F5** (Play) в редакторе
-   - или выбрать `scenes/main/main.tscn` как Main Scene
+```bash
+npm run cap:init          # Инициализация Capacitor
+npm run cap:add:android   # Добавить Android платформу
+npm run build             # Собрать веб-часть
+npm run cap:sync          # Синхронизировать в Android
+npm run cap:open:android  # Открыть в Android Studio
+```
 
-## Структура проекта
+Требуется Android Studio для финальной сборки APK. CLI-сборка через Gradle:
+```bash
+cd android && ./gradlew assembleDebug
+# APK: android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+## Структура репозитория
 
 ```
 starflow/
-├── project.godot          # Конфигурация проекта Godot 4.3
-├── scenes/                # Сцены (.tscn)
-│   ├── main/              # Главная сцена
-│   ├── world/             # Мир
-│   ├── planets/           # Сцены планет
-│   ├── streams/           # Сцены потоков
-│   ├── effects/           # Визуальные эффекты
-│   ├── camera/            # Камеры
-│   └── ui/                # Интерфейс
-├── scripts/               # Скрипты (.gd)
-│   ├── autoload/          # Автозагружаемые синглтоны
-│   ├── core/              # Базовые классы (FSM, State)
-│   ├── planets/           # Логика планет
-│   ├── streams/           # Логика потоков
-│   ├── camera/            # Контроллер камеры
-│   ├── ai/                # ИИ система
-│   │   └── behavior_tree/ # Дерево поведения
-│   ├── game/              # Игровая логика
-│   ├── levels/            # Генерация уровней
-│   ├── ui/                # Управление UI
-│   └── utils/             # Утилиты (Object Pool)
-├── resources/             # Ресурсы (.tres, .json)
-│   ├── balance/           # Баланс
-│   ├── ai_profiles/       # Профили ИИ
-│   └── levels/            # Конфигурации уровней
-├── assets/                # Активы
-│   ├── 3d/                # 3D модели
-│   ├── audio/             # Звуки и музыка
-│   ├── fonts/             # Шрифты
-│   └── shaders/           # Шейдеры
-└── docs/                  # Документация
-    ├── Star_Flow_Command_GDD.md
-    └── Godot_Agent_Guide.md
+├── starflow-3d/             # Three.js 3D версия (активная)
+│   ├── src/
+│   │   ├── core/            # Чистая игровая логика (без Three.js)
+│   │   │   ├── types.ts     # Типы: PlanetData, MissileData, ShipRoute, GameState
+│   │   │   ├── constants.ts # Баланс, настройки камеры, параметры ИИ
+│   │   │   ├── planet.ts    # Генерация карты, рост мощности, прибытие ракеты
+│   │   │   ├── fleet.ts     # Движение ракет (прямая линия)
+│   │   │   ├── ai.ts        # ИИ: расширение, защита, маршрутизация
+│   │   │   └── texture-gen.ts # Процедурная генерация текстур планет
+│   │   ├── game/
+│   │   │   ├── state.ts     # Менеджер состояния: маршруты, ракеты, победа/поражение
+│   │   │   └── game.ts      # Главный игровой цикл, синхронизация с рендерером
+│   │   ├── rendering/
+│   │   │   └── renderer.ts  # Three.js: сцена, планеты, ракеты, HUD
+│   │   └── main.ts          # Точка входа
+│   ├── index.html
+│   ├── package.json
+│   └── vite.config.ts
+├── starflow-pwa/            # HTML5 Canvas 2D прототип (архив)
+├── starflow-godot/          # Godot 4.3 версия (архив)
+├── docs/
+│   └── Star_Flow_Command_GDD.md  # Игровой дизайн-документ
+└── README.md
 ```
-
-## Управление
-
-| Действие            | Клавиша / Мышь       |
-|---------------------|----------------------|
-| Выбрать планету     | ЛКМ                  |
-| Вращение камеры     | ПКМ + движение мыши  |
-| Панорамирование     | СКМ + движение мыши  |
-| Приблизить          | Колёсико вверх       |
-| Отдалить            | Колёсико вниз        |
-| Сброс камеры        | Пробел               |
-| Пауза               | Escape               |
-
-## Архитектура
-
-### Автозагрузки (Autoloads)
-- **Constants** — глобальные перечисления и константы
-- **EventBus** — шина событий для межсистемной коммуникации
-- **GameManager** — управление состоянием игры и уровнями
-- **AudioManager** — управление звуками и музыкой
-
-### Дерево поведения (Behavior Tree)
-- `BTNode` → `BTSelector`, `BTSequence`, `BTDecorator`, `BTLeaf`
-- ИИ использует снимок игрового состояния (`AIGameState`) для принятия решений
-
-### Конечный автомат (FSM)
-- `State` — базовый класс состояния
-- `StateMachine` — управление переходами между состояниями
 
 ## Лицензия
 
-MIT License — см. файл LICENSE.
+MIT License
