@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Star Flow Command — 3D</title>
+  <meta name="screen-orientation" content="landscape">
+  <title>Star Flow Command</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
@@ -11,12 +12,106 @@
       overflow: hidden;
       background: #0a0a1a;
       touch-action: none;
+      font-family: 'Segoe UI', Arial, sans-serif;
+    }
+
+    /* ===== START SCREEN ===== */
+    #start-screen {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 300;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background-size: cover;
+      background-position: center;
+      background-image: url('/assets/poster.png');
+      transition: opacity 0.8s ease-out;
+    }
+    #start-screen.fade-out {
+      opacity: 0;
+      pointer-events: none;
+    }
+    /* Dark overlay for readability */
+    #start-screen::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: linear-gradient(
+        to bottom,
+        rgba(5, 5, 20, 0.5) 0%,
+        rgba(5, 5, 20, 0.3) 40%,
+        rgba(5, 5, 20, 0.7) 100%
+      );
+    }
+    #start-screen .content {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+    #start-screen h1 {
+      color: #fff;
+      font-size: clamp(28px, 5vw, 56px);
+      font-weight: 700;
+      letter-spacing: 3px;
+      text-shadow: 0 0 30px rgba(68, 136, 255, 0.6), 0 0 60px rgba(68, 136, 255, 0.3);
+      text-align: center;
+    }
+    #start-screen .subtitle {
+      color: rgba(255, 255, 255, 0.6);
+      font-size: clamp(12px, 2vw, 18px);
+      letter-spacing: 6px;
+      text-transform: uppercase;
+      text-align: center;
+    }
+    #start-btn {
+      margin-top: 20px;
+      padding: 14px 60px;
+      font-size: clamp(16px, 2.5vw, 22px);
+      font-weight: 600;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: #fff;
+      background: linear-gradient(135deg, #4488ff 0%, #2266dd 100%);
+      border: 2px solid rgba(100, 180, 255, 0.5);
+      border-radius: 50px;
+      cursor: pointer;
+      box-shadow: 0 0 20px rgba(68, 136, 255, 0.4), 0 4px 15px rgba(0, 0, 0, 0.5);
+      transition: all 0.3s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #start-btn:hover {
+      background: linear-gradient(135deg, #5599ff 0%, #3377ee 100%);
+      box-shadow: 0 0 30px rgba(68, 136, 255, 0.6), 0 4px 20px rgba(0, 0, 0, 0.5);
+      transform: scale(1.05);
+    }
+    #start-btn:active {
+      transform: scale(0.97);
+      box-shadow: 0 0 15px rgba(68, 136, 255, 0.3);
+    }
+
+    /* ===== GAME ===== */
+    #game-container {
+      width: 100%; height: 100%;
+      display: none;
+    }
+    #game-container.active {
+      display: block;
     }
     #game-canvas {
       display: block;
       width: 100%;
       height: 100%;
     }
+
+    /* ===== LOADING ===== */
     #loading {
       position: fixed;
       top: 0; left: 0;
@@ -26,19 +121,21 @@
       justify-content: center;
       background: #0a0a1a;
       color: #4488ff;
-      font-family: Arial, sans-serif;
+      font-family: 'Segoe UI', Arial, sans-serif;
       font-size: 24px;
       z-index: 200;
       transition: opacity 0.5s;
     }
     #loading.hidden { opacity: 0; pointer-events: none; }
+
+    /* ===== INSTRUCTIONS ===== */
     #instructions {
       position: fixed;
       bottom: 10px;
       left: 50%;
       transform: translateX(-50%);
       color: rgba(255,255,255,0.4);
-      font-family: Arial, sans-serif;
+      font-family: 'Segoe UI', Arial, sans-serif;
       font-size: 11px;
       text-align: center;
       pointer-events: none;
@@ -47,15 +144,46 @@
   </style>
 </head>
 <body>
-  <div id="loading">Loading Star Flow Command...</div>
-  <canvas id="game-canvas"></canvas>
-  <div id="instructions">
-    Click planet to select &bull; Click target to create route &bull; Click source again to disconnect &bull; Drag to rotate &bull; Shift+Drag to pan &bull; Scroll to zoom &bull; Pinch to zoom (mobile) &bull; Power &gt;15 = 2 routes, &gt;30 = 3 routes
+  <!-- Start Screen -->
+  <div id="start-screen">
+    <div class="content">
+      <h1>STAR FLOW COMMAND</h1>
+      <div class="subtitle">3D Space Strategy</div>
+      <button id="start-btn">START</button>
+    </div>
   </div>
+
+  <!-- Game -->
+  <div id="game-container">
+    <div id="loading">Loading Star Flow Command...</div>
+    <canvas id="game-canvas"></canvas>
+    <div id="instructions">
+      Click planet to select &bull; Click target to create route &bull; Click source again to disconnect &bull; Drag to rotate &bull; Shift+Drag to pan &bull; Scroll to zoom &bull; Pinch to zoom (mobile) &bull; Power &gt;15 = 2 routes, &gt;30 = 3 routes
+    </div>
+  </div>
+
   <script type="module" src="/src/main.ts"></script>
   <script>
-    window.addEventListener('load', () => {
-      setTimeout(() => document.getElementById('loading')?.classList.add('hidden'), 500);
+    // Start screen logic
+    document.getElementById('start-btn')!.addEventListener('click', function () {
+      const startScreen = document.getElementById('start-screen')!;
+      const gameContainer = document.getElementById('game-container')!;
+
+      startScreen.classList.add('fade-out');
+
+      setTimeout(function () {
+        startScreen.style.display = 'none';
+        gameContainer.classList.add('active');
+        // Dispatch custom event for main.ts to pick up
+        window.dispatchEvent(new CustomEvent('game-start'));
+      }, 800);
+    });
+
+    // Hide loading screen once assets are ready
+    window.addEventListener('load', function () {
+      setTimeout(function () {
+        document.getElementById('loading')?.classList.add('hidden');
+      }, 500);
     });
   </script>
 </body>

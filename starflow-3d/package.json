@@ -9,7 +9,8 @@
     "cap:init": "npx cap init starflow-3d com.starflow.game --web-dir dist",
     "cap:add:android": "npx cap add android",
     "cap:sync": "npx cap sync",
-    "cap:open:android": "npx cap open android"
+    "cap:open:android": "npx cap open android",
+    "postcap:sync": "node scripts/setup-android.mjs"
   },
   "dependencies": {
     "three": "^0.169.0"
