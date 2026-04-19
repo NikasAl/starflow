@@ -62,8 +62,6 @@ let mouseDownTime = 0;
 let isPinching = false;
 let pinchStartDistance = 0;
 let pinchStartCamDistance = 0;
-let activeTouches = 0;
-let touchHandledByPinch = false;
 
 // HTML HUD element
 let hudElement: HTMLDivElement;
@@ -303,7 +301,7 @@ function addPlanetLabel(planet: PlanetData): void {
   texture.minFilter = THREE.LinearFilter;
 
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: texture, transparent: true, depthTest: false,
+    map: texture, transparent: true, depthTest: true, depthWrite: false,
   }));
   sprite.scale.set(7, 3, 1);
   sprite.position.set(planet.x, planet.y + planet.radius + 1.5, planet.z);
@@ -531,11 +529,8 @@ function onResize(): void {
 // ============================================================
 
 function onPointerDown(e: PointerEvent): void {
-  // Skip if touch is being handled by pinch gesture
-  if (touchHandledByPinch && e.pointerType === 'touch') {
-    touchHandledByPinch = false;
-    return;
-  }
+  // Block all pointer events while pinch gesture is active
+  if (isPinching) return;
   isDragging = false;
   dragStartX = e.clientX; dragStartY = e.clientY;
   dragStartTheta = camState.theta; dragStartPhi = camState.phi;
@@ -544,6 +539,8 @@ function onPointerDown(e: PointerEvent): void {
 }
 
 function onPointerMove(e: PointerEvent): void {
+  // Block all pointer moves while pinch gesture is active
+  if (isPinching) return;
   const dx = e.clientX - dragStartX;
   const dy = e.clientY - dragStartY;
   if (Math.abs(dx) > 3 || Math.abs(dy) > 3) isDragging = true;
@@ -563,7 +560,9 @@ function onPointerMove(e: PointerEvent): void {
 }
 
 function onPointerUp(e: PointerEvent): void {
-  if (!isDragging && performance.now() - mouseDownTime < 300 && !touchHandledByPinch) handleClick(e);
+  // Block clicks after pinch gesture
+  if (isPinching) return;
+  if (!isDragging && performance.now() - mouseDownTime < 300) handleClick(e);
   isDragging = false;
 }
 
@@ -602,12 +601,9 @@ function getTouchDistance(t1: Touch, t2: Touch): number {
 }
 
 function onTouchStart(e: TouchEvent): void {
-  activeTouches = e.touches.length;
-
   if (e.touches.length === 2) {
     e.preventDefault();
     isPinching = true;
-    touchHandledByPinch = true;
     pinchStartDistance = getTouchDistance(e.touches[0], e.touches[1]);
     pinchStartCamDistance = camState.distance;
     // Stop any pointer-based drag
@@ -618,7 +614,6 @@ function onTouchStart(e: TouchEvent): void {
 function onTouchMove(e: TouchEvent): void {
   if (e.touches.length === 2 && isPinching) {
     e.preventDefault();
-    touchHandledByPinch = true;
     const currentDist = getTouchDistance(e.touches[0], e.touches[1]);
     const scale = pinchStartDistance / currentDist;
     camState.distance = Math.max(
@@ -630,7 +625,6 @@ function onTouchMove(e: TouchEvent): void {
 }
 
 function onTouchEnd(e: TouchEvent): void {
-  activeTouches = e.touches.length;
   if (e.touches.length < 2) {
     isPinching = false;
   }
