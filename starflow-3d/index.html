@@ -85,6 +85,7 @@
       cursor: pointer;
       box-shadow: 0 0 20px rgba(68, 136, 255, 0.4), 0 4px 15px rgba(0, 0, 0, 0.5);
       transition: all 0.3s ease;
+      touch-action: manipulation;
       -webkit-tap-highlight-color: transparent;
     }
     #start-btn:hover {
@@ -163,28 +164,5 @@
   </div>
 
   <script type="module" src="/src/main.ts"></script>
-  <script>
-    // Start screen logic
-    document.getElementById('start-btn')!.addEventListener('click', function () {
-      const startScreen = document.getElementById('start-screen')!;
-      const gameContainer = document.getElementById('game-container')!;
-
-      startScreen.classList.add('fade-out');
-
-      setTimeout(function () {
-        startScreen.style.display = 'none';
-        gameContainer.classList.add('active');
-        // Dispatch custom event for main.ts to pick up
-        window.dispatchEvent(new CustomEvent('game-start'));
-      }, 800);
-    });
-
-    // Hide loading screen once assets are ready
-    window.addEventListener('load', function () {
-      setTimeout(function () {
-        document.getElementById('loading')?.classList.add('hidden');
-      }, 500);
-    });
-  </script>
 </body>
 </html>
