@@ -5,7 +5,7 @@
 // hides status bar / navigation bar / camera notch, copies icon
 // ============================================================
 
-import { readFileSync, writeFileSync, existsSync, copyFileSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, copyFileSync, rmSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -47,6 +47,30 @@ if (existsSync(iconSource)) {
   const mipmapDirs = ['mipmap-mdpi', 'mipmap-hdpi', 'mipmap-xhdpi', 'mipmap-xxhdpi', 'mipmap-xxxhdpi'];
   const resDir = join(androidDir, 'app', 'src', 'main', 'res');
 
+  // Delete adaptive icon XMLs (mipmap-anydpi-v26) so system falls back to our PNGs
+  const anydpiDir = join(resDir, 'mipmap-anydpi-v26');
+  if (existsSync(anydpiDir)) {
+    const files = readdirSync(anydpiDir);
+    for (const f of files) {
+      if (f.startsWith('ic_launcher') && f.endsWith('.xml')) {
+        rmSync(join(anydpiDir, f));
+        console.log(`[setup-android] Removed adaptive icon XML: mipmap-anydpi-v26/${f}`);
+      }
+    }
+    // Also remove foreground/background adaptive icon drawables
+    for (const dir of mipmapDirs) {
+      const td = join(resDir, dir);
+      if (existsSync(td)) {
+        for (const f of readdirSync(td)) {
+          if (f.startsWith('ic_launcher_foreground') || f.startsWith('ic_launcher_background')) {
+            rmSync(join(td, f));
+            console.log(`[setup-android] Removed ${dir}/${f}`);
+          }
+        }
+      }
+    }
+  }
+
   for (const dir of mipmapDirs) {
     const targetDir = join(resDir, dir);
     if (existsSync(targetDir)) {
@@ -75,11 +99,18 @@ if (existsSync(stylesPath)) {
     modified = true;
   }
 
-  // Ensure windowFullscreen is set
+  // Ensure windowFullscreen is set + black window background (fixes gray cutout/notch area)
   if (!styles.includes('windowFullscreen')) {
     styles = styles.replace(
       '</style>',
-      '        <item name="android:windowFullscreen">true</item>\n        <item name="android:windowNoTitle">true</item>\n        <item name="android:screenOrientation">landscape</item>\n    </style>'
+      '        <item name="android:windowFullscreen">true</item>\n        <item name="android:windowNoTitle">true</item>\n        <item name="android:screenOrientation">landscape</item>\n        <item name="android:windowBackground">#000000</item>\n    </style>'
+    );
+    modified = true;
+  } else if (!styles.includes('windowBackground')) {
+    // Already has windowFullscreen but missing windowBackground
+    styles = styles.replace(
+      '</style>',
+      '        <item name="android:windowBackground">#000000</item>\n    </style>'
     );
     modified = true;
   }
@@ -126,8 +157,8 @@ if (existsSync(mainActivityPath)) {
     const immersiveSetup = `
         // StarFlow: Edge-to-edge fullscreen immersive mode
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
-        getWindow().setStatusBarColor(0x00000000);
-        getWindow().setNavigationBarColor(0x00000000);
+        getWindow().setStatusBarColor(0xFF000000);
+        getWindow().setNavigationBarColor(0xFF000000);
         hideSystemBars();
 
         // Handle display cutout (camera notch / punch-hole)
@@ -148,7 +179,7 @@ if (existsSync(mainActivityPath)) {
     private void hideSystemBars() {
         WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
         if (controller != null) {
-            controller.hide(WindowInsetsCompat.Type.systemBars());
+            controller.hide(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
             controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
         }
     }
