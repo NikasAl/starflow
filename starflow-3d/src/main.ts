@@ -9,8 +9,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const startScreen = document.getElementById('start-screen');
   const gameContainer = document.getElementById('game-container');
 
+  function requestFullscreen(): void {
+    const el = document.documentElement as any;
+    if (el.requestFullscreen) {
+      el.requestFullscreen().catch(() => {});
+    } else if (el.webkitRequestFullscreen) {
+      el.webkitRequestFullscreen();
+    } else if (el.msRequestFullscreen) {
+      el.msRequestFullscreen();
+    }
+  }
+
   function launchGame(): void {
     if (!gameContainer || !startScreen) return;
+
+    // Request fullscreen (works in WebView and browser)
+    requestFullscreen();
 
     // Remove start screen
     startScreen.classList.add('fade-out');

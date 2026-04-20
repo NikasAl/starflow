@@ -62,6 +62,9 @@ let mouseDownTime = 0;
 let isPinching = false;
 let pinchStartDistance = 0;
 let pinchStartCamDistance = 0;
+// After pinch ends (2->1 finger), suppress pointer events
+// until all fingers are lifted to prevent camera jump
+let suppressPointerUntilRelease = false;
 
 // HTML HUD element
 let hudElement: HTMLDivElement;
@@ -530,7 +533,8 @@ function onResize(): void {
 
 function onPointerDown(e: PointerEvent): void {
   // Block all pointer events while pinch gesture is active
-  if (isPinching) return;
+  // or during post-pinch suppression
+  if (isPinching || suppressPointerUntilRelease) return;
   isDragging = false;
   dragStartX = e.clientX; dragStartY = e.clientY;
   dragStartTheta = camState.theta; dragStartPhi = camState.phi;
@@ -540,7 +544,8 @@ function onPointerDown(e: PointerEvent): void {
 
 function onPointerMove(e: PointerEvent): void {
   // Block all pointer moves while pinch gesture is active
-  if (isPinching) return;
+  // or during post-pinch suppression
+  if (isPinching || suppressPointerUntilRelease) return;
   const dx = e.clientX - dragStartX;
   const dy = e.clientY - dragStartY;
   if (Math.abs(dx) > 3 || Math.abs(dy) > 3) isDragging = true;
@@ -560,8 +565,8 @@ function onPointerMove(e: PointerEvent): void {
 }
 
 function onPointerUp(e: PointerEvent): void {
-  // Block clicks after pinch gesture
-  if (isPinching) return;
+  // Block clicks during/after pinch gesture
+  if (isPinching || suppressPointerUntilRelease) return;
   if (!isDragging && performance.now() - mouseDownTime < 300) handleClick(e);
   isDragging = false;
 }
@@ -625,8 +630,15 @@ function onTouchMove(e: TouchEvent): void {
 }
 
 function onTouchEnd(e: TouchEvent): void {
-  if (e.touches.length < 2) {
+  if (e.touches.length === 0) {
+    // All fingers lifted — fully end pinch + clear suppression
     isPinching = false;
+    suppressPointerUntilRelease = false;
+  } else if (e.touches.length < 2) {
+    // Went from 2+ fingers to 1 — end pinch but suppress pointer
+    // events until the last finger is also lifted
+    isPinching = false;
+    suppressPointerUntilRelease = true;
   }
 }
 
