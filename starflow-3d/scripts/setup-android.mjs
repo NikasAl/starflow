@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // ============================================================
 // Star Flow Command — Android Post-Sync Setup
-// Forces landscape orientation and copies app icon
+// Forces landscape orientation, fullscreen immersive mode,
+// hides status bar / navigation bar / camera notch, copies icon
 // ============================================================
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, copyFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -27,7 +28,6 @@ if (existsSync(manifestPath)) {
       '<application',
       '<application android:screenOrientation="landscape"'
     );
-    // Also set it on the activity
     manifest = manifest.replace(
       '<activity',
       '<activity android:screenOrientation="landscape"'
@@ -60,53 +60,146 @@ if (existsSync(iconSource)) {
   console.log(`[setup-android] Icon not found at ${iconSource}`);
 }
 
-// 3. Set fullscreen + landscape in styles.xml
+// 3. Set fullscreen + landscape + NoActionBar in styles.xml
 const stylesPath = join(androidDir, 'app', 'src', 'main', 'res', 'values', 'styles.xml');
 if (existsSync(stylesPath)) {
   let styles = readFileSync(stylesPath, 'utf-8');
-  if (!styles.includes('screenOrientation')) {
-    styles = styles.replace(
-      '<item name="android:windowFullscreen">true</item>',
-      '<item name="android:windowFullscreen">true</item>\n        <item name="android:screenOrientation">landscape</item>'
-    );
-    writeFileSync(stylesPath, styles, 'utf-8');
-    console.log('[setup-android] Set landscape orientation in styles.xml');
-  }
-  // Ensure noTitleBar and fullscreen
-  if (!styles.includes('windowNoTitle')) {
+  let modified = false;
+
+  // Ensure NoActionBar parent theme
+  if (!styles.includes('Theme.AppCompat.NoActionBar') && !styles.includes('windowNoTitle')) {
     styles = styles.replace(
       '<style name="AppTheme"',
       '<style name="AppTheme" parent="Theme.AppCompat.NoActionBar"'
     );
+    modified = true;
+  }
+
+  // Ensure windowFullscreen is set
+  if (!styles.includes('windowFullscreen')) {
+    styles = styles.replace(
+      '</style>',
+      '        <item name="android:windowFullscreen">true</item>\n        <item name="android:windowNoTitle">true</item>\n        <item name="android:screenOrientation">landscape</item>\n    </style>'
+    );
+    modified = true;
+  }
+
+  if (modified) {
     writeFileSync(stylesPath, styles, 'utf-8');
-    console.log('[setup-android] Set NoActionBar theme in styles.xml');
+    console.log('[setup-android] Updated styles.xml with fullscreen + landscape + NoActionBar');
+  } else {
+    console.log('[setup-android] styles.xml already configured.');
   }
 }
 
-// 4. Force immersive sticky mode in main activity (hide status/nav bars)
+// 4. Inject fullscreen immersive mode into MainActivity.java
+//    Uses modern WindowInsetsControllerCompat (not deprecated SYSTEM_UI_FLAG)
 const mainActivityPath = join(androidDir, 'app', 'src', 'main', 'java', 'com', 'starflow', 'game', 'MainActivity.java');
 if (existsSync(mainActivityPath)) {
   let activity = readFileSync(mainActivityPath, 'utf-8');
-  if (!activity.includes('SYSTEM_UI_FLAG_IMMERSIVE_STICKY')) {
-    // Add immersive mode import
-    if (!activity.includes('import android.view.View;')) {
+
+  // Skip if immersive mode is already properly injected
+  if (activity.includes('hideSystemBars')) {
+    console.log('[setup-android] Immersive mode already set in MainActivity.java');
+  } else {
+    // ---- Add required imports ----
+    const requiredImports = [
+      ['import android.os.Build;', 'import android.os.Bundle;'],
+      ['import android.view.View;', 'import android.view.View;'],
+      ['import androidx.core.view.WindowCompat;', 'import androidx.core.view.WindowCompat;'],
+      ['import androidx.core.view.WindowInsetsCompat;', 'import androidx.core.view.WindowInsetsCompat;'],
+      ['import androidx.core.view.WindowInsetsControllerCompat;', 'import androidx.core.view.WindowInsetsControllerCompat;'],
+    ];
+    for (const [imp, anchor] of requiredImports) {
+      if (!activity.includes(imp) && activity.includes(anchor)) {
+        activity = activity.replace(anchor, imp + '\n' + anchor);
+      } else if (!activity.includes(imp) && activity.includes('import com.getcapacitor.BridgeActivity;')) {
+        // If anchor not found, insert before BridgeActivity import
+        activity = activity.replace(
+          'import com.getcapacitor.BridgeActivity;',
+          imp + '\nimport com.getcapacitor.BridgeActivity;'
+        );
+      }
+    }
+
+    // ---- Add immersive mode code after super.onCreate(savedInstanceState); ----
+    const immersiveSetup = `
+        // StarFlow: Edge-to-edge fullscreen immersive mode
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        getWindow().setStatusBarColor(0x00000000);
+        getWindow().setNavigationBarColor(0x00000000);
+        hideSystemBars();
+
+        // Handle display cutout (camera notch / punch-hole)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            getWindow().getAttributes().layoutInDisplayCutoutMode =
+                android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+        }`;
+
+    if (activity.includes('super.onCreate(savedInstanceState);')) {
       activity = activity.replace(
-        'import android.os.Bundle;',
-        'import android.os.Bundle;\nimport android.view.View;'
+        'super.onCreate(savedInstanceState);',
+        'super.onCreate(savedInstanceState);' + immersiveSetup
       );
     }
-    // Add immersive mode in onCreate after setContentView
-    activity = activity.replace(
-      'this.getWindow();',
-      'this.getWindow();\n\n        // Fullscreen immersive mode — hide status bar & navigation\n        getWindow().getDecorView().setSystemUiVisibility(\n            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY\n            | View.SYSTEM_UI_FLAG_FULLSCREEN\n            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION\n            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE\n            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN\n            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION\n        );'
-    );
+
+    // ---- Add hideSystemBars(), onWindowFocusChanged(), onResume() before class closing brace ----
+    const immersiveMethods = `
+    private void hideSystemBars() {
+        WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        if (controller != null) {
+            controller.hide(WindowInsetsCompat.Type.systemBars());
+            controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        }
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) {
+            hideSystemBars();
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Re-apply immersive mode after returning from background
+        hideSystemBars();
+    }`;
+
+    // Insert before the last closing brace of the file (class closing brace)
+    activity = activity.replace(/(\s*})\s*$/, immersiveMethods + '\n$1');
+
     writeFileSync(mainActivityPath, activity, 'utf-8');
-    console.log('[setup-android] Added immersive sticky mode to MainActivity.java');
-  } else {
-    console.log('[setup-android] Immersive mode already set in MainActivity.java');
+    console.log('[setup-android] Added immersive fullscreen mode to MainActivity.java');
   }
 } else {
   console.log(`[setup-android] MainActivity.java not found at ${mainActivityPath}`);
+}
+
+// 5. Ensure androidx.core dependency is available for WindowInsetsControllerCompat
+const variablesPath = join(androidDir, 'variables.gradle');
+if (existsSync(variablesPath)) {
+  let vars = readFileSync(variablesPath, 'utf-8');
+  if (!vars.includes('androidxCoreVersion')) {
+    vars = vars.replace(
+      'ext {',
+      'ext {\n    androidxCoreVersion = "1.12.0"'
+    );
+    writeFileSync(variablesPath, 'utf-8');
+    console.log('[setup-android] Added androidxCoreVersion to variables.gradle');
+  } else if (vars.includes('androidxCoreVersion = "1.6.0"') || vars.includes('androidxCoreVersion = "1.9.0"') || vars.includes('androidxCoreVersion = "1.10.0"')) {
+    // Upgrade to minimum version required for WindowInsetsControllerCompat
+    vars = vars.replace(
+      /androidxCoreVersion\s*=\s*"[^"]*"/,
+      'androidxCoreVersion = "1.12.0"'
+    );
+    writeFileSync(variablesPath, vars, 'utf-8');
+    console.log('[setup-android] Upgraded androidxCoreVersion to 1.12.0 in variables.gradle');
+  } else {
+    console.log('[setup-android] variables.gradle already has suitable androidxCoreVersion.');
+  }
 }
 
 console.log('[setup-android] Android setup complete!');
