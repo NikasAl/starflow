@@ -11,10 +11,10 @@
     "cap:sync": "npx cap sync",
     "cap:open:android": "npx cap open android",
     "postcap:sync": "node scripts/setup-android.mjs",
-    "deploy": "npm run build && npm run cap:sync && cd android && bash gradlew assembleDebug && cd .. && adb install -r android/app/build/outputs/apk/debug/app-debug.apk",
+    "deploy": "npm run build && npm run cap:sync && cd android && gradle assembleDebug && cd .. && adb install -r android/app/build/outputs/apk/debug/app-debug.apk",
     "deploy:fast": "adb install -r android/app/build/outputs/apk/debug/app-debug.apk",
-    "android:debug": "cd android && bash gradlew assembleDebug && cd .. && adb install -r android/app/build/outputs/apk/debug/app-debug.apk",
-    "android:release": "cd android && bash gradlew assembleRelease && cd .. && adb install -r android/app/build/outputs/apk/release/app-release.apk",
+    "android:debug": "cd android && bash gradle assembleDebug && cd .. && adb install -r android/app/build/outputs/apk/debug/app-debug.apk",
+    "android:release": "cd android && bash gradle assembleRelease && cd .. && adb install -r android/app/build/outputs/apk/release/app-release.apk",
     "android:log": "adb logcat -s Capacitor chromium System.out"
   },
   "dependencies": {
