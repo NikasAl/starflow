@@ -193,7 +193,7 @@ if (existsSync(mainActivityPath)) {
     }
 
     @Override
-    protected void onResume() {
+    public void onResume() {
         super.onResume();
         // Re-apply immersive mode after returning from background
         hideSystemBars();
