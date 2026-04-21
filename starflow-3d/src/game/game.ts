@@ -19,10 +19,12 @@ import {
   setPlanetClickCallback,
   setLevelCompleteCallback,
   setGameOverCallback,
+  setRestartLevelCallback,
   removeOverlay,
   dispose,
   addStar,
   addExplosion,
+  recreateMenuButton,
 } from '../rendering/renderer';
 import { saveGame, loadGame, clearSave, type SaveData } from '../core/save';
 
@@ -103,7 +105,12 @@ function initGameScene(canvas: HTMLCanvasElement): void {
   });
 
   setGameOverCallback(() => {
-    // Retry same level
+    // Retry same level (from overlay)
+    goToLevel(currentLevel);
+  });
+
+  setRestartLevelCallback(() => {
+    // Restart from menu button (during gameplay)
     goToLevel(currentLevel);
   });
 
@@ -137,6 +144,9 @@ function goToLevel(level: number): void {
   for (const planet of gameState.planets) {
     addPlanet(planet);
   }
+
+  // Recreate menu button (removed by resetScene)
+  recreateMenuButton();
 
   // Save on level change
   saveGame(gameState, aiStates);

@@ -98,9 +98,22 @@ let overlayElement: HTMLDivElement | null = null;
 let onPlanetClick: ((planetId: string) => void) | null = null;
 let onLevelComplete: (() => void) | null = null;
 let onGameOver: (() => void) | null = null;
+let onRestartLevel: (() => void) | null = null;
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
+
+// HUD visibility toggle
+let hudVisible = true;
+let menuOpen = false;
+let menuElement: HTMLDivElement | null = null;
+let menuButtonElement: HTMLButtonElement | null = null;
+
+// Camera orbit on win/lose
+let isOrbiting = false;
+let orbitAngle = 0;
+let orbitCenter = { x: 0, z: 0 };
+const ORBIT_SPEED = 0.15; // radians per second
 
 // ============================================================
 // Init
@@ -189,6 +202,123 @@ function createHTMLHUD(): void {
     user-select: none;
   `;
   document.body.appendChild(hudElement);
+
+  createMenuButton();
+}
+
+// ============================================================
+// Three-dot menu (top-right corner)
+// ============================================================
+
+function createMenuButton(): void {
+  menuButtonElement = document.createElement('button');
+  menuButtonElement.id = 'menu-btn';
+  menuButtonElement.innerHTML = '&#8943;';
+  menuButtonElement.style.cssText = `
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 150;
+    width: 44px;
+    height: 44px;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 10px;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(4px);
+    color: #fff;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+    padding: 0;
+  `;
+  document.body.appendChild(menuButtonElement);
+
+  menuButtonElement.addEventListener('click', toggleMenu);
+  menuButtonElement.addEventListener('touchend', (e) => { e.preventDefault(); toggleMenu(); });
+}
+
+function toggleMenu(): void {
+  menuOpen = !menuOpen;
+  if (menuOpen) {
+    showMenu();
+  } else {
+    hideMenu();
+  }
+}
+
+function showMenu(): void {
+  hideMenu(); // clean up first
+
+  menuElement = document.createElement('div');
+  menuElement.id = 'game-menu';
+  menuElement.style.cssText = `
+    position: fixed;
+    top: 62px;
+    right: 12px;
+    z-index: 150;
+    min-width: 180px;
+    background: rgba(10,10,30,0.9);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px;
+    padding: 6px 0;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: #fff;
+    animation: fadeIn 0.15s ease;
+  `;
+
+  const toggleLabel = hudVisible ? 'Hide Help' : 'Show Help';
+  const items = [
+    { label: toggleLabel, id: 'menu-toggle-help' },
+    { label: 'Restart Level', id: 'menu-restart' },
+  ];
+
+  for (const item of items) {
+    const row = document.createElement('div');
+    row.id = item.id;
+    row.textContent = item.label;
+    row.style.cssText = `
+      padding: 10px 18px;
+      cursor: pointer;
+      font-size: 14px;
+      letter-spacing: 0.5px;
+      color: rgba(255,255,255,0.85);
+      transition: background 0.15s;
+    `;
+    row.addEventListener('mouseenter', () => { row.style.background = 'rgba(255,255,255,0.08)'; });
+    row.addEventListener('mouseleave', () => { row.style.background = 'transparent'; });
+    row.addEventListener('click', () => handleMenuItem(item.id));
+    row.addEventListener('touchend', (e) => { e.preventDefault(); handleMenuItem(item.id); });
+    menuElement.appendChild(row);
+  }
+
+  document.body.appendChild(menuElement);
+}
+
+function hideMenu(): void {
+  if (menuElement && menuElement.parentNode) {
+    menuElement.parentNode.removeChild(menuElement);
+    menuElement = null;
+  }
+  menuOpen = false;
+}
+
+function handleMenuItem(itemId: string): void {
+  hideMenu();
+
+  if (itemId === 'menu-toggle-help') {
+    hudVisible = !hudVisible;
+    hudElement.style.display = hudVisible ? '' : 'none';
+    const instructions = document.getElementById('instructions');
+    if (instructions) instructions.style.display = hudVisible ? '' : 'none';
+  } else if (itemId === 'menu-restart') {
+    if (onRestartLevel) onRestartLevel();
+  }
 }
 
 function updateHTMLHUD(state: GameState): void {
@@ -902,7 +1032,8 @@ function onResize(): void {
 // ============================================================
 
 function onPointerDown(e: PointerEvent): void {
-  if (isPinching || suppressPointerUntilRelease) return;
+  if (isOrbiting || isPinching || suppressPointerUntilRelease) return;
+  hideMenu();
   isDragging = false;
   dragStartX = e.clientX; dragStartY = e.clientY;
   dragStartTheta = camState.theta; dragStartPhi = camState.phi;
@@ -911,7 +1042,7 @@ function onPointerDown(e: PointerEvent): void {
 }
 
 function onPointerMove(e: PointerEvent): void {
-  if (isPinching || suppressPointerUntilRelease) return;
+  if (isOrbiting || isPinching || suppressPointerUntilRelease) return;
   const dx = e.clientX - dragStartX;
   const dy = e.clientY - dragStartY;
   if (Math.abs(dx) > 3 || Math.abs(dy) > 3) isDragging = true;
@@ -931,7 +1062,7 @@ function onPointerMove(e: PointerEvent): void {
 }
 
 function onPointerUp(e: PointerEvent): void {
-  if (isPinching || suppressPointerUntilRelease) return;
+  if (isOrbiting || isPinching || suppressPointerUntilRelease) return;
   if (!isDragging && performance.now() - mouseDownTime < 300) handleClick(e);
   isDragging = false;
 }
@@ -1035,6 +1166,7 @@ function updateCameraFly(dt: number): void {
 }
 
 function onWheel(e: WheelEvent): void {
+  if (isOrbiting) return;
   e.preventDefault();
   camState.distance *= 1 + e.deltaY * 0.001 * CAM_ZOOM_SPEED;
   camState.distance = Math.max(CAM_MIN_DISTANCE, Math.min(CAM_MAX_DISTANCE, camState.distance));
@@ -1084,9 +1216,15 @@ function onTouchEnd(e: TouchEvent): void {
   }
 }
 
+/** Recreate the menu button after a scene reset */
+export function recreateMenuButton(): void {
+  createMenuButton();
+}
+
 export function setPlanetClickCallback(cb: (planetId: string) => void): void { onPlanetClick = cb; }
 export function setLevelCompleteCallback(cb: () => void): void { onLevelComplete = cb; }
 export function setGameOverCallback(cb: () => void): void { onGameOver = cb; }
+export function setRestartLevelCallback(cb: () => void): void { onRestartLevel = cb; }
 export function getCameraState(): CameraState { return { ...camState }; }
 
 // ============================================================
@@ -1201,6 +1339,23 @@ export function resetScene(): void {
   cameraFlyStart = null;
   cameraFlyProgress = 0;
   missCount = 0;
+
+  // Reset orbit state
+  isOrbiting = false;
+  orbitAngle = 0;
+
+  // Remove menu
+  hideMenu();
+  if (menuButtonElement && menuButtonElement.parentNode) {
+    menuButtonElement.parentNode.removeChild(menuButtonElement);
+    menuButtonElement = null;
+  }
+
+  // Reset HUD visibility
+  hudVisible = true;
+
+  // Reset phase tracker
+  lastPhase = 'playing';
 }
 
 // ============================================================
@@ -1209,9 +1364,56 @@ export function resetScene(): void {
 
 let lastPhase: string = 'playing';
 
+// ============================================================
+// Camera Orbit (cinematic fly-around on win/lose)
+// ============================================================
+
+function startOrbit(planets: PlanetData[]): void {
+  isOrbiting = true;
+  orbitAngle = camState.theta; // start from current angle
+
+  // Calculate center of all planets
+  if (planets.length > 0) {
+    let cx = 0, cz = 0;
+    for (const p of planets) { cx += p.x; cz += p.z; }
+    orbitCenter.x = cx / planets.length;
+    orbitCenter.z = cz / planets.length;
+  }
+}
+
+function updateOrbit(dt: number, time: number): void {
+  if (!isOrbiting) return;
+
+  orbitAngle += ORBIT_SPEED * dt;
+
+  // Smoothly aim camera at orbit center
+  camState.targetX += (orbitCenter.x - camState.targetX) * 0.02;
+  camState.targetZ += (orbitCenter.z - camState.targetZ) * 0.02;
+
+  // Slowly rotate around
+  camState.theta = orbitAngle;
+  // Gentle phi oscillation for cinematic feel
+  camState.phi = CAM_DEFAULT_PHI + Math.sin(time * 0.3) * 0.08;
+
+  // Zoom out a bit for overview
+  const targetDist = CAM_DEFAULT_DISTANCE * 1.1;
+  camState.distance += (targetDist - camState.distance) * 0.01;
+
+  updateCamera();
+}
+
+function stopOrbit(): void {
+  isOrbiting = false;
+}
+
 export function syncVisuals(state: GameState, time: number, dt: number = 0): void {
   // Update camera fly-forward animation
   updateCameraFly(dt);
+
+  // Orbit camera on win/lose
+  if (isOrbiting) {
+    updateOrbit(dt, time);
+  }
 
   for (const planet of state.planets) updatePlanet(planet);
 
@@ -1227,10 +1429,11 @@ export function syncVisuals(state: GameState, time: number, dt: number = 0): voi
 
   updateHTMLHUD(state);
 
-  // Show overlay when phase changes
+  // Show overlay when phase changes + start cinematic orbit
   if (state.phase !== lastPhase) {
     lastPhase = state.phase;
     if (state.phase === 'won' || state.phase === 'lost') {
+      startOrbit(state.planets);
       showOverlay(state);
     }
   }
@@ -1243,5 +1446,10 @@ export function getRenderer(): THREE.WebGLRenderer { return renderer; }
 export function dispose(): void {
   renderer.dispose();
   if (hudElement && hudElement.parentNode) hudElement.parentNode.removeChild(hudElement);
+  hideMenu();
+  if (menuButtonElement && menuButtonElement.parentNode) {
+    menuButtonElement.parentNode.removeChild(menuButtonElement);
+    menuButtonElement = null;
+  }
   removeOverlay();
 }
