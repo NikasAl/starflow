@@ -2,47 +2,158 @@
 // Star Flow Command — Game Constants
 // ============================================================
 
-/** World bounds */
-export const WORLD_SIZE = 80;
+// ---- Planet Size Configurations ----
 
-/** Minimum distance between planet centers */
-export const PLANET_MIN_DISTANCE = 18;
+import {
+  type PlanetSizeType,
+  type PlanetSizeConfig,
+  type LevelConfig,
+} from './types';
 
-/** Height (Y-axis) variation range for planets */
-export const PLANET_HEIGHT_MIN = -10;
-export const PLANET_HEIGHT_MAX = 10;
-
-/** Planet visual radii by tier */
-export const PLANET_RADII: Record<1 | 2 | 3, number> = {
-  1: 1.2,
-  2: 1.8,
-  3: 2.5,
+export const PLANET_SIZES: Record<PlanetSizeType, PlanetSizeConfig> = {
+  dwarf:      { radius: 0.6,  missileStrength: 1, growthMultiplier: 1.3,  defenseMultiplier: 0.6,  weight: 12 },
+  small:      { radius: 1.0,  missileStrength: 1, growthMultiplier: 1.15, defenseMultiplier: 0.8,  weight: 18 },
+  medium:     { radius: 1.6,  missileStrength: 1, growthMultiplier: 1.0,   defenseMultiplier: 1.0,  weight: 30 },
+  large:      { radius: 2.4,  missileStrength: 1, growthMultiplier: 0.9,   defenseMultiplier: 1.3,  weight: 22 },
+  giant:      { radius: 3.5,  missileStrength: 2, growthMultiplier: 0.7,   defenseMultiplier: 1.8,  weight: 14 },
+  supergiant: { radius: 5.0,  missileStrength: 2, growthMultiplier: 0.5,   defenseMultiplier: 2.5,  weight: 4  },
 };
 
-/** How many planets on the map */
-export const PLANET_COUNT = 12;
+/** Random planet size with weighted probability */
+export function randomPlanetSizeType(): PlanetSizeType {
+  const entries = Object.entries(PLANET_SIZES) as [PlanetSizeType, PlanetSizeConfig][];
+  const totalWeight = entries.reduce((s, [, c]) => s + c.weight, 0);
+  let r = Math.random() * totalWeight;
+  for (const [type, config] of entries) {
+    r -= config.weight;
+    if (r <= 0) return type;
+  }
+  return 'medium';
+}
 
-/** Starting power on owned planets */
-export const STARTING_POWER = 15;
+/** Get missile strength for a planet size */
+export function getMissileStrengthForSize(sizeType: PlanetSizeType): 1 | 2 {
+  return PLANET_SIZES[sizeType].missileStrength;
+}
 
-/** Starting power range on neutral planets */
-export const NEUTRAL_POWER_MIN = 5;
-export const NEUTRAL_POWER_MAX = 10;
+/** Get growth rate multiplier for a planet size */
+export function getGrowthMultiplier(sizeType: PlanetSizeType): number {
+  return PLANET_SIZES[sizeType].growthMultiplier;
+}
+
+// ---- Level Configurations ----
+
+export const LEVELS: LevelConfig[] = [
+  {
+    level: 1, name: 'First Contact',
+    planetCount: 4, aiCount: 1,
+    heightRange: [-2, 2], worldSize: 50,
+    aiThinkInterval: 3.5,
+    neutralPowerMin: 3, neutralPowerMax: 6,
+    planetMinDistance: 14,
+  },
+  {
+    level: 2, name: 'Expanding Borders',
+    planetCount: 6, aiCount: 1,
+    heightRange: [-5, 5], worldSize: 55,
+    aiThinkInterval: 3.0,
+    neutralPowerMin: 4, neutralPowerMax: 8,
+    planetMinDistance: 15,
+  },
+  {
+    level: 3, name: 'Rising Tensions',
+    planetCount: 8, aiCount: 1,
+    heightRange: [-8, 8], worldSize: 60,
+    aiThinkInterval: 2.8,
+    neutralPowerMin: 5, neutralPowerMax: 10,
+    planetMinDistance: 16,
+  },
+  {
+    level: 4, name: 'Two Front War',
+    planetCount: 10, aiCount: 2,
+    heightRange: [-10, 10], worldSize: 70,
+    aiThinkInterval: 2.5,
+    neutralPowerMin: 6, neutralPowerMax: 12,
+    planetMinDistance: 17,
+  },
+  {
+    level: 5, name: 'Galactic Conflict',
+    planetCount: 12, aiCount: 2,
+    heightRange: [-12, 12], worldSize: 80,
+    aiThinkInterval: 2.2,
+    neutralPowerMin: 7, neutralPowerMax: 14,
+    planetMinDistance: 18,
+  },
+  {
+    level: 6, name: 'Deep Space',
+    planetCount: 14, aiCount: 2,
+    heightRange: [-14, 14], worldSize: 85,
+    aiThinkInterval: 2.0,
+    neutralPowerMin: 8, neutralPowerMax: 16,
+    planetMinDistance: 18,
+  },
+  {
+    level: 7, name: 'Supernova',
+    planetCount: 16, aiCount: 3,
+    heightRange: [-15, 15], worldSize: 90,
+    aiThinkInterval: 1.8,
+    neutralPowerMin: 9, neutralPowerMax: 18,
+    planetMinDistance: 19,
+  },
+  {
+    level: 8, name: 'Endgame',
+    planetCount: 18, aiCount: 3,
+    heightRange: [-15, 15], worldSize: 100,
+    aiThinkInterval: 1.5,
+    neutralPowerMin: 10, neutralPowerMax: 20,
+    planetMinDistance: 20,
+  },
+];
+
+/** Get level config — generates endless scaling levels beyond defined ones */
+export function getLevelConfig(level: number): LevelConfig {
+  if (level >= 1 && level <= LEVELS.length) return { ...LEVELS[level - 1] };
+
+  const base = LEVELS[LEVELS.length - 1];
+  const extra = level - LEVELS.length;
+  return {
+    ...base,
+    level,
+    name: `Infinite ${extra}`,
+    planetCount: Math.min(24, base.planetCount + extra * 2),
+    aiCount: Math.min(4, base.aiCount + Math.floor(extra / 3)),
+    heightRange: [-15, 15] as [number, number],
+    worldSize: Math.min(120, base.worldSize + extra * 3),
+    aiThinkInterval: Math.max(1.0, base.aiThinkInterval - extra * 0.1),
+    neutralPowerMin: Math.min(30, base.neutralPowerMin + extra),
+    neutralPowerMax: Math.min(50, base.neutralPowerMax + extra * 2),
+    planetMinDistance: Math.min(22, base.planetMinDistance + extra * 0.3),
+  };
+}
+
+// ---- World bounds (defaults, overridden by level config) ----
+
+export const WORLD_SIZE = 80;
 
 // ---- Power system ----
 
 /** Planet auto-grows power up to this cap */
 export const PLANET_MAX_AUTO_POWER = 10;
 
-/** Power growth per second for owned planets (adjustable) */
+/** Base power growth per second for owned planets */
 export const PLANET_POWER_GROWTH_RATE = 1.0;
+
+/** Starting power on owned planets */
+export const STARTING_POWER = 15;
+
+// ---- Missile ----
 
 /** Missile speed — world units per second */
 export const MISSILE_SPEED = 20;
 
 // ---- Route system ----
 
-/** How often a route sends a missile (seconds) — adjustable in code */
+/** How often a route sends a missile (seconds) */
 export const ROUTE_SEND_INTERVAL = 3.0;
 
 /**
@@ -57,15 +168,6 @@ export function getMaxRoutesFromPlanet(power: number): number {
   return 3;
 }
 
-/**
- * Missile strength based on source planet tier:
- * - Tier 1, 2: strength 1
- * - Tier 3:    strength 2
- */
-export function getMissileStrength(tier: 1 | 2 | 3): 1 | 2 {
-  return tier === 3 ? 2 : 1;
-}
-
 // ---- Camera ----
 
 export const CAM_DEFAULT_DISTANCE = 60;
@@ -75,10 +177,19 @@ export const CAM_MIN_DISTANCE = 20;
 export const CAM_MAX_DISTANCE = 180;
 export const CAM_ZOOM_SPEED = 2;
 
+/** Camera fly-forward settings */
+export const CAMERA_FLY_DURATION = 0.4;
+export const CAMERA_FLY_DISTANCE = 18;
+export const CAMERA_MAX_MISSES = 2;
+export const CAMERA_MISS_TIMEOUT = 4.0;
+
 // ---- Selection ----
 
 export const SELECTION_RING_COLOR = 0x00ff88;
 export const SELECTION_RING_RADIUS_MULTIPLIER = 1.6;
+
+/** Minimum raycast hit radius for planets (increases accessibility) */
+export const PLANET_HIT_RADIUS_MIN = 2.0;
 
 // ---- Lights ----
 
@@ -89,7 +200,3 @@ export const DIRECTIONAL_LIGHT = 0.9;
 
 export const BACKGROUND_COLOR = 0x0a0a1a;
 export const STAR_COUNT = 2000;
-
-// ---- AI ----
-
-export const AI_THINK_INTERVAL = 2.0;

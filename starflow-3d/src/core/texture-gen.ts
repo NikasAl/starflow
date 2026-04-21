@@ -3,10 +3,7 @@
 // ============================================================
 
 import * as THREE from 'three';
-
-export type PlanetVisualType =
-  | 'rocky' | 'terran' | 'gas' | 'ice'
-  | 'volcanic' | 'desert' | 'ocean' | 'crystal';
+import { type PlanetVisualType, type PlanetSizeType } from './types';
 
 const TEX_W = 512;
 const TEX_H = 256;
@@ -313,8 +310,16 @@ function genPixel(
   }
 }
 
-export function planetTypeForIndex(index: number, tier: 1 | 2 | 3): PlanetVisualType {
-  const types: PlanetVisualType[] = ['terran', 'rocky', 'gas', 'ice', 'ocean', 'desert', 'crystal', 'volcanic'];
-  if (tier === 3) return (['gas', 'ocean', 'crystal'] as PlanetVisualType[])[index % 3];
-  return types[(index * 7 + tier * 3) % types.length];
+export function planetTypeForIndex(index: number, sizeType: PlanetSizeType): PlanetVisualType {
+  // Size-appropriate visual types (physically motivated)
+  const typeMap: Record<PlanetSizeType, PlanetVisualType[]> = {
+    dwarf:      ['rocky', 'volcanic', 'desert'],
+    small:      ['rocky', 'desert', 'ice', 'volcanic'],
+    medium:     ['terran', 'ocean', 'desert', 'rocky', 'ice'],
+    large:      ['terran', 'ocean', 'gas', 'crystal'],
+    giant:      ['gas', 'ice', 'crystal'],
+    supergiant: ['gas', 'crystal', 'volcanic'],
+  };
+  const types = typeMap[sizeType];
+  return types[index % types.length];
 }

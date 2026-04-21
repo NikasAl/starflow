@@ -3,19 +3,17 @@
 // ============================================================
 
 import {
-  type PlanetData, type OwnerId,
-  PLAYER, AI_1, AI_2, NEUTRAL,
+  type PlanetData, type OwnerId, type LevelConfig,
+  PLAYER, AI_1, AI_2, AI_3, NEUTRAL,
 } from './types';
+import { type PlanetSizeType } from './types';
 import { planetTypeForIndex } from './texture-gen';
 import {
-  WORLD_SIZE, PLANET_MIN_DISTANCE,
-  PLANET_RADII,
-  PLANET_COUNT,
-  STARTING_POWER,
-  NEUTRAL_POWER_MIN, NEUTRAL_POWER_MAX,
+  PLANET_SIZES,
   PLANET_MAX_AUTO_POWER,
   PLANET_POWER_GROWTH_RATE,
-  PLANET_HEIGHT_MIN, PLANET_HEIGHT_MAX,
+  randomPlanetSizeType,
+  getGrowthMultiplier,
 } from './constants';
 
 const PLANET_NAMES = [
@@ -23,84 +21,91 @@ const PLANET_NAMES = [
   'Rigel Prime', 'Centauri', 'Sirius', 'Vega', 'Altair',
   'Deneb', 'Antares', 'Polaris', 'Betelgeuse', 'Capella',
   'Arcturus', 'Aldebaran', 'Spica', 'Regulus', 'Procyon',
+  'Mira', 'Castor', 'Pollux', 'Fomalhaut', 'Canopus',
 ];
 
-function tooClose(x: number, y: number, z: number, planets: PlanetData[]): boolean {
+function tooClose(x: number, y: number, z: number, planets: PlanetData[], minDist: number): boolean {
   for (const p of planets) {
     const dx = p.x - x;
     const dy = p.y - y;
     const dz = p.z - z;
-    if (Math.sqrt(dx * dx + dy * dy + dz * dz) < PLANET_MIN_DISTANCE) return true;
+    if (Math.sqrt(dx * dx + dy * dy + dz * dz) < minDist) return true;
   }
   return false;
 }
 
-function randomHeight(): number {
-  return PLANET_HEIGHT_MIN + Math.random() * (PLANET_HEIGHT_MAX - PLANET_HEIGHT_MIN);
-}
-
-function randomPosition(planets: PlanetData[]): { x: number; y: number; z: number } {
+function randomPosition(planets: PlanetData[], cfg: LevelConfig): { x: number; y: number; z: number } {
+  const [hMin, hMax] = cfg.heightRange;
   for (let attempts = 0; attempts < 500; attempts++) {
-    const x = (Math.random() - 0.5) * WORLD_SIZE * 0.8;
-    const y = randomHeight();
-    const z = (Math.random() - 0.5) * WORLD_SIZE * 0.8;
-    if (!tooClose(x, y, z, planets)) return { x, y, z };
+    const x = (Math.random() - 0.5) * cfg.worldSize * 0.8;
+    const y = hMin + Math.random() * (hMax - hMin);
+    const z = (Math.random() - 0.5) * cfg.worldSize * 0.8;
+    if (!tooClose(x, y, z, planets, cfg.planetMinDistance)) return { x, y, z };
   }
   return {
-    x: (Math.random() - 0.5) * WORLD_SIZE * 0.8,
-    y: randomHeight(),
-    z: (Math.random() - 0.5) * WORLD_SIZE * 0.8,
+    x: (Math.random() - 0.5) * cfg.worldSize * 0.8,
+    y: hMin + Math.random() * (hMax - hMin),
+    z: (Math.random() - 0.5) * cfg.worldSize * 0.8,
   };
 }
 
-function randomTier(): 1 | 2 | 3 {
-  const r = Math.random();
-  if (r < 0.5) return 1;
-  if (r < 0.85) return 2;
-  return 3;
-}
-
-/** Generate the full map layout */
-export function generateMap(aiCount: number = 2): PlanetData[] {
+/** Generate the full map layout for a given level configuration */
+export function generateMap(levelConfig: LevelConfig): PlanetData[] {
   const planets: PlanetData[] = [];
+  const { aiCount, planetCount, worldSize } = levelConfig;
+
+  // Build owners list: player + AIs
   const owners: OwnerId[] = [PLAYER];
   if (aiCount >= 1) owners.push(AI_1);
   if (aiCount >= 2) owners.push(AI_2);
+  if (aiCount >= 3) owners.push(AI_3);
 
   // Place faction starting planets evenly spaced
   for (let i = 0; i < owners.length; i++) {
     const angle = (i / owners.length) * Math.PI * 2;
-    const dist = WORLD_SIZE * 0.25;
+    const dist = worldSize * 0.25;
     const x = Math.cos(angle) * dist;
     const z = Math.sin(angle) * dist;
-    const y = randomHeight();
-    const tier = 2 as const;
+    const [hMin, hMax] = levelConfig.heightRange;
+    const y = hMin + Math.random() * (hMax - hMin);
+
+    // Starting planets are medium for player, medium/large for AI
+    const sizeType: PlanetSizeType = (i === 0) ? 'medium' : (Math.random() < 0.5 ? 'medium' : 'large');
+    const sizeConfig = PLANET_SIZES[sizeType];
+
     planets.push({
       id: `planet_${i}`,
       name: PLANET_NAMES[i % PLANET_NAMES.length],
       x, y, z,
-      radius: PLANET_RADII[tier],
+      radius: sizeConfig.radius,
       owner: owners[i],
-      power: STARTING_POWER,
-      tier,
-      visualType: planetTypeForIndex(i, tier),
+      power: 15,
+      sizeType,
+      visualType: planetTypeForIndex(i, sizeType),
       textureSeed: i * 1000 + 42,
     });
   }
 
   // Place neutral planets
-  for (let i = owners.length; i < PLANET_COUNT; i++) {
-    const pos = randomPosition(planets);
-    const tier = randomTier();
+  for (let i = owners.length; i < planetCount; i++) {
+    const pos = randomPosition(planets, levelConfig);
+    const sizeType = randomPlanetSizeType();
+    const sizeConfig = PLANET_SIZES[sizeType];
+
+    // Neutral power scaled by planet defense multiplier
+    const basePower = levelConfig.neutralPowerMin +
+      Math.floor(Math.random() * (levelConfig.neutralPowerMax - levelConfig.neutralPowerMin + 1));
+    const power = Math.max(1, Math.round(basePower * sizeConfig.defenseMultiplier));
+
     planets.push({
       id: `planet_${i}`,
       name: PLANET_NAMES[i % PLANET_NAMES.length],
       x: pos.x, y: pos.y, z: pos.z,
-      radius: PLANET_RADII[tier],
+      radius: sizeConfig.radius,
       owner: NEUTRAL,
-      power: NEUTRAL_POWER_MIN + Math.floor(Math.random() * (NEUTRAL_POWER_MAX - NEUTRAL_POWER_MIN + 1)),
-      tier,
-      visualType: planetTypeForIndex(i, tier),
+      power,
+      sizeType,
+      visualType: planetTypeForIndex(i, sizeType),
       textureSeed: i * 1000 + 42,
     });
   }
@@ -113,7 +118,8 @@ export function updatePlanetGrowth(planet: PlanetData, dt: number): void {
   if (planet.owner === NEUTRAL) return;
   if (planet.power >= PLANET_MAX_AUTO_POWER) return;
 
-  planet.power += PLANET_POWER_GROWTH_RATE * dt;
+  const growthRate = PLANET_POWER_GROWTH_RATE * getGrowthMultiplier(planet.sizeType);
+  planet.power += growthRate * dt;
   if (planet.power > PLANET_MAX_AUTO_POWER) {
     planet.power = PLANET_MAX_AUTO_POWER;
   }

@@ -5,30 +5,32 @@
 
 import {
   type PlanetData, type ShipRoute, type OwnerId,
-  PLAYER, AI_1, AI_2, NEUTRAL,
+  PLAYER, AI_1, AI_2, AI_3, NEUTRAL,
 } from './types';
 import {
-  AI_THINK_INTERVAL,
   getMaxRoutesFromPlanet,
-  getMissileStrength,
   PLANET_MAX_AUTO_POWER,
 } from './constants';
+import { getMissileStrengthForSize } from './constants';
 
 export interface AIState {
   owner: OwnerId;
   thinkTimer: number;
+  /** Seconds between AI decisions */
+  thinkInterval: number;
   /** Active route IDs managed by this AI */
   activeRouteIds: Set<string>;
 }
 
 let routeCounter = 1000;
 
-export function createAIs(count: number): AIState[] {
+export function createAIs(count: number, thinkInterval: number = 2.0): AIState[] {
   const states: AIState[] = [];
   for (let i = 0; i < count; i++) {
     states.push({
-      owner: (i + 2) as OwnerId,
-      thinkTimer: AI_THINK_INTERVAL * (0.3 + Math.random() * 0.7),
+      owner: (i + 2) as OwnerId, // 2=AI_1, 3=AI_2, 4=AI_3
+      thinkTimer: thinkInterval * (0.3 + Math.random() * 0.7),
+      thinkInterval,
       activeRouteIds: new Set(),
     });
   }
@@ -56,7 +58,7 @@ export function updateAI(
 
   ai.thinkTimer -= dt;
   if (ai.thinkTimer > 0) return result;
-  ai.thinkTimer = AI_THINK_INTERVAL * (0.5 + Math.random() * 0.5);
+  ai.thinkTimer = ai.thinkInterval * (0.5 + Math.random() * 0.5);
 
   const myPlanets = planets.filter(p => p.owner === ai.owner);
   if (myPlanets.length === 0) return result;
@@ -76,7 +78,6 @@ export function updateAI(
   }
 
   // Remove routes to own planets that are well-established (power > 12)
-  // Free up route slots for expansion
   for (const route of myRoutes) {
     if (result.removeRouteIds.includes(route.id)) continue;
     const target = planets.find(p => p.id === route.targetId);
@@ -110,7 +111,7 @@ export function updateAI(
   const sortedPlanets = [...myPlanets].sort((a, b) => b.power - a.power);
 
   for (const planet of sortedPlanets) {
-    if (planet.power < 2) continue; // Need at least some power to be useful
+    if (planet.power < 2) continue;
 
     const currentCount = routesFromSource.get(planet.id) || 0;
     const maxRoutes = getMaxRoutesFromPlanet(planet.power);
@@ -149,8 +150,8 @@ export function updateAI(
         owner: ai.owner,
         sourceId: planet.id,
         targetId: bestTarget.id,
-        sendTimer: 0, // send immediately
-        missileStrength: getMissileStrength(planet.tier),
+        sendTimer: 0,
+        missileStrength: getMissileStrengthForSize(planet.sizeType),
       };
       result.addRoutes.push(route);
       ai.activeRouteIds.add(route.id);

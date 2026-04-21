@@ -4,12 +4,13 @@
 // ============================================================
 
 /** Who owns something: neutral, player, or AI players */
-export type OwnerId = 0 | 1 | 2 | 3;
+export type OwnerId = 0 | 1 | 2 | 3 | 4;
 
 export const NEUTRAL: OwnerId = 0;
 export const PLAYER: OwnerId = 1;
 export const AI_1: OwnerId = 2;
 export const AI_2: OwnerId = 3;
+export const AI_3: OwnerId = 4;
 
 /** Color map for owners */
 export const OWNER_COLORS: Record<OwnerId, number> = {
@@ -17,6 +18,7 @@ export const OWNER_COLORS: Record<OwnerId, number> = {
   [PLAYER]:  0x4488ff,
   [AI_1]:    0xff4444,
   [AI_2]:    0x44cc44,
+  [AI_3]:    0xffaa00,
 };
 
 export const OWNER_NAMES: Record<OwnerId, string> = {
@@ -24,11 +26,58 @@ export const OWNER_NAMES: Record<OwnerId, string> = {
   [PLAYER]:  'Player',
   [AI_1]:    'Crimson Fleet',
   [AI_2]:    'Emerald Horde',
+  [AI_3]:    'Golden Armada',
 };
 
-/** Core data for a planet — pure state, no Three.js */
-import { type PlanetVisualType } from './texture-gen';
+// ============================================================
+// Planet Visual Types
+// ============================================================
 
+export type PlanetVisualType =
+  | 'rocky' | 'terran' | 'gas' | 'ice'
+  | 'volcanic' | 'desert' | 'ocean' | 'crystal';
+
+// ============================================================
+// Planet Size Types
+// ============================================================
+
+export type PlanetSizeType = 'dwarf' | 'small' | 'medium' | 'large' | 'giant' | 'supergiant';
+
+export interface PlanetSizeConfig {
+  radius: number;
+  missileStrength: 1 | 2;
+  /** Power growth rate multiplier */
+  growthMultiplier: number;
+  /** Neutral planet defense power multiplier */
+  defenseMultiplier: number;
+  /** Random selection weight (higher = more common) */
+  weight: number;
+}
+
+// ============================================================
+// Level Configuration
+// ============================================================
+
+export interface LevelConfig {
+  level: number;
+  name: string;
+  planetCount: number;
+  aiCount: number;
+  /** Y-axis height variation range */
+  heightRange: [number, number];
+  worldSize: number;
+  /** AI thinking interval in seconds */
+  aiThinkInterval: number;
+  neutralPowerMin: number;
+  neutralPowerMax: number;
+  planetMinDistance: number;
+}
+
+// ============================================================
+// Core Data
+// ============================================================
+
+/** Core data for a planet — pure state, no Three.js */
 export interface PlanetData {
   id: string;
   name: string;
@@ -42,8 +91,8 @@ export interface PlanetData {
   owner: OwnerId;
   /** Planet power (single value, replaces fighters/cruisers) */
   power: number;
-  /** Planet size tier 1-3 (small, medium, large) */
-  tier: 1 | 2 | 3;
+  /** Planet size category */
+  sizeType: PlanetSizeType;
   /** Procedural visual type for texture generation */
   visualType: PlanetVisualType;
   /** Seed for deterministic texture generation */
@@ -94,8 +143,10 @@ export interface GameState {
   phase: 'playing' | 'won' | 'lost';
   /** Elapsed game time in seconds */
   time: number;
-  /** How many AI opponents */
-  aiCount: number;
+  /** Current level number (1-based) */
+  level: number;
+  /** Configuration for the current level */
+  levelConfig: LevelConfig;
 }
 
 /** Camera state */

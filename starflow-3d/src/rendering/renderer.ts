@@ -14,6 +14,8 @@ import {
   BACKGROUND_COLOR, STAR_COUNT, AMBIENT_LIGHT, DIRECTIONAL_LIGHT,
   CAM_DEFAULT_DISTANCE, CAM_DEFAULT_THETA, CAM_DEFAULT_PHI,
   CAM_MIN_DISTANCE, CAM_MAX_DISTANCE, CAM_ZOOM_SPEED,
+  CAMERA_FLY_DURATION, CAMERA_FLY_DISTANCE, CAMERA_MAX_MISSES, CAMERA_MISS_TIMEOUT,
+  PLANET_HIT_RADIUS_MIN,
   getMaxRoutesFromPlanet,
 } from '../core/constants';
 import { getGameStats } from '../game/state';
@@ -62,14 +64,22 @@ let mouseDownTime = 0;
 let isPinching = false;
 let pinchStartDistance = 0;
 let pinchStartCamDistance = 0;
-// After pinch ends (2->1 finger), suppress pointer events
-// until all fingers are lifted to prevent camera jump
 let suppressPointerUntilRelease = false;
+
+// Camera fly-forward on miss
+let missCount = 0;
+let lastMissTime = 0;
+let cameraFlyTarget: { x: number; z: number } | null = null;
+let cameraFlyStart: { x: number; z: number } | null = null;
+let cameraFlyProgress = 0;
 
 // HTML HUD element
 let hudElement: HTMLDivElement;
+let overlayElement: HTMLDivElement | null = null;
 
 let onPlanetClick: ((planetId: string) => void) | null = null;
+let onLevelComplete: (() => void) | null = null;
+let onGameOver: (() => void) | null = null;
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -170,6 +180,7 @@ function updateHTMLHUD(state: GameState): void {
     [1, 'You', 0x4488ff],
     [2, 'Crimson', 0xff4444],
     [3, 'Emerald', 0x44cc44],
+    [4, 'Golden', 0xffaa00],
     [0, 'Neutral', 0x888888],
   ];
 
@@ -182,7 +193,10 @@ function updateHTMLHUD(state: GameState): void {
     min-width: 220px;
   ">`;
 
-  // Timer
+  // Level + Timer
+  html += `<div style="font-size:13px; color:rgba(255,255,255,0.5); margin-bottom:4px;">
+    Level ${state.level}: ${state.levelConfig.name}
+  </div>`;
   html += `<div style="font-size:13px; color:rgba(255,255,255,0.5); margin-bottom:6px;">
     ${Math.floor(state.time / 60)}:${String(Math.floor(state.time % 60)).padStart(2, '0')}
   </div>`;
@@ -217,15 +231,15 @@ function updateHTMLHUD(state: GameState): void {
     </div>`;
   }
 
-  // Phase
+  // Phase indicator (subtle, overlay handles the big display)
   if (state.phase === 'won') {
-    html += `<div style="font-size:20px; font-weight:bold; color:#00ff88; text-align:center; margin-top:10px;">VICTORY!</div>`;
+    html += `<div style="font-size:14px; font-weight:bold; color:#00ff88; text-align:center; margin-top:8px;">VICTORY</div>`;
   } else if (state.phase === 'lost') {
-    html += `<div style="font-size:20px; font-weight:bold; color:#ff4444; text-align:center; margin-top:10px;">DEFEAT</div>`;
+    html += `<div style="font-size:14px; font-weight:bold; color:#ff4444; text-align:center; margin-top:8px;">DEFEAT</div>`;
   }
 
   // Selected hint
-  if (state.selectedPlanetId) {
+  if (state.selectedPlanetId && state.phase === 'playing') {
     const p = state.planets.find(pl => pl.id === state.selectedPlanetId);
     if (p) {
       const maxR = getMaxRoutesFromPlanet(p.power);
@@ -239,6 +253,91 @@ function updateHTMLHUD(state: GameState): void {
 
   html += `</div>`;
   hudElement.innerHTML = html;
+}
+
+// ============================================================
+// Level Complete / Game Over Overlays
+// ============================================================
+
+function showOverlay(state: GameState): void {
+  removeOverlay();
+
+  overlayElement = document.createElement('div');
+  overlayElement.id = 'level-overlay';
+  overlayElement.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    z-index: 200; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.75);
+    backdrop-filter: blur(6px);
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: #fff;
+    animation: fadeIn 0.5s ease;
+  `;
+
+  const isWin = state.phase === 'won';
+  const titleColor = isWin ? '#00ff88' : '#ff4444';
+  const title = isWin ? 'VICTORY' : 'DEFEAT';
+  const subtitle = isWin
+    ? `Level ${state.level}: ${state.levelConfig.name} completed!`
+    : `Level ${state.level}: ${state.levelConfig.name}`;
+
+  const minutes = Math.floor(state.time / 60);
+  const seconds = Math.floor(state.time % 60);
+  const timeStr = `${minutes}:${String(seconds).padStart(2, '0')}`;
+
+  const playerStats = getGameStats(state);
+  const playerData = playerStats[PLAYER];
+
+  let buttonsHtml = '';
+  if (isWin) {
+    buttonsHtml = `<button id="btn-next-level" style="
+      margin-top: 24px; padding: 14px 48px; font-size: 18px; font-weight: 600;
+      color: #000; background: #00ff88; border: none; border-radius: 50px;
+      cursor: pointer; letter-spacing: 2px; text-transform: uppercase;
+      box-shadow: 0 0 20px rgba(0,255,136,0.4);
+      transition: all 0.2s;
+    ">NEXT LEVEL</button>`;
+  }
+  buttonsHtml += `<button id="btn-retry" style="
+    margin-top: ${isWin ? '12px' : '24px'}; padding: 12px 40px; font-size: 16px; font-weight: 500;
+    color: #fff; background: transparent; border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 50px; cursor: pointer; letter-spacing: 1px;
+    transition: all 0.2s;
+  ">${isWin ? 'REPLAY' : 'RETRY'}</button>`;
+
+  overlayElement.innerHTML = `
+    <div style="text-align: center;">
+      <div style="font-size: 48px; font-weight: 700; color: ${titleColor};
+        text-shadow: 0 0 30px ${titleColor}80; letter-spacing: 4px;">${title}</div>
+      <div style="font-size: 18px; color: rgba(255,255,255,0.6); margin-top: 12px;">${subtitle}</div>
+      <div style="font-size: 14px; color: rgba(255,255,255,0.4); margin-top: 8px;">Time: ${timeStr}</div>
+      ${playerData ? `<div style="font-size: 14px; color: rgba(255,255,255,0.4); margin-top: 4px;">Your power: ${playerData.power} | Planets: ${playerData.planets}</div>` : ''}
+      ${buttonsHtml}
+    </div>
+  `;
+
+  document.body.appendChild(overlayElement);
+
+  // Wire buttons
+  const nextBtn = overlayElement.querySelector('#btn-next-level');
+  const retryBtn = overlayElement.querySelector('#btn-retry');
+
+  if (nextBtn) {
+    nextBtn.addEventListener('click', () => { if (onLevelComplete) onLevelComplete(); });
+    nextBtn.addEventListener('touchend', (e) => { e.preventDefault(); if (onLevelComplete) onLevelComplete(); });
+  }
+  if (retryBtn) {
+    retryBtn.addEventListener('click', () => { if (onGameOver) onGameOver(); });
+    retryBtn.addEventListener('touchend', (e) => { e.preventDefault(); if (onGameOver) onGameOver(); });
+  }
+}
+
+export function removeOverlay(): void {
+  if (overlayElement && overlayElement.parentNode) {
+    overlayElement.parentNode.removeChild(overlayElement);
+    overlayElement = null;
+  }
 }
 
 // ============================================================
@@ -275,10 +374,11 @@ export function addPlanet(planet: PlanetData): void {
   scene.add(mesh);
   planetMeshes.set(planet.id, mesh);
 
-  // Glow ring
+  // Glow ring — scale with planet size
+  const glowScale = Math.max(1.1, 1.0 + (planet.radius - 1.6) * 0.05);
   const glowGeo = new THREE.RingGeometry(
-    Math.max(0.1, planet.radius * 1.1),
-    Math.max(0.2, planet.radius * 1.3),
+    Math.max(0.1, planet.radius * glowScale),
+    Math.max(0.2, planet.radius * (glowScale + 0.2)),
     32,
   );
   const glowMat = new THREE.MeshBasicMaterial({
@@ -327,13 +427,19 @@ function drawPlanetLabel(ctx: CanvasRenderingContext2D, planet: PlanetData): voi
   ctx.strokeText(`${pw}`, 80, 30);
   ctx.fillText(`${pw}`, 80, 30);
 
+  // Planet size label
+  ctx.font = '11px Arial';
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = 2;
+  ctx.strokeText(planet.sizeType.toUpperCase(), 80, 48);
+  ctx.fillText(planet.sizeType.toUpperCase(), 80, 48);
+
   // Max routes indicator
   const maxR = getMaxRoutesFromPlanet(planet.power);
-  ctx.font = '13px Arial';
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  ctx.lineWidth = 2;
-  ctx.strokeText(`max:${maxR} link`, 80, 52);
-  ctx.fillText(`max:${maxR} link`, 80, 52);
+  ctx.font = '10px Arial';
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.strokeText(`max:${maxR} link`, 80, 60);
+  ctx.fillText(`max:${maxR} link`, 80, 60);
 }
 
 export function updatePlanet(planet: PlanetData): void {
@@ -366,7 +472,6 @@ export function addMissile(missile: MissileData): void {
 
   const color = OWNER_COLORS[missile.owner];
 
-  // Cylinder body
   const cylGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.8, 8);
   const cylMat = new THREE.MeshStandardMaterial({
     color,
@@ -376,13 +481,11 @@ export function addMissile(missile: MissileData): void {
   const cylinder = new THREE.Mesh(cylGeo, cylMat);
   group.add(cylinder);
 
-  // Nose cone (small sphere at front)
   const noseGeo = new THREE.SphereGeometry(0.15, 8, 6);
   const nose = new THREE.Mesh(noseGeo, cylMat.clone());
   nose.position.y = 0.5;
   group.add(nose);
 
-  // Engine glow at back
   const engineGeo = new THREE.SphereGeometry(0.2, 8, 6);
   const engineMat = new THREE.MeshBasicMaterial({
     color,
@@ -393,7 +496,6 @@ export function addMissile(missile: MissileData): void {
   engine.position.y = -0.4;
   group.add(engine);
 
-  // Orient cylinder toward target direction
   const source = planetMeshes.get(missile.sourceId);
   const target = planetMeshes.get(missile.targetId);
   if (source && target) {
@@ -502,7 +604,6 @@ export function removeRouteLine(routeId: string): void {
   }
 }
 
-/** Animate route lines (pulse) */
 function animateRoutes(time: number): void {
   for (const [id, line] of routeLines) {
     (line.material as THREE.LineBasicMaterial).opacity = 0.2 + Math.sin(time * 2 + id.length) * 0.15;
@@ -532,8 +633,6 @@ function onResize(): void {
 // ============================================================
 
 function onPointerDown(e: PointerEvent): void {
-  // Block all pointer events while pinch gesture is active
-  // or during post-pinch suppression
   if (isPinching || suppressPointerUntilRelease) return;
   isDragging = false;
   dragStartX = e.clientX; dragStartY = e.clientY;
@@ -543,8 +642,6 @@ function onPointerDown(e: PointerEvent): void {
 }
 
 function onPointerMove(e: PointerEvent): void {
-  // Block all pointer moves while pinch gesture is active
-  // or during post-pinch suppression
   if (isPinching || suppressPointerUntilRelease) return;
   const dx = e.clientX - dragStartX;
   const dy = e.clientY - dragStartY;
@@ -565,27 +662,107 @@ function onPointerMove(e: PointerEvent): void {
 }
 
 function onPointerUp(e: PointerEvent): void {
-  // Block clicks during/after pinch gesture
   if (isPinching || suppressPointerUntilRelease) return;
   if (!isDragging && performance.now() - mouseDownTime < 300) handleClick(e);
   isDragging = false;
 }
 
+/** Enhanced planet click detection with close-miss tolerance */
 function handleClick(e: PointerEvent): void {
   const rect = renderer.domElement.getBoundingClientRect();
   mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
   mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
   raycaster.setFromCamera(mouse, camera);
+
+  // 1. Try exact mesh intersection
   const meshes = Array.from(planetMeshes.values());
   const intersects = raycaster.intersectObjects(meshes);
 
   if (intersects.length > 0) {
     const pid = intersects[0].object.userData.planetId;
     if (pid && onPlanetClick) onPlanetClick(pid);
-  } else if (onPlanetClick) {
-    onPlanetClick('__deselect__');
+    missCount = 0;
+    cameraFlyTarget = null;
+    return;
   }
+
+  // 2. Close-miss: check if ray passes near any planet (larger hit radius)
+  const ray = raycaster.ray;
+  let closestPlanetId: string | null = null;
+  let closestDist = Infinity;
+
+  for (const [id, mesh] of planetMeshes) {
+    const radius = (mesh.geometry as THREE.SphereGeometry).parameters?.radius || 1.5;
+    // Use a generous hit radius (at least PLANET_HIT_RADIUS_MIN)
+    const hitRadius = Math.max(radius * 1.5, PLANET_HIT_RADIUS_MIN);
+    const sphere = new THREE.Sphere(mesh.position, hitRadius);
+    const intersection = new THREE.Vector3();
+    if (ray.intersectSphere(sphere, intersection)) {
+      const dist = intersection.distanceTo(ray.origin);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestPlanetId = id;
+      }
+    }
+  }
+
+  if (closestPlanetId && onPlanetClick) {
+    onPlanetClick(closestPlanetId);
+    missCount = 0;
+    cameraFlyTarget = null;
+    return;
+  }
+
+  // 3. True miss — fly camera forward or deselect
+  missCount++;
+  const now = performance.now() / 1000;
+  const timeSinceLastMiss = now - lastMissTime;
+  lastMissTime = now;
+
+  if (missCount >= CAMERA_MAX_MISSES || timeSinceLastMiss > CAMERA_MISS_TIMEOUT) {
+    // Deselect
+    if (onPlanetClick) onPlanetClick('__deselect__');
+    missCount = 0;
+  } else {
+    // Fly camera forward toward the ray direction
+    const flyDir = ray.direction.clone();
+    // Project onto the XZ ground plane
+    flyDir.y = 0;
+    if (flyDir.length() > 0.01) {
+      flyDir.normalize();
+      cameraFlyStart = { x: camState.targetX, z: camState.targetZ };
+      cameraFlyTarget = {
+        x: camState.targetX + flyDir.x * CAMERA_FLY_DISTANCE,
+        z: camState.targetZ + flyDir.z * CAMERA_FLY_DISTANCE,
+      };
+      cameraFlyProgress = 0;
+    }
+  }
+}
+
+/** Ease-out cubic for smooth camera animation */
+function easeOutCubic(t: number): number {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+function updateCameraFly(dt: number): void {
+  if (!cameraFlyTarget || !cameraFlyStart) return;
+
+  cameraFlyProgress += dt / CAMERA_FLY_DURATION;
+  if (cameraFlyProgress >= 1) {
+    camState.targetX = cameraFlyTarget.x;
+    camState.targetZ = cameraFlyTarget.z;
+    cameraFlyTarget = null;
+    cameraFlyStart = null;
+    updateCamera();
+    return;
+  }
+
+  const t = easeOutCubic(cameraFlyProgress);
+  camState.targetX = cameraFlyStart.x + (cameraFlyTarget.x - cameraFlyStart.x) * t;
+  camState.targetZ = cameraFlyStart.z + (cameraFlyTarget.z - cameraFlyStart.z) * t;
+  updateCamera();
 }
 
 function onWheel(e: WheelEvent): void {
@@ -611,7 +788,6 @@ function onTouchStart(e: TouchEvent): void {
     isPinching = true;
     pinchStartDistance = getTouchDistance(e.touches[0], e.touches[1]);
     pinchStartCamDistance = camState.distance;
-    // Stop any pointer-based drag
     isDragging = false;
   }
 }
@@ -631,25 +807,109 @@ function onTouchMove(e: TouchEvent): void {
 
 function onTouchEnd(e: TouchEvent): void {
   if (e.touches.length === 0) {
-    // All fingers lifted — fully end pinch + clear suppression
     isPinching = false;
     suppressPointerUntilRelease = false;
   } else if (e.touches.length < 2) {
-    // Went from 2+ fingers to 1 — end pinch but suppress pointer
-    // events until the last finger is also lifted
     isPinching = false;
     suppressPointerUntilRelease = true;
   }
 }
 
 export function setPlanetClickCallback(cb: (planetId: string) => void): void { onPlanetClick = cb; }
+export function setLevelCompleteCallback(cb: () => void): void { onLevelComplete = cb; }
+export function setGameOverCallback(cb: () => void): void { onGameOver = cb; }
 export function getCameraState(): CameraState { return { ...camState }; }
+
+// ============================================================
+// Scene Reset — clear all game objects, keep infrastructure
+// ============================================================
+
+export function resetScene(): void {
+  // Remove and dispose all planets
+  for (const [id, mesh] of planetMeshes) {
+    scene.remove(mesh);
+    const texSet = planetTextures.get(id);
+    if (texSet) {
+      texSet.diffuse.dispose();
+      texSet.normal.dispose();
+      if (texSet.emissive) texSet.emissive.dispose();
+    }
+    mesh.geometry.dispose();
+    (mesh.material as THREE.Material).dispose();
+  }
+  planetMeshes.clear();
+  planetTextures.clear();
+
+  for (const [id, glow] of planetGlows) {
+    scene.remove(glow);
+    glow.geometry.dispose();
+    (glow.material as THREE.Material).dispose();
+  }
+  planetGlows.clear();
+
+  for (const [id, label] of planetLabels) {
+    scene.remove(label);
+    (label.material as THREE.SpriteMaterial).map?.dispose();
+    (label.material as THREE.SpriteMaterial).dispose();
+  }
+  planetLabels.clear();
+
+  // Remove missiles
+  for (const [id, group] of missileMeshes) {
+    scene.remove(group);
+    group.traverse(child => {
+      if (child instanceof THREE.Mesh) {
+        child.geometry.dispose();
+        (child.material as THREE.Material).dispose();
+      }
+    });
+  }
+  missileMeshes.clear();
+
+  // Remove routes
+  for (const [id, line] of routeLines) {
+    scene.remove(line);
+    line.geometry.dispose();
+    (line.material as THREE.Material).dispose();
+  }
+  routeLines.clear();
+
+  // Remove selection ring
+  if (selectionRing) {
+    scene.remove(selectionRing);
+    selectionRing.geometry.dispose();
+    (selectionRing.material as THREE.Material).dispose();
+    selectionRing = null;
+  }
+
+  // Remove overlay
+  removeOverlay();
+
+  // Reset camera
+  camState.targetX = 0;
+  camState.targetZ = 0;
+  camState.theta = CAM_DEFAULT_THETA;
+  camState.phi = CAM_DEFAULT_PHI;
+  camState.distance = CAM_DEFAULT_DISTANCE;
+  updateCamera();
+
+  // Reset fly-forward state
+  cameraFlyTarget = null;
+  cameraFlyStart = null;
+  cameraFlyProgress = 0;
+  missCount = 0;
+}
 
 // ============================================================
 // Main render loop
 // ============================================================
 
-export function syncVisuals(state: GameState, time: number): void {
+let lastPhase: string = 'playing';
+
+export function syncVisuals(state: GameState, time: number, dt: number = 0): void {
+  // Update camera fly-forward animation
+  updateCameraFly(dt);
+
   for (const planet of state.planets) updatePlanet(planet);
 
   animateSelection(time);
@@ -661,6 +921,14 @@ export function syncVisuals(state: GameState, time: number): void {
 
   updateHTMLHUD(state);
 
+  // Show overlay when phase changes
+  if (state.phase !== lastPhase) {
+    lastPhase = state.phase;
+    if (state.phase === 'won' || state.phase === 'lost') {
+      showOverlay(state);
+    }
+  }
+
   renderer.render(scene, camera);
 }
 
@@ -669,4 +937,5 @@ export function getRenderer(): THREE.WebGLRenderer { return renderer; }
 export function dispose(): void {
   renderer.dispose();
   if (hudElement && hudElement.parentNode) hudElement.parentNode.removeChild(hudElement);
+  removeOverlay();
 }

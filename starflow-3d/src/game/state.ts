@@ -5,7 +5,7 @@
 import {
   type GameState, type PlanetData, type MissileData, type OwnerId,
   type ShipRoute,
-  PLAYER, AI_1, AI_2, NEUTRAL,
+  PLAYER, NEUTRAL,
 } from '../core/types';
 import { generateMap, updatePlanetGrowth, resolveMissileArrival } from '../core/planet';
 import { createMissile, updateMissile } from '../core/fleet';
@@ -13,21 +13,30 @@ import { type AIState, createAIs, updateAI } from '../core/ai';
 import {
   ROUTE_SEND_INTERVAL,
   getMaxRoutesFromPlanet,
-  getMissileStrength,
+  getMissileStrengthForSize,
+  getLevelConfig,
 } from '../core/constants';
 
 let routeCounter = 0;
 
-export function createGameState(aiCount: number = 2): GameState {
+/** Create game state for a specific level */
+export function createGameState(level: number = 1): GameState {
+  const levelConfig = getLevelConfig(level);
   return {
-    planets: generateMap(aiCount),
+    planets: generateMap(levelConfig),
     missiles: [],
     routes: [],
     selectedPlanetId: null,
     phase: 'playing',
     time: 0,
-    aiCount,
+    level,
+    levelConfig,
   };
+}
+
+/** Create AI states matching the level config */
+export function createAIStatesForLevel(levelConfig: { aiCount: number; aiThinkInterval: number }): AIState[] {
+  return createAIs(levelConfig.aiCount, levelConfig.aiThinkInterval);
 }
 
 /** Main update tick */
@@ -144,6 +153,11 @@ export function handlePlayerAction(
 
   if (state.phase !== 'playing') return result;
 
+  if (clickedPlanetId === '__deselect__') {
+    state.selectedPlanetId = null;
+    return result;
+  }
+
   if (state.selectedPlanetId === null) {
     // Select source
     const planet = state.planets.find(p => p.id === clickedPlanetId);
@@ -194,7 +208,7 @@ export function handlePlayerAction(
         sourceId: source.id,
         targetId: target.id,
         sendTimer: 0, // send immediately
-        missileStrength: getMissileStrength(source.tier),
+        missileStrength: getMissileStrengthForSize(source.sizeType),
       };
       state.routes.push(route);
       result.routeAdded = route;
@@ -208,9 +222,10 @@ export function handlePlayerAction(
 /** Get stats for HUD */
 export function getGameStats(state: GameState): Record<OwnerId, { planets: number; power: number }> {
   const stats: Record<number, { planets: number; power: number }> = {};
-  const owners: OwnerId[] = [NEUTRAL, PLAYER, AI_1, AI_2];
+  const owners: OwnerId[] = [0, 1, 2, 3, 4] as OwnerId[];
   for (const owner of owners) {
     const planets = state.planets.filter(p => p.owner === owner);
+    if (planets.length === 0) continue;
     stats[owner] = {
       planets: planets.length,
       power: planets.reduce((s, p) => s + Math.floor(p.power), 0),

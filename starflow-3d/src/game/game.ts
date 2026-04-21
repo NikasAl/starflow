@@ -1,10 +1,11 @@
 // ============================================================
 // Star Flow Command — Main Game Class
+// Level management, scene reset, transitions
 // ============================================================
 
 import { type GameState } from '../core/types';
-import { createGameState, updateGame, handlePlayerAction } from '../game/state';
-import { type AIState, createAIs } from '../core/ai';
+import { createGameState, updateGame, handlePlayerAction, createAIStatesForLevel } from '../game/state';
+import { type AIState } from '../core/ai';
 import {
   initRenderer,
   addPlanet,
@@ -14,7 +15,11 @@ import {
   removeRouteLine,
   updateSelection,
   syncVisuals,
+  resetScene,
   setPlanetClickCallback,
+  setLevelCompleteCallback,
+  setGameOverCallback,
+  removeOverlay,
   dispose,
 } from '../rendering/renderer';
 
@@ -23,12 +28,14 @@ const knownRoutes = new Set<string>();
 
 let gameState: GameState;
 let aiStates: AIState[];
+let currentLevel = 1;
 let running = false;
 let lastTime = 0;
 
-export function startGame(canvas: HTMLCanvasElement): void {
-  gameState = createGameState(2);
-  aiStates = createAIs(2);
+export function startGame(canvas: HTMLCanvasElement, level: number = 1): void {
+  currentLevel = level;
+  gameState = createGameState(currentLevel);
+  aiStates = createAIStatesForLevel(gameState.levelConfig);
 
   initRenderer(canvas);
 
@@ -37,21 +44,13 @@ export function startGame(canvas: HTMLCanvasElement): void {
   }
 
   setPlanetClickCallback((planetId: string) => {
-    if (planetId === '__deselect__') {
-      gameState.selectedPlanetId = null;
-      updateSelection(null);
-      return;
-    }
-
     const result = handlePlayerAction(gameState, planetId);
 
-    // Handle route removals from renderer
     for (const rid of result.routeRemoved) {
       removeRouteLine(rid);
       knownRoutes.delete(rid);
     }
 
-    // Handle route addition
     if (result.routeAdded) {
       addRouteLine(result.routeAdded);
       knownRoutes.add(result.routeAdded.id);
@@ -60,6 +59,42 @@ export function startGame(canvas: HTMLCanvasElement): void {
     updateSelection(gameState.selectedPlanetId);
   });
 
+  setLevelCompleteCallback(() => {
+    // Advance to next level
+    goToLevel(currentLevel + 1);
+  });
+
+  setGameOverCallback(() => {
+    // Retry same level
+    goToLevel(currentLevel);
+  });
+
+  running = true;
+  lastTime = performance.now();
+  requestAnimationFrame(gameLoop);
+}
+
+function goToLevel(level: number): void {
+  running = false;
+
+  // Clear tracking sets
+  knownMissiles.clear();
+  knownRoutes.clear();
+
+  // Reset Three.js scene (removes all game objects)
+  resetScene();
+
+  // Create new game state
+  currentLevel = level;
+  gameState = createGameState(currentLevel);
+  aiStates = createAIStatesForLevel(gameState.levelConfig);
+
+  // Add new planets
+  for (const planet of gameState.planets) {
+    addPlanet(planet);
+  }
+
+  // Restart loop
   running = true;
   lastTime = performance.now();
   requestAnimationFrame(gameLoop);
@@ -71,39 +106,42 @@ function gameLoop(now: number): void {
   const dt = Math.min((now - lastTime) / 1000, 0.1);
   lastTime = now;
 
-  updateGame(gameState, aiStates, dt);
+  // Stop updating on win/lose (but keep rendering for overlays)
+  if (gameState.phase === 'playing') {
+    updateGame(gameState, aiStates, dt);
 
-  // Sync new missiles
-  for (const missile of gameState.missiles) {
-    if (!knownMissiles.has(missile.id)) {
-      addMissile(missile);
-      knownMissiles.add(missile.id);
+    // Sync new missiles
+    for (const missile of gameState.missiles) {
+      if (!knownMissiles.has(missile.id)) {
+        addMissile(missile);
+        knownMissiles.add(missile.id);
+      }
+    }
+
+    // Sync route lines
+    for (const route of gameState.routes) {
+      if (!knownRoutes.has(route.id)) {
+        addRouteLine(route);
+        knownRoutes.add(route.id);
+      }
+    }
+    for (const rid of knownRoutes) {
+      if (!gameState.routes.find(r => r.id === rid)) {
+        removeRouteLine(rid);
+        knownRoutes.delete(rid);
+      }
+    }
+
+    // Clean up arrived missiles
+    for (const mid of knownMissiles) {
+      if (!gameState.missiles.find(m => m.id === mid)) {
+        removeMissile(mid);
+        knownMissiles.delete(mid);
+      }
     }
   }
 
-  // Sync route lines (AI may have added/removed routes)
-  for (const route of gameState.routes) {
-    if (!knownRoutes.has(route.id)) {
-      addRouteLine(route);
-      knownRoutes.add(route.id);
-    }
-  }
-  for (const rid of knownRoutes) {
-    if (!gameState.routes.find(r => r.id === rid)) {
-      removeRouteLine(rid);
-      knownRoutes.delete(rid);
-    }
-  }
-
-  // Clean up arrived missiles
-  for (const mid of knownMissiles) {
-    if (!gameState.missiles.find(m => m.id === mid)) {
-      removeMissile(mid);
-      knownMissiles.delete(mid);
-    }
-  }
-
-  syncVisuals(gameState, now / 1000);
+  syncVisuals(gameState, now / 1000, dt);
   requestAnimationFrame(gameLoop);
 }
 
