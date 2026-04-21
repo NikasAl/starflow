@@ -11,12 +11,12 @@ import {
 } from './types';
 
 export const PLANET_SIZES: Record<PlanetSizeType, PlanetSizeConfig> = {
-  dwarf:      { radius: 0.6,  missileStrength: 1, growthMultiplier: 1.3,  defenseMultiplier: 0.6,  weight: 12 },
+  dwarf:      { radius: 0.5,  missileStrength: 1, growthMultiplier: 1.3,  defenseMultiplier: 0.6,  weight: 12 },
   small:      { radius: 1.0,  missileStrength: 1, growthMultiplier: 1.15, defenseMultiplier: 0.8,  weight: 18 },
-  medium:     { radius: 1.6,  missileStrength: 1, growthMultiplier: 1.0,   defenseMultiplier: 1.0,  weight: 30 },
-  large:      { radius: 2.4,  missileStrength: 1, growthMultiplier: 0.9,   defenseMultiplier: 1.3,  weight: 22 },
-  giant:      { radius: 3.5,  missileStrength: 2, growthMultiplier: 0.7,   defenseMultiplier: 1.8,  weight: 14 },
-  supergiant: { radius: 5.0,  missileStrength: 2, growthMultiplier: 0.5,   defenseMultiplier: 2.5,  weight: 4  },
+  medium:     { radius: 1.8,  missileStrength: 1, growthMultiplier: 1.0,   defenseMultiplier: 1.0,  weight: 30 },
+  large:      { radius: 3.0,  missileStrength: 1, growthMultiplier: 0.9,   defenseMultiplier: 1.3,  weight: 22 },
+  giant:      { radius: 5.0,  missileStrength: 2, growthMultiplier: 0.7,   defenseMultiplier: 1.8,  weight: 14 },
+  supergiant: { radius: 7.5,  missileStrength: 2, growthMultiplier: 0.5,   defenseMultiplier: 2.5,  weight: 4  },
 };
 
 /** Random planet size with weighted probability */
@@ -48,6 +48,7 @@ export const LEVELS: LevelConfig[] = [
     level: 1, name: 'First Contact',
     planetCount: 4, aiCount: 1,
     heightRange: [-2, 2], worldSize: 50,
+    starCount: 0,
     aiThinkInterval: 3.5,
     neutralPowerMin: 3, neutralPowerMax: 6,
     planetMinDistance: 14,
@@ -56,6 +57,7 @@ export const LEVELS: LevelConfig[] = [
     level: 2, name: 'Expanding Borders',
     planetCount: 6, aiCount: 1,
     heightRange: [-5, 5], worldSize: 55,
+    starCount: 1,
     aiThinkInterval: 3.0,
     neutralPowerMin: 4, neutralPowerMax: 8,
     planetMinDistance: 15,
@@ -64,6 +66,7 @@ export const LEVELS: LevelConfig[] = [
     level: 3, name: 'Rising Tensions',
     planetCount: 8, aiCount: 1,
     heightRange: [-8, 8], worldSize: 60,
+    starCount: 1,
     aiThinkInterval: 2.8,
     neutralPowerMin: 5, neutralPowerMax: 10,
     planetMinDistance: 16,
@@ -72,6 +75,7 @@ export const LEVELS: LevelConfig[] = [
     level: 4, name: 'Two Front War',
     planetCount: 10, aiCount: 2,
     heightRange: [-10, 10], worldSize: 70,
+    starCount: 2,
     aiThinkInterval: 2.5,
     neutralPowerMin: 6, neutralPowerMax: 12,
     planetMinDistance: 17,
@@ -80,6 +84,7 @@ export const LEVELS: LevelConfig[] = [
     level: 5, name: 'Galactic Conflict',
     planetCount: 12, aiCount: 2,
     heightRange: [-12, 12], worldSize: 80,
+    starCount: 2,
     aiThinkInterval: 2.2,
     neutralPowerMin: 7, neutralPowerMax: 14,
     planetMinDistance: 18,
@@ -88,6 +93,7 @@ export const LEVELS: LevelConfig[] = [
     level: 6, name: 'Deep Space',
     planetCount: 14, aiCount: 2,
     heightRange: [-14, 14], worldSize: 85,
+    starCount: 3,
     aiThinkInterval: 2.0,
     neutralPowerMin: 8, neutralPowerMax: 16,
     planetMinDistance: 18,
@@ -96,6 +102,7 @@ export const LEVELS: LevelConfig[] = [
     level: 7, name: 'Supernova',
     planetCount: 16, aiCount: 3,
     heightRange: [-15, 15], worldSize: 90,
+    starCount: 3,
     aiThinkInterval: 1.8,
     neutralPowerMin: 9, neutralPowerMax: 18,
     planetMinDistance: 19,
@@ -104,6 +111,7 @@ export const LEVELS: LevelConfig[] = [
     level: 8, name: 'Endgame',
     planetCount: 18, aiCount: 3,
     heightRange: [-15, 15], worldSize: 100,
+    starCount: 4,
     aiThinkInterval: 1.5,
     neutralPowerMin: 10, neutralPowerMax: 20,
     planetMinDistance: 20,
@@ -128,6 +136,7 @@ export function getLevelConfig(level: number): LevelConfig {
     neutralPowerMin: Math.min(30, base.neutralPowerMin + extra),
     neutralPowerMax: Math.min(50, base.neutralPowerMax + extra * 2),
     planetMinDistance: Math.min(22, base.planetMinDistance + extra * 0.3),
+    starCount: Math.min(6, 4 + Math.floor(extra / 2)),
   };
 }
 
@@ -200,3 +209,19 @@ export const DIRECTIONAL_LIGHT = 0.9;
 
 export const BACKGROUND_COLOR = 0x0a0a1a;
 export const STAR_COUNT = 2000;
+
+// ---- Stars (Suns) as obstacles ----
+
+/** Minimum distance from star to any planet */
+export const STAR_MIN_PLANET_DISTANCE = 12;
+/** Star visual radius (not physical — missiles die at STAR_KILL_RADIUS) */
+export const STAR_VISUAL_RADIUS_MIN = 2.5;
+export const STAR_VISUAL_RADIUS_MAX = 5.0;
+/** Missiles that enter this radius from star center are destroyed */
+export const STAR_KILL_RADIUS = 4.0;
+/** Gravity well radius for planets (giant/supergiant) */
+export const GRAVITY_WELL_RADIUS = 8.0;
+/** Minimum planet radius to generate gravity well */
+export const GRAVITY_WELL_MIN_PLANET_RADIUS = 3.0;
+/** How close two enemy missiles must be to intercept each other */
+export const MISSILE_INTERCEPT_DISTANCE = 1.5;

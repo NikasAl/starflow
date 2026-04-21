@@ -4,10 +4,11 @@
 
 import {
   type GameState, type PlanetData, type MissileData, type OwnerId,
-  type ShipRoute,
+  type ShipRoute, type StarData,
   PLAYER, NEUTRAL,
 } from '../core/types';
 import { generateMap, updatePlanetGrowth, resolveMissileArrival } from '../core/planet';
+import { generateStars, checkStarCollision } from '../core/star';
 import { createMissile, updateMissile } from '../core/fleet';
 import { type AIState, createAIs, updateAI } from '../core/ai';
 import {
@@ -15,6 +16,8 @@ import {
   getMaxRoutesFromPlanet,
   getMissileStrengthForSize,
   getLevelConfig,
+  STAR_KILL_RADIUS,
+  MISSILE_INTERCEPT_DISTANCE,
 } from '../core/constants';
 
 let routeCounter = 0;
@@ -22,8 +25,11 @@ let routeCounter = 0;
 /** Create game state for a specific level */
 export function createGameState(level: number = 1): GameState {
   const levelConfig = getLevelConfig(level);
+  const planets = generateMap(levelConfig);
+  const stars = generateStars(levelConfig, planets);
   return {
-    planets: generateMap(levelConfig),
+    planets,
+    stars,
     missiles: [],
     routes: [],
     selectedPlanetId: null,
@@ -44,8 +50,10 @@ export function updateGame(
   state: GameState,
   aiStates: AIState[],
   dt: number,
-): void {
-  if (state.phase !== 'playing') return;
+): { destroyedMissileIds: string[]; explosions: Array<{ x: number; y: number; z: number }> } {
+  const result = { destroyedMissileIds: [] as string[], explosions: [] as Array<{ x: number; y: number; z: number }> };
+
+  if (state.phase !== 'playing') return result;
 
   state.time += dt;
 
@@ -56,7 +64,7 @@ export function updateGame(
 
   // 2. AI thinking — create/remove routes
   for (const ai of aiStates) {
-    const { addRoutes, removeRouteIds } = updateAI(ai, state.planets, state.routes, dt);
+    const { addRoutes, removeRouteIds } = updateAI(ai, state.planets, state.routes, state.stars, dt);
 
     // Remove AI routes
     for (const rid of removeRouteIds) {
@@ -72,19 +80,62 @@ export function updateGame(
   // 3. Process routes: send missiles periodically
   processRoutes(state, dt);
 
-  // 4. Update missiles
+  // 4. Update missiles (with gravity wells)
   const arrivedMissiles: MissileData[] = [];
   for (const missile of state.missiles) {
     const source = state.planets.find(p => p.id === missile.sourceId);
     const target = state.planets.find(p => p.id === missile.targetId);
     if (!source || !target) continue;
 
-    const arrived = updateMissile(missile, source.x, source.y, source.z, target.x, target.y, target.z, dt);
+    const arrived = updateMissile(missile, source.x, source.y, source.z, target.x, target.y, target.z, dt, state.planets);
     if (arrived) arrivedMissiles.push(missile);
   }
 
-  // 5. Resolve arrivals
+  // 5. Check star collisions — missiles destroyed by stars
+  const starKilled: Set<string> = new Set();
+  for (const missile of state.missiles) {
+    if (arrivedMissiles.includes(missile)) continue;
+    const hitStar = checkStarCollision(missile.x, missile.y, missile.z, state.stars, STAR_KILL_RADIUS);
+    if (hitStar) {
+      starKilled.add(missile.id);
+      result.destroyedMissileIds.push(missile.id);
+      result.explosions.push({ x: missile.x, y: missile.y, z: missile.z });
+    }
+  }
+
+  // 6. Missile interception — enemy missiles collide mid-flight
+  const intercepted: Set<string> = new Set();
+  for (let i = 0; i < state.missiles.length; i++) {
+    const a = state.missiles[i];
+    if (starKilled.has(a.id) || arrivedMissiles.includes(a)) continue;
+
+    for (let j = i + 1; j < state.missiles.length; j++) {
+      const b = state.missiles[j];
+      if (starKilled.has(b.id) || arrivedMissiles.includes(b)) continue;
+      // Only intercept if different owners
+      if (a.owner === b.owner) continue;
+
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      const dz = a.z - b.z;
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+      if (dist < MISSILE_INTERCEPT_DISTANCE) {
+        // Both destroyed regardless of strength (mutual annihilation)
+        intercepted.add(a.id);
+        intercepted.add(b.id);
+        result.destroyedMissileIds.push(a.id, b.id);
+        result.explosions.push(
+          { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2 },
+        );
+        break; // a is destroyed, stop checking it
+      }
+    }
+  }
+
+  // 7. Resolve arrivals
   for (const missile of arrivedMissiles) {
+    if (starKilled.has(missile.id) || intercepted.has(missile.id)) continue;
     const idx = state.planets.findIndex(p => p.id === missile.targetId);
     if (idx < 0) continue;
     state.planets[idx] = resolveMissileArrival(
@@ -92,16 +143,21 @@ export function updateGame(
     );
   }
 
-  state.missiles = state.missiles.filter(m => m.progress < 1.0);
+  // 8. Clean up dead missiles
+  state.missiles = state.missiles.filter(m =>
+    m.progress < 1.0 && !starKilled.has(m.id) && !intercepted.has(m.id)
+  );
 
-  // 6. Clean up routes whose source was lost
+  // 9. Clean up routes whose source was lost
   state.routes = state.routes.filter(r => {
     const src = state.planets.find(p => p.id === r.sourceId);
     return src && src.owner === r.owner;
   });
 
-  // 7. Win/lose
+  // 10. Win/lose
   checkWinLose(state);
+
+  return result;
 }
 
 /** Process all active routes — send missiles on timer */

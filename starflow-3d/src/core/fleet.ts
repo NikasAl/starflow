@@ -2,8 +2,8 @@
 // Star Flow Command — Missile (Fleet) Logic
 // ============================================================
 
-import { type MissileData, type OwnerId } from './types';
-import { MISSILE_SPEED } from './constants';
+import { type MissileData, type OwnerId, type PlanetData } from './types';
+import { MISSILE_SPEED, GRAVITY_WELL_RADIUS, GRAVITY_WELL_MIN_PLANET_RADIUS } from './constants';
 
 let missileCounter = 0;
 
@@ -30,12 +30,16 @@ export function createMissile(
   };
 }
 
-/** Update missile position in a straight line. Returns true if arrived. */
+/**
+ * Update missile position in a straight line with gravity slow-down.
+ * Returns true if arrived.
+ */
 export function updateMissile(
   missile: MissileData,
   sx: number, sy: number, sz: number,
   tx: number, ty: number, tz: number,
   dt: number,
+  planets: PlanetData[],
 ): boolean {
   const dx = tx - sx;
   const dy = ty - sy;
@@ -44,7 +48,30 @@ export function updateMissile(
 
   if (totalDist < 0.01) return true;
 
-  const moveAmount = (missile.speed * dt) / totalDist;
+  // Calculate gravity slow-down from nearby large planets
+  let speedMultiplier = 1.0;
+  for (const planet of planets) {
+    if (planet.radius < GRAVITY_WELL_MIN_PLANET_RADIUS) continue;
+    // Skip source and target planets (they don't slow missiles)
+    if (planet.id === missile.sourceId || planet.id === missile.targetId) continue;
+
+    const pdx = planet.x - missile.x;
+    const pdy = planet.y - missile.y;
+    const pdz = planet.z - missile.z;
+    const dist = Math.sqrt(pdx * pdx + pdy * pdy + pdz * pdz);
+    const gravRange = GRAVITY_WELL_RADIUS + planet.radius;
+
+    if (dist < gravRange) {
+      // Slow down proportional to proximity: max 60% slow-down at surface
+      const t = 1 - (dist / gravRange); // 0 at edge, 1 at center
+      const slowdown = t * t * 0.6; // quadratic falloff, max 60% slow
+      speedMultiplier *= (1 - slowdown);
+    }
+  }
+
+  speedMultiplier = Math.max(0.2, speedMultiplier); // never slower than 20% base speed
+
+  const moveAmount = (missile.speed * dt * speedMultiplier) / totalDist;
   missile.progress += moveAmount;
 
   if (missile.progress >= 1.0) {

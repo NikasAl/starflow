@@ -24,29 +24,35 @@ const PLANET_NAMES = [
   'Mira', 'Castor', 'Pollux', 'Fomalhaut', 'Canopus',
 ];
 
-function tooClose(x: number, y: number, z: number, planets: PlanetData[], minDist: number): boolean {
+function tooClose(x: number, y: number, z: number, planets: PlanetData[], minDist: number, newRadius: number = 1.0): boolean {
   for (const p of planets) {
     const dx = p.x - x;
     const dy = p.y - y;
     const dz = p.z - z;
-    if (Math.sqrt(dx * dx + dy * dy + dz * dz) < minDist) return true;
+    // Minimum distance accounts for both radii
+    if (Math.sqrt(dx * dx + dy * dy + dz * dz) < minDist + p.radius + newRadius) return true;
   }
   return false;
 }
 
-function randomPosition(planets: PlanetData[], cfg: LevelConfig): { x: number; y: number; z: number } {
+function randomPosition(planets: PlanetData[], cfg: LevelConfig, radius: number = 1.0): { x: number; y: number; z: number } {
   const [hMin, hMax] = cfg.heightRange;
   for (let attempts = 0; attempts < 500; attempts++) {
     const x = (Math.random() - 0.5) * cfg.worldSize * 0.8;
     const y = hMin + Math.random() * (hMax - hMin);
     const z = (Math.random() - 0.5) * cfg.worldSize * 0.8;
-    if (!tooClose(x, y, z, planets, cfg.planetMinDistance)) return { x, y, z };
+    if (!tooClose(x, y, z, planets, cfg.planetMinDistance, radius)) return { x, y, z };
   }
   return {
     x: (Math.random() - 0.5) * cfg.worldSize * 0.8,
     y: hMin + Math.random() * (hMax - hMin),
     z: (Math.random() - 0.5) * cfg.worldSize * 0.8,
   };
+}
+
+/** Alias for randomPosition with explicit radius parameter */
+function randomPositionWithRadius(planets: PlanetData[], cfg: LevelConfig, radius: number): { x: number; y: number; z: number } {
+  return randomPosition(planets, cfg, radius);
 }
 
 /** Generate the full map layout for a given level configuration */
@@ -88,9 +94,9 @@ export function generateMap(levelConfig: LevelConfig): PlanetData[] {
 
   // Place neutral planets
   for (let i = owners.length; i < planetCount; i++) {
-    const pos = randomPosition(planets, levelConfig);
     const sizeType = randomPlanetSizeType();
     const sizeConfig = PLANET_SIZES[sizeType];
+    const pos = randomPositionWithRadius(planets, levelConfig, sizeConfig.radius);
 
     // Neutral power scaled by planet defense multiplier
     const basePower = levelConfig.neutralPowerMin +

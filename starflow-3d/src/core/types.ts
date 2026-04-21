@@ -71,6 +71,8 @@ export interface LevelConfig {
   neutralPowerMin: number;
   neutralPowerMax: number;
   planetMinDistance: number;
+  /** Number of star obstacles on this level */
+  starCount: number;
 }
 
 // ============================================================
@@ -131,9 +133,26 @@ export interface ShipRoute {
   missileStrength: 1 | 2;
 }
 
+// ============================================================
+// Star (Sun) Obstacle
+// ============================================================
+
+/** A star (sun) obstacle — cannot be captured, destroys missiles */
+export interface StarData {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  z: number;
+  visualRadius: number;
+  /** Seed for texture/appearance variation */
+  seed: number;
+}
+
 /** Overall game state */
 export interface GameState {
   planets: PlanetData[];
+  stars: StarData[];
   missiles: MissileData[];
   /** Persistent missile routes */
   routes: ShipRoute[];

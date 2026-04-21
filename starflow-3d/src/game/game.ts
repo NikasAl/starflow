@@ -21,6 +21,8 @@ import {
   setGameOverCallback,
   removeOverlay,
   dispose,
+  addStar,
+  addExplosion,
 } from '../rendering/renderer';
 
 const knownMissiles = new Set<string>();
@@ -38,6 +40,10 @@ export function startGame(canvas: HTMLCanvasElement, level: number = 1): void {
   aiStates = createAIStatesForLevel(gameState.levelConfig);
 
   initRenderer(canvas);
+
+  for (const star of gameState.stars) {
+    addStar(star);
+  }
 
   for (const planet of gameState.planets) {
     addPlanet(planet);
@@ -89,6 +95,11 @@ function goToLevel(level: number): void {
   gameState = createGameState(currentLevel);
   aiStates = createAIStatesForLevel(gameState.levelConfig);
 
+  // Add new stars
+  for (const star of gameState.stars) {
+    addStar(star);
+  }
+
   // Add new planets
   for (const planet of gameState.planets) {
     addPlanet(planet);
@@ -108,7 +119,18 @@ function gameLoop(now: number): void {
 
   // Stop updating on win/lose (but keep rendering for overlays)
   if (gameState.phase === 'playing') {
-    updateGame(gameState, aiStates, dt);
+    const updateResult = updateGame(gameState, aiStates, dt);
+
+    // Handle destroyed missiles (star collisions / interceptions)
+    for (const mid of updateResult.destroyedMissileIds) {
+      removeMissile(mid);
+      knownMissiles.delete(mid);
+    }
+
+    // Spawn explosions
+    for (const exp of updateResult.explosions) {
+      addExplosion(exp.x, exp.y, exp.z);
+    }
 
     // Sync new missiles
     for (const missile of gameState.missiles) {

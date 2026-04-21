@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import {
   type GameState, type PlanetData, type MissileData,
-  type CameraState, type ShipRoute, type OwnerId,
+  type CameraState, type ShipRoute, type OwnerId, type StarData,
   OWNER_COLORS, OWNER_NAMES,
   PLAYER,
 } from '../core/types';
@@ -16,6 +16,7 @@ import {
   CAM_MIN_DISTANCE, CAM_MAX_DISTANCE, CAM_ZOOM_SPEED,
   CAMERA_FLY_DURATION, CAMERA_FLY_DISTANCE, CAMERA_MAX_MISSES, CAMERA_MISS_TIMEOUT,
   PLANET_HIT_RADIUS_MIN,
+  GRAVITY_WELL_RADIUS, GRAVITY_WELL_MIN_PLANET_RADIUS,
   getMaxRoutesFromPlanet,
 } from '../core/constants';
 import { getGameStats } from '../game/state';
@@ -42,6 +43,23 @@ const missileMeshes = new Map<string, THREE.Group>();
 
 // Route lines (persistent beams between planets)
 const routeLines = new Map<string, THREE.Line>();
+
+// Star meshes (sun obstacles)
+const starMeshes = new Map<string, THREE.Group>();
+const starGlows = new Map<string, THREE.Mesh>();
+const starPointLights = new Map<string, THREE.PointLight>();
+
+// Gravity well rings (for giant/supergiant planets)
+const gravityWellRings = new Map<string, THREE.Mesh>();
+
+// Explosion particles
+interface ExplosionEffect {
+  particles: THREE.Points;
+  life: number;
+  maxLife: number;
+  velocities: THREE.Vector3[];
+}
+const activeExplosions: ExplosionEffect[] = [];
 
 const camState: CameraState = {
   targetX: 0,
@@ -215,10 +233,17 @@ function updateHTMLHUD(state: GameState): void {
     </div>`;
   }
 
+  // Star count
+  if (state.stars.length > 0) {
+    html += `<div style="margin-top:6px; font-size:11px; color:#ff6644;">
+      Stars: ${state.stars.length} hazard(s)
+    </div>`;
+  }
+
   // Active player routes
   const playerRoutes = state.routes.filter(r => r.owner === PLAYER);
   if (playerRoutes.length > 0) {
-    html += `<div style="margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.1); font-size:11px; color:#00ff88;">
+    html += `<div style="margin-top:4px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.1); font-size:11px; color:#00ff88;">
       Routes: ${playerRoutes.length} active
     </div>`;
   }
@@ -341,6 +366,243 @@ export function removeOverlay(): void {
 }
 
 // ============================================================
+// Star (Sun) Rendering
+// ============================================================
+
+export function addStar(star: StarData): void {
+  const group = new THREE.Group();
+  group.userData = { starId: star.id };
+
+  // Star color variants based on seed
+  const colorVariants = [
+    { core: 0xffffcc, glow: 0xffaa44, corona: 0xff6600 },
+    { core: 0xccddff, glow: 0x4488ff, corona: 0x2244aa },
+    { core: 0xffccaa, glow: 0xff6644, corona: 0xcc2200 },
+    { core: 0xffffff, glow: 0xffdd88, corona: 0xff8800 },
+  ];
+  const variant = colorVariants[star.seed % colorVariants.length];
+
+  // Core sphere — bright emissive
+  const coreGeo = new THREE.SphereGeometry(Math.max(0.1, star.visualRadius * 0.5), 32, 24);
+  const coreMat = new THREE.MeshBasicMaterial({
+    color: variant.core,
+  });
+  const core = new THREE.Mesh(coreGeo, coreMat);
+  group.add(core);
+
+  // Inner glow
+  const glowGeo = new THREE.SphereGeometry(Math.max(0.1, star.visualRadius * 0.8), 32, 24);
+  const glowMat = new THREE.MeshBasicMaterial({
+    color: variant.glow,
+    transparent: true,
+    opacity: 0.35,
+  });
+  const glowMesh = new THREE.Mesh(glowGeo, glowMat);
+  group.add(glowMesh);
+  starGlows.set(star.id, glowMesh);
+
+  // Corona — large semi-transparent sphere
+  const coronaGeo = new THREE.SphereGeometry(Math.max(0.1, star.visualRadius * 1.5), 32, 24);
+  const coronaMat = new THREE.MeshBasicMaterial({
+    color: variant.corona,
+    transparent: true,
+    opacity: 0.08,
+  });
+  const corona = new THREE.Mesh(coronaGeo, coronaMat);
+  group.add(corona);
+
+  // Danger ring — red ring indicating kill zone
+  const ringGeo = new THREE.RingGeometry(
+    Math.max(0.1, star.visualRadius + 3.5),
+    Math.max(0.2, star.visualRadius + 4.0),
+    48,
+  );
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: 0xff2200,
+    transparent: true,
+    opacity: 0.2,
+    side: THREE.DoubleSide,
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = -0.1;
+  group.add(ring);
+
+  // Second danger ring (vertical)
+  const ring2Geo = new THREE.RingGeometry(
+    Math.max(0.1, star.visualRadius + 3.5),
+    Math.max(0.2, star.visualRadius + 4.0),
+    48,
+  );
+  const ring2Mat = new THREE.MeshBasicMaterial({
+    color: 0xff2200,
+    transparent: true,
+    opacity: 0.1,
+    side: THREE.DoubleSide,
+  });
+  const ring2 = new THREE.Mesh(ring2Geo, ring2Mat);
+  ring2.position.y = -0.1;
+  group.add(ring2);
+
+  // Point light — illuminates nearby space
+  const light = new THREE.PointLight(variant.glow, 2.0, 40, 1.5);
+  light.position.set(0, 0, 0);
+  group.add(light);
+  starPointLights.set(star.id, light);
+
+  group.position.set(star.x, star.y, star.z);
+  scene.add(group);
+  starMeshes.set(star.id, group);
+}
+
+function animateStars(time: number): void {
+  for (const [id, group] of starMeshes) {
+    // Pulse glow
+    const glow = starGlows.get(id);
+    if (glow) {
+      (glow.material as THREE.MeshBasicMaterial).opacity = 0.25 + Math.sin(time * 2 + group.position.x) * 0.1;
+    }
+
+    // Rotate danger rings slowly
+    group.children.forEach((child, idx) => {
+      if (idx >= 4 && idx <= 5) { // ring indices
+        child.rotation.z = time * 0.3 * (idx === 4 ? 1 : -1);
+      }
+    });
+
+    // Flicker point light
+    const light = starPointLights.get(id);
+    if (light) {
+      light.intensity = 1.8 + Math.sin(time * 5 + id.charCodeAt(id.length - 1)) * 0.3;
+    }
+  }
+}
+
+// ============================================================
+// Gravity Well Visualization
+// ============================================================
+
+export function addGravityWell(planet: PlanetData): void {
+  const wellRadius = GRAVITY_WELL_RADIUS + planet.radius;
+
+  // Multiple concentric rings
+  for (let i = 0; i < 3; i++) {
+    const r = wellRadius * (0.6 + i * 0.2);
+    const ringGeo = new THREE.RingGeometry(
+      Math.max(0.1, r - 0.15),
+      Math.max(0.2, r + 0.15),
+      48,
+    );
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0x4488ff,
+      transparent: true,
+      opacity: 0.12 - i * 0.03,
+      side: THREE.DoubleSide,
+    });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.position.set(planet.x, planet.y - 0.2, planet.z);
+    ring.rotation.x = -Math.PI / 2;
+    scene.add(ring);
+    gravityWellRings.set(`${planet.id}_${i}`, ring);
+  }
+}
+
+function animateGravityWells(time: number): void {
+  for (const [key, ring] of gravityWellRings) {
+    const i = parseInt(key.split('_')[1]);
+    (ring.material as THREE.MeshBasicMaterial).opacity = (0.12 - i * 0.03) +
+      Math.sin(time * 1.5 + i * 1.2) * 0.04;
+  }
+}
+
+export function removeGravityWellsForPlanet(planetId: string): void {
+  for (let i = 0; i < 3; i++) {
+    const key = `${planetId}_${i}`;
+    const ring = gravityWellRings.get(key);
+    if (ring) {
+      scene.remove(ring);
+      ring.geometry.dispose();
+      (ring.material as THREE.Material).dispose();
+      gravityWellRings.delete(key);
+    }
+  }
+}
+
+// ============================================================
+// Explosion Effects
+// ============================================================
+
+export function addExplosion(x: number, y: number, z: number): void {
+  const particleCount = 20;
+  const geo = new THREE.BufferGeometry();
+  const positions = new Float32Array(particleCount * 3);
+  const velocities: THREE.Vector3[] = [];
+
+  for (let i = 0; i < particleCount; i++) {
+    positions[i * 3] = x;
+    positions[i * 3 + 1] = y;
+    positions[i * 3 + 2] = z;
+
+    // Random direction
+    const v = new THREE.Vector3(
+      (Math.random() - 0.5) * 2,
+      (Math.random() - 0.5) * 2,
+      (Math.random() - 0.5) * 2,
+    ).normalize().multiplyScalar(3 + Math.random() * 5);
+    velocities.push(v);
+  }
+
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+  const mat = new THREE.PointsMaterial({
+    color: 0xff8844,
+    size: 0.4,
+    transparent: true,
+    opacity: 1.0,
+    sizeAttenuation: true,
+  });
+
+  const points = new THREE.Points(geo, mat);
+  scene.add(points);
+
+  activeExplosions.push({
+    particles: points,
+    life: 0,
+    maxLife: 0.8,
+    velocities,
+  });
+}
+
+function updateExplosions(dt: number): void {
+  for (let i = activeExplosions.length - 1; i >= 0; i--) {
+    const exp = activeExplosions[i];
+    exp.life += dt;
+
+    if (exp.life >= exp.maxLife) {
+      scene.remove(exp.particles);
+      exp.particles.geometry.dispose();
+      (exp.particles.material as THREE.Material).dispose();
+      activeExplosions.splice(i, 1);
+      continue;
+    }
+
+    const t = exp.life / exp.maxLife;
+    (exp.particles.material as THREE.PointsMaterial).opacity = 1.0 - t;
+
+    const posAttr = exp.particles.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const arr = posAttr.array as Float32Array;
+    for (let j = 0; j < exp.velocities.length; j++) {
+      arr[j * 3] += exp.velocities[j].x * dt;
+      arr[j * 3 + 1] += exp.velocities[j].y * dt;
+      arr[j * 3 + 2] += exp.velocities[j].z * dt;
+      // Slow down
+      exp.velocities[j].multiplyScalar(0.95);
+    }
+    posAttr.needsUpdate = true;
+  }
+}
+
+// ============================================================
 // Planet rendering
 // ============================================================
 
@@ -389,6 +651,11 @@ export function addPlanet(planet: PlanetData): void {
   glow.rotation.x = -Math.PI / 2;
   scene.add(glow);
   planetGlows.set(planet.id, glow);
+
+  // Add gravity well for large planets
+  if (planet.radius >= GRAVITY_WELL_MIN_PLANET_RADIUS) {
+    addGravityWell(planet);
+  }
 
   addPlanetLabel(planet);
 }
@@ -854,6 +1121,32 @@ export function resetScene(): void {
   }
   planetLabels.clear();
 
+  // Remove gravity wells
+  for (const [key, ring] of gravityWellRings) {
+    scene.remove(ring);
+    ring.geometry.dispose();
+    (ring.material as THREE.Material).dispose();
+  }
+  gravityWellRings.clear();
+
+  // Remove stars
+  for (const [id, group] of starMeshes) {
+    scene.remove(group);
+    group.traverse(child => {
+      if (child instanceof THREE.Mesh) {
+        child.geometry.dispose();
+        (child.material as THREE.Material).dispose();
+      }
+    });
+  }
+  starMeshes.clear();
+  starGlows.clear();
+  for (const [id, light] of starPointLights) {
+    scene.remove(light);
+    light.dispose();
+  }
+  starPointLights.clear();
+
   // Remove missiles
   for (const [id, group] of missileMeshes) {
     scene.remove(group);
@@ -873,6 +1166,14 @@ export function resetScene(): void {
     (line.material as THREE.Material).dispose();
   }
   routeLines.clear();
+
+  // Remove explosions
+  for (const exp of activeExplosions) {
+    scene.remove(exp.particles);
+    exp.particles.geometry.dispose();
+    (exp.particles.material as THREE.Material).dispose();
+  }
+  activeExplosions.length = 0;
 
   // Remove selection ring
   if (selectionRing) {
@@ -914,6 +1215,9 @@ export function syncVisuals(state: GameState, time: number, dt: number = 0): voi
 
   animateSelection(time);
   animateRoutes(time);
+  animateStars(time);
+  animateGravityWells(time);
+  updateExplosions(dt);
 
   for (const missile of state.missiles) updateMissilePosition(missile);
 

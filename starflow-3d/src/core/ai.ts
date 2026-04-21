@@ -4,14 +4,16 @@
 // ============================================================
 
 import {
-  type PlanetData, type ShipRoute, type OwnerId,
+  type PlanetData, type ShipRoute, type OwnerId, type StarData,
   PLAYER, AI_1, AI_2, AI_3, NEUTRAL,
 } from './types';
 import {
   getMaxRoutesFromPlanet,
   PLANET_MAX_AUTO_POWER,
+  STAR_KILL_RADIUS,
 } from './constants';
 import { getMissileStrengthForSize } from './constants';
+import { isPathBlockedByStar } from './star';
 
 export interface AIState {
   owner: OwnerId;
@@ -52,6 +54,7 @@ export function updateAI(
   ai: AIState,
   planets: PlanetData[],
   routes: ShipRoute[],
+  stars: StarData[],
   dt: number,
 ): { addRoutes: ShipRoute[]; removeRouteIds: string[] } {
   const result = { addRoutes: [] as ShipRoute[], removeRouteIds: [] as string[] };
@@ -129,8 +132,15 @@ export function updateAI(
 
       const distance = dist(planet, candidate);
 
+      // Check if path passes through a star
+      const blockedByStar = stars.length > 0 &&
+        isPathBlockedByStar(planet.x, planet.y, planet.z, candidate.x, candidate.y, candidate.z, stars, STAR_KILL_RADIUS);
+
       let score: number;
-      if (candidate.owner === ai.owner) {
+      if (blockedByStar) {
+        // Heavily penalize routes through stars (AI avoids suicide missions)
+        score = 99999;
+      } else if (candidate.owner === ai.owner) {
         // Reinforce weak own planets (lower priority than attacking)
         score = distance * 1.5 + candidate.power * 3;
       } else {
