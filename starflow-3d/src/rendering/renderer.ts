@@ -465,17 +465,17 @@ function showOverlay(state: GameState): void {
 
   overlayElement.innerHTML = `
     <div style="text-align: center; pointer-events: auto;
-      background: rgba(0,0,0,0.55);
-      backdrop-filter: blur(4px);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 20px;
+      background: transparent;
       padding: 36px 48px 32px;
     ">
       <div style="font-size: 48px; font-weight: 700; color: ${titleColor};
-        text-shadow: 0 0 30px ${titleColor}80; letter-spacing: 4px;">${title}</div>
-      <div style="font-size: 18px; color: rgba(255,255,255,0.6); margin-top: 12px;">${subtitle}</div>
-      <div style="font-size: 14px; color: rgba(255,255,255,0.4); margin-top: 8px;">Time: ${timeStr}</div>
-      ${playerData ? `<div style="font-size: 14px; color: rgba(255,255,255,0.4); margin-top: 4px;">Your power: ${playerData.power} | Planets: ${playerData.planets}</div>` : ''}
+        text-shadow: 0 0 30px ${titleColor}80, 0 2px 8px rgba(0,0,0,0.8); letter-spacing: 4px;">${title}</div>
+      <div style="font-size: 18px; color: rgba(255,255,255,0.8); margin-top: 12px;
+        text-shadow: 0 1px 6px rgba(0,0,0,0.9);">${subtitle}</div>
+      <div style="font-size: 14px; color: rgba(255,255,255,0.6); margin-top: 8px;
+        text-shadow: 0 1px 4px rgba(0,0,0,0.9);">Time: ${timeStr}</div>
+      ${playerData ? `<div style="font-size: 14px; color: rgba(255,255,255,0.6); margin-top: 4px;
+        text-shadow: 0 1px 4px rgba(0,0,0,0.9);">Your power: ${playerData.power} | Planets: ${playerData.planets}</div>` : ''}
       ${buttonsHtml}
     </div>
   `;
