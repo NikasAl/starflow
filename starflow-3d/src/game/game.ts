@@ -1,11 +1,11 @@
 // ============================================================
 // Star Flow Command — Main Game Class
-// Level management, scene reset, transitions
+// Level management, scene reset, transitions, save/load
 // ============================================================
 
 import { type GameState } from '../core/types';
-import { createGameState, updateGame, handlePlayerAction, createAIStatesForLevel } from '../game/state';
 import { type AIState } from '../core/ai';
+import { createGameState, updateGame, handlePlayerAction, createAIStatesForLevel, getRouteCounter, setRouteCounter } from '../game/state';
 import {
   initRenderer,
   addPlanet,
@@ -24,6 +24,7 @@ import {
   addStar,
   addExplosion,
 } from '../rendering/renderer';
+import { saveGame, loadGame, clearSave, type SaveData } from '../core/save';
 
 const knownMissiles = new Set<string>();
 const knownRoutes = new Set<string>();
@@ -33,12 +34,43 @@ let aiStates: AIState[];
 let currentLevel = 1;
 let running = false;
 let lastTime = 0;
+let autoSaveTimer = 0;
+
+/** Callback to notify main.ts that game was saved */
+let onGameSaved: (() => void) | null = null;
 
 export function startGame(canvas: HTMLCanvasElement, level: number = 1): void {
   currentLevel = level;
   gameState = createGameState(currentLevel);
   aiStates = createAIStatesForLevel(gameState.levelConfig);
 
+  initGameScene(canvas);
+
+  // Save immediately so Continue works from start
+  saveGame(gameState, aiStates);
+  if (onGameSaved) onGameSaved();
+}
+
+/** Start game from a save file */
+export function startGameFromSave(canvas: HTMLCanvasElement, save: SaveData): void {
+  gameState = save.gameState;
+  currentLevel = gameState.level;
+
+  // Restore route counter to avoid ID collisions
+  setRouteCounter(save.routeCounter);
+
+  // Restore AI states from serialized data
+  aiStates = save.aiStates.map(s => ({
+    owner: s.owner as AIState['owner'],
+    thinkTimer: s.thinkTimer,
+    thinkInterval: s.thinkInterval,
+    activeRouteIds: new Set(s.activeRouteIds),
+  }));
+
+  initGameScene(canvas);
+}
+
+function initGameScene(canvas: HTMLCanvasElement): void {
   initRenderer(canvas);
 
   for (const star of gameState.stars) {
@@ -76,6 +108,7 @@ export function startGame(canvas: HTMLCanvasElement, level: number = 1): void {
   });
 
   running = true;
+  autoSaveTimer = 0;
   lastTime = performance.now();
   requestAnimationFrame(gameLoop);
 }
@@ -105,8 +138,13 @@ function goToLevel(level: number): void {
     addPlanet(planet);
   }
 
+  // Save on level change
+  saveGame(gameState, aiStates);
+  if (onGameSaved) onGameSaved();
+
   // Restart loop
   running = true;
+  autoSaveTimer = 0;
   lastTime = performance.now();
   requestAnimationFrame(gameLoop);
 }
@@ -161,6 +199,16 @@ function gameLoop(now: number): void {
         knownMissiles.delete(mid);
       }
     }
+
+    // Auto-save every 15 seconds during gameplay
+    autoSaveTimer += dt;
+    if (autoSaveTimer >= 15) {
+      autoSaveTimer = 0;
+      saveGame(gameState, aiStates);
+    }
+  } else {
+    // Save on win/lose
+    saveGame(gameState, aiStates);
   }
 
   syncVisuals(gameState, now / 1000, dt);
@@ -170,4 +218,9 @@ function gameLoop(now: number): void {
 export function stopGame(): void {
   running = false;
   dispose();
+}
+
+/** Set callback for when game is saved (used to update Continue button) */
+export function setOnGameSaved(cb: () => void): void {
+  onGameSaved = cb;
 }

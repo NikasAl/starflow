@@ -162,8 +162,27 @@ export const MISSILE_SPEED = 20;
 
 // ---- Route system ----
 
-/** How often a route sends a missile (seconds) */
-export const ROUTE_SEND_INTERVAL = 3.0;
+/** How often a route sends a missile (seconds) at power 1 */
+export const ROUTE_SEND_INTERVAL_BASE = 3.0;
+
+/** Minimum interval between missile sends (saturation floor) */
+export const ROUTE_SEND_INTERVAL_MIN = 1.0;
+
+/**
+ * Route send interval scales down with planet power.
+ * - power 1:   3.0s (base)
+ * - power 15:  2.4s
+ * - power 30:  1.8s
+ * - power 50:  1.0s (saturation)
+ * - power 50+: 1.0s (floor)
+ */
+export function getRouteSendInterval(power: number): number {
+  if (power <= 1) return ROUTE_SEND_INTERVAL_BASE;
+  return Math.max(
+    ROUTE_SEND_INTERVAL_MIN,
+    ROUTE_SEND_INTERVAL_BASE - (power - 1) * 0.04,
+  );
+}
 
 /**
  * Max outgoing routes from a planet based on its power:

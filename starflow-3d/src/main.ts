@@ -2,12 +2,18 @@
 // Star Flow Command — Entry Point
 // ============================================================
 
-import { startGame } from './game/game';
+import { startGame, startGameFromSave, setOnGameSaved } from './game/game';
+import { hasSave, loadGame, getSaveInfo } from './core/save';
 
 document.addEventListener('DOMContentLoaded', () => {
-  const startBtn = document.getElementById('start-btn');
-  const startScreen = document.getElementById('start-screen');
-  const gameContainer = document.getElementById('game-container');
+  const startBtn = document.getElementById('start-btn') as HTMLButtonElement;
+  const continueBtn = document.getElementById('continue-btn') as HTMLButtonElement;
+  const saveInfo = document.getElementById('save-info') as HTMLDivElement;
+  const startScreen = document.getElementById('start-screen') as HTMLDivElement;
+  const gameContainer = document.getElementById('game-container') as HTMLDivElement;
+
+  // Check for existing save and show Continue button
+  updateContinueButton();
 
   function requestFullscreen(): void {
     const el = document.documentElement as any;
@@ -20,7 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function launchGame(): void {
+  function launchGame(continueSave: boolean = false): void {
     if (!gameContainer || !startScreen) return;
 
     // Request fullscreen (works in WebView and browser)
@@ -38,7 +44,19 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error('Canvas #game-canvas not found!');
         return;
       }
-      startGame(canvas);
+
+      if (continueSave) {
+        const save = loadGame();
+        if (save) {
+          startGameFromSave(canvas, save);
+        } else {
+          // No save — start new game
+          startGame(canvas);
+        }
+      } else {
+        startGame(canvas);
+      }
+
       console.log('Star Flow Command — 3D initialized');
 
       // Hide loading overlay
@@ -47,12 +65,36 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 800);
   }
 
+  function updateContinueButton(): void {
+    const info = getSaveInfo();
+    if (info) {
+      continueBtn.classList.add('visible');
+      saveInfo.classList.add('visible');
+      saveInfo.textContent = `Level ${info.level}: ${info.name} — ${info.time}`;
+    } else {
+      continueBtn.classList.remove('visible');
+      saveInfo.classList.remove('visible');
+    }
+  }
+
+  // Notify main when game is saved (update Continue button info)
+  setOnGameSaved(() => {
+    updateContinueButton();
+  });
+
   if (startBtn) {
-    startBtn.addEventListener('click', launchGame);
-    // Touch support — prevent ghost clicks, ensure response
+    startBtn.addEventListener('click', () => launchGame(false));
     startBtn.addEventListener('touchend', (e) => {
       e.preventDefault();
-      launchGame();
+      launchGame(false);
+    });
+  }
+
+  if (continueBtn) {
+    continueBtn.addEventListener('click', () => launchGame(true));
+    continueBtn.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      launchGame(true);
     });
   }
 });

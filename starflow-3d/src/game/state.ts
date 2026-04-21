@@ -12,7 +12,7 @@ import { generateStars, checkStarCollision } from '../core/star';
 import { createMissile, updateMissile } from '../core/fleet';
 import { type AIState, createAIs, updateAI } from '../core/ai';
 import {
-  ROUTE_SEND_INTERVAL,
+  getRouteSendInterval,
   getMaxRoutesFromPlanet,
   getMissileStrengthForSize,
   getLevelConfig,
@@ -20,7 +20,20 @@ import {
   MISSILE_INTERCEPT_DISTANCE,
 } from '../core/constants';
 
+// Re-export for renderer HUD
+export { getRouteSendInterval };
+
 let routeCounter = 0;
+
+/** Get current route counter (for save serialization) */
+export function getRouteCounter(): number {
+  return routeCounter;
+}
+
+/** Set route counter (for save deserialization) */
+export function setRouteCounter(val: number): void {
+  routeCounter = val;
+}
 
 /** Create game state for a specific level */
 export function createGameState(level: number = 1): GameState {
@@ -160,17 +173,19 @@ export function updateGame(
   return result;
 }
 
-/** Process all active routes — send missiles on timer */
+/** Process all active routes — send missiles on timer (interval scales with power) */
 function processRoutes(state: GameState, dt: number): void {
   for (const route of state.routes) {
     route.sendTimer -= dt;
     if (route.sendTimer > 0) continue;
-    route.sendTimer = ROUTE_SEND_INTERVAL;
 
     const source = state.planets.find(p => p.id === route.sourceId);
     const target = state.planets.find(p => p.id === route.targetId);
     if (!source || !target) continue;
     if (source.owner !== route.owner) continue;
+
+    // Dynamic interval: higher power = faster sends
+    route.sendTimer = getRouteSendInterval(source.power);
 
     const missile = createMissile(
       route.owner,

@@ -97,6 +97,48 @@
       transform: scale(0.97);
       box-shadow: 0 0 15px rgba(68, 136, 255, 0.3);
     }
+    #continue-btn {
+      margin-top: 12px;
+      padding: 12px 48px;
+      font-size: clamp(14px, 2.2vw, 18px);
+      font-weight: 500;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #00ff88;
+      background: transparent;
+      border: 2px solid rgba(0, 255, 136, 0.5);
+      border-radius: 50px;
+      cursor: pointer;
+      box-shadow: 0 0 15px rgba(0, 255, 136, 0.2), 0 4px 15px rgba(0, 0, 0, 0.5);
+      transition: all 0.3s ease;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      display: none;
+    }
+    #continue-btn.visible {
+      display: inline-block;
+    }
+    #continue-btn:hover {
+      background: rgba(0, 255, 136, 0.1);
+      box-shadow: 0 0 25px rgba(0, 255, 136, 0.3), 0 4px 20px rgba(0, 0, 0, 0.5);
+      transform: scale(1.05);
+    }
+    #continue-btn:active {
+      transform: scale(0.97);
+      box-shadow: 0 0 10px rgba(0, 255, 136, 0.15);
+    }
+    #save-info {
+      margin-top: 8px;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.35);
+      text-align: center;
+      letter-spacing: 1px;
+      display: none;
+    }
+    #save-info.visible {
+      display: block;
+    }
 
     /* ===== GAME ===== */
     #game-container {
@@ -150,7 +192,9 @@
     <div class="content">
       <h1>STAR FLOW COMMAND</h1>
       <div class="subtitle">3D Space Strategy</div>
-      <button id="start-btn">START</button>
+      <button id="start-btn">NEW GAME</button>
+      <button id="continue-btn">CONTINUE</button>
+      <div id="save-info"></div>
     </div>
   </div>
 

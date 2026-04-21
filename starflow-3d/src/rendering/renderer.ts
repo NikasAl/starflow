@@ -19,7 +19,7 @@ import {
   GRAVITY_WELL_RADIUS, GRAVITY_WELL_MIN_PLANET_RADIUS,
   getMaxRoutesFromPlanet,
 } from '../core/constants';
-import { getGameStats } from '../game/state';
+import { getGameStats, getRouteSendInterval } from '../game/state';
 import { generatePlanetTextures, type TextureSet } from '../core/texture-gen';
 
 // Store texture sets per planet for disposal
@@ -269,8 +269,10 @@ function updateHTMLHUD(state: GameState): void {
     if (p) {
       const maxR = getMaxRoutesFromPlanet(p.power);
       const currentR = state.routes.filter(r => r.sourceId === p.id && r.owner === PLAYER).length;
+      const fireRate = getRouteSendInterval(p.power);
       html += `<div style="margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.1); font-size:12px; color:#00ff88;">
         ${p.name}: power ${Math.floor(p.power)} (${currentR}/${maxR} routes)<br>
+        <span style="color:rgba(255,255,255,0.5);">Fire rate: ${fireRate.toFixed(1)}s/missile</span><br>
         <span style="color:rgba(255,255,255,0.5);">Click target to create route</span>
       </div>`;
     }
