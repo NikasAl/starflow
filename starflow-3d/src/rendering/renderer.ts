@@ -425,11 +425,11 @@ function showOverlay(state: GameState): void {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
     z-index: 200; display: flex; flex-direction: column;
     align-items: center; justify-content: center;
-    background: rgba(0,0,0,0.75);
-    backdrop-filter: blur(6px);
+    background: transparent;
     font-family: 'Segoe UI', Arial, sans-serif;
     color: #fff;
     animation: fadeIn 0.5s ease;
+    pointer-events: none;
   `;
 
   const isWin = state.phase === 'won';
@@ -464,7 +464,13 @@ function showOverlay(state: GameState): void {
   ">${isWin ? 'REPLAY' : 'RETRY'}</button>`;
 
   overlayElement.innerHTML = `
-    <div style="text-align: center;">
+    <div style="text-align: center; pointer-events: auto;
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(4px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 20px;
+      padding: 36px 48px 32px;
+    ">
       <div style="font-size: 48px; font-weight: 700; color: ${titleColor};
         text-shadow: 0 0 30px ${titleColor}80; letter-spacing: 4px;">${title}</div>
       <div style="font-size: 18px; color: rgba(255,255,255,0.6); margin-top: 12px;">${subtitle}</div>
