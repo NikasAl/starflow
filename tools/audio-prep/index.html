@@ -1,0 +1,1558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Star Flow — Audio Prep Tool</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg-dark:    #080c14;
+    --bg-panel:   #0f1520;
+    --bg-surface: #161e2e;
+    --bg-hover:   #1c2840;
+    --border:     #1e2a3a;
+    --text:       #c9d1d9;
+    --text-dim:   #6e7a8a;
+    --accent:     #00bcd4;
+    --accent2:    #4caf50;
+    --warn:       #ff9800;
+    --danger:     #ef5350;
+    --selection:  rgba(0, 188, 212, 0.12);
+    --region-sfx: rgba(76, 175, 80, 0.25);
+    --region-mus: rgba(33, 150, 243, 0.25);
+  }
+
+  body {
+    font-family: 'Segoe UI', 'SF Mono', 'Consolas', monospace;
+    background: var(--bg-dark);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-size: 13px;
+  }
+
+  /* ── Header ─────────────────────────────────────────── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    gap: 12px;
+  }
+  header h1 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  .header-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  /* ── Buttons ────────────────────────────────────────── */
+  .btn {
+    padding: 5px 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-surface);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+    white-space: nowrap;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .btn:hover { background: var(--bg-hover); border-color: var(--accent); }
+  .btn:active { background: var(--accent); color: var(--bg-dark); }
+  .btn.primary { border-color: var(--accent); color: var(--accent); }
+  .btn.primary:hover { background: var(--accent); color: var(--bg-dark); }
+  .btn.sm { padding: 3px 8px; font-size: 11px; }
+  .btn:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
+
+  /* ── Main Layout ────────────────────────────────────── */
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Side Panels ────────────────────────────────────── */
+  .panel {
+    width: 240px;
+    min-width: 200px;
+    background: var(--bg-panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+  .panel.right {
+    border-right: none;
+    border-left: 1px solid var(--border);
+    width: 280px;
+  }
+  .panel-title {
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .panel-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px;
+  }
+  .panel-content::-webkit-scrollbar { width: 6px; }
+  .panel-content::-webkit-scrollbar-track { background: transparent; }
+  .panel-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── Track List ─────────────────────────────────────── */
+  .track-item {
+    padding: 6px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    transition: background 0.1s;
+  }
+  .track-item:hover { background: var(--bg-hover); }
+  .track-item.active { background: var(--selection); border: 1px solid var(--accent); }
+  .track-item .track-num {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--bg-surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+  .track-item.active .track-num { background: var(--accent); color: var(--bg-dark); }
+  .track-item .track-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+  }
+  .track-item .track-dur {
+    font-size: 10px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+
+  /* ── Target Sound List ──────────────────────────────── */
+  .sound-category {
+    padding: 6px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+  .sound-category:first-child { margin-top: 0; }
+
+  .sound-item {
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    transition: background 0.1s;
+    border-left: 3px solid transparent;
+  }
+  .sound-item:hover { background: var(--bg-hover); }
+  .sound-item.active { background: var(--selection); border-left-color: var(--accent); }
+  .sound-item.assigned { border-left-color: var(--accent2); }
+  .sound-item .sound-status {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    flex-shrink: 0;
+    color: transparent;
+  }
+  .sound-item.assigned .sound-status {
+    border-color: var(--accent2);
+    background: var(--accent2);
+    color: #fff;
+  }
+  .sound-item .sound-name { flex: 1; }
+  .sound-item .sound-info {
+    font-size: 10px;
+    color: var(--text-dim);
+    text-align: right;
+    line-height: 1.3;
+  }
+
+  /* ── Center Area ────────────────────────────────────── */
+  .center {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Waveform ───────────────────────────────────────── */
+  .waveform-wrapper {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background: var(--bg-dark);
+  }
+  #waveformCanvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .time-ruler {
+    height: 24px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+  #rulerCanvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* ── Zoom Controls ──────────────────────────────────── */
+  .zoom-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+  .zoom-bar input[type="range"] {
+    flex: 1;
+    max-width: 200px;
+    accent-color: var(--accent);
+    height: 4px;
+  }
+  .zoom-bar .zoom-val {
+    color: var(--text-dim);
+    min-width: 40px;
+  }
+  .cursor-time {
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    min-width: 80px;
+    text-align: center;
+  }
+
+  /* ── Region Info Bar ────────────────────────────────── */
+  .region-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 8px 12px;
+    background: var(--bg-panel);
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  .region-bar .info-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .region-bar .info-label {
+    color: var(--text-dim);
+  }
+  .region-bar .info-value {
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .region-bar .info-value.warn { color: var(--warn); }
+  .region-bar .info-value.danger { color: var(--danger); }
+  .region-bar .spacer { flex: 1; }
+
+  /* ── Footer / Status ────────────────────────────────── */
+  footer {
+    padding: 4px 16px;
+    background: var(--bg-panel);
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent2);
+  }
+
+  /* ── Progress overlay ───────────────────────────────── */
+  .loading-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(8, 12, 20, 0.85);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    z-index: 100;
+    font-size: 14px;
+    color: var(--accent);
+  }
+  .loading-overlay.hidden { display: none; }
+  .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Placeholder ────────────────────────────────────── */
+  .placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-dim);
+    gap: 12px;
+    text-align: center;
+    padding: 40px;
+  }
+  .placeholder .icon { font-size: 40px; opacity: 0.3; }
+  .placeholder p { font-size: 12px; line-height: 1.5; }
+
+  /* ── Quality Settings ───────────────────────────────── */
+  .quality-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 11px;
+  }
+  .quality-row label {
+    color: var(--text-dim);
+    min-width: 40px;
+  }
+  .quality-row select {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-family: inherit;
+  }
+
+  /* ── Tooltip ────────────────────────────────────────── */
+  .help-text {
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.5;
+    padding: 8px 12px;
+    border-top: 1px solid var(--border);
+  }
+  kbd {
+    padding: 1px 5px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg-surface);
+    font-size: 10px;
+    font-family: inherit;
+  }
+</style>
+</head>
+<body>
+
+<!-- ─── Header ────────────────────────────────────────── -->
+<header>
+  <h1>Star Flow Audio Prep</h1>
+  <div class="header-actions">
+    <input type="file" id="readmeInput" accept=".md,.txt" style="display:none">
+    <input type="file" id="trackInput" accept="audio/*" multiple style="display:none">
+    <input type="file" id="projectInput" accept=".json" style="display:none">
+    <button class="btn" onclick="document.getElementById('readmeInput').click()">Load README</button>
+    <button class="btn" onclick="document.getElementById('trackInput').click()">Load Tracks</button>
+    <button class="btn sm" onclick="document.getElementById('projectInput').click()">Open Project</button>
+    <button class="btn sm" onclick="saveProject()" id="btnSave" disabled>Save Project</button>
+    <button class="btn primary sm" onclick="generateScript()" id="btnExport" disabled>Generate Script</button>
+  </div>
+</header>
+
+<!-- ─── Main ──────────────────────────────────────────── -->
+<div class="main">
+
+  <!-- Left: Tracks -->
+  <div class="panel">
+    <div class="panel-title">
+      <span>Source Tracks</span>
+      <span id="trackCount" style="color:var(--accent)">0</span>
+    </div>
+    <div class="panel-content" id="trackList">
+      <div class="placeholder">
+        <div class="icon">&#9835;</div>
+        <p>Click <b>Load Tracks</b> to add MP3 files</p>
+      </div>
+    </div>
+    <div style="padding:8px 12px; border-top:1px solid var(--border);">
+      <div class="quality-row">
+        <label>SFX q:</label>
+        <select id="sfxQuality">
+          <option value="-1">-1 (smallest)</option>
+          <option value="0">0</option>
+          <option value="1">1</option>
+          <option value="3" selected>3 (balanced)</option>
+          <option value="5">5</option>
+          <option value="7">7</option>
+        </select>
+        <span style="color:var(--text-dim);font-size:10px" id="sfxKbps">&asymp;112 kbps</span>
+      </div>
+      <div class="quality-row">
+        <label>Mus q:</label>
+        <select id="musicQuality">
+          <option value="0">0</option>
+          <option value="3">3</option>
+          <option value="5" selected>5 (balanced)</option>
+          <option value="7">7</option>
+          <option value="10">10 (best)</option>
+        </select>
+        <span style="color:var(--text-dim);font-size:10px" id="musKbps">&asymp;192 kbps</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Center: Waveform -->
+  <div class="center">
+    <div class="zoom-bar">
+      <span style="color:var(--text-dim)">Zoom:</span>
+      <input type="range" id="zoomSlider" min="1" max="200" value="1" step="1">
+      <span class="zoom-val" id="zoomVal">1x</span>
+      <span style="color:var(--text-dim); margin-left:12px;">Fit:</span>
+      <button class="btn sm" onclick="zoomFit()">All</button>
+      <button class="btn sm" onclick="zoomToSelection()">Sel</button>
+      <span class="spacer"></span>
+      <span class="cursor-time" id="cursorTime">--:--.---</span>
+    </div>
+    <div class="time-ruler">
+      <canvas id="rulerCanvas"></canvas>
+    </div>
+    <div class="waveform-wrapper" id="waveformWrapper">
+      <canvas id="waveformCanvas"></canvas>
+      <div class="loading-overlay hidden" id="loadingOverlay">
+        <div class="spinner"></div>
+        <span id="loadingText">Decoding audio...</span>
+      </div>
+      <div class="placeholder" id="waveformPlaceholder">
+        <div class="icon">&#9783;</div>
+        <p>Load tracks and select one to see the waveform</p>
+      </div>
+    </div>
+    <div class="region-bar">
+      <div class="info-item">
+        <span class="info-label">Sel:</span>
+        <span class="info-value" id="selStart">--:--.---</span>
+        <span style="color:var(--text-dim)"> &rarr; </span>
+        <span class="info-value" id="selEnd">--:--.---</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Dur:</span>
+        <span class="info-value" id="selDur">-.-- s</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Est:</span>
+        <span class="info-value" id="selSize">- KB</span>
+      </div>
+      <span class="spacer"></span>
+      <button class="btn primary sm" onclick="assignRegion()" id="btnAssign" disabled>Assign (A)</button>
+      <button class="btn sm" onclick="playRegion()" id="btnPlayRegion" disabled>Play Region</button>
+      <button class="btn sm" onclick="playFromCursor()">Play from Cursor</button>
+      <button class="btn sm" onclick="stopPlayback()">Stop</button>
+    </div>
+    <div class="help-text">
+      <kbd>Drag</kbd> select region &nbsp;
+      <kbd>Ctrl+Drag</kbd> pan &nbsp;
+      <kbd>Scroll</kbd> zoom &nbsp;
+      <kbd>Space</kbd> play region &nbsp;
+      <kbd>A</kbd> assign to selected target &nbsp;
+      <kbd>Ctrl+S</kbd> save project
+    </div>
+  </div>
+
+  <!-- Right: Target Sounds -->
+  <div class="panel right">
+    <div class="panel-title">
+      <span>Target Sounds</span>
+      <span id="assignedCount" style="color:var(--accent2)">0/0</span>
+    </div>
+    <div class="panel-content" id="soundList">
+      <div class="placeholder">
+        <div class="icon">&#127925;</div>
+        <p>Click <b>Load README</b> to parse the sound file list</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Footer ────────────────────────────────────────── -->
+<footer>
+  <div class="status-dot"></div>
+  <span id="statusText">Ready</span>
+  <span class="spacer"></span>
+  <span id="readmePath">No README loaded</span>
+</footer>
+
+<!-- ─── Script ────────────────────────────────────────── -->
+<script>
+// ============================================================
+//  State
+// ============================================================
+const state = {
+  tracks: [],          // { name, file, duration, buffer }
+  activeTrack: -1,
+  sounds: [],          // { name, file, category, assigned: false }
+  activeSound: null,   // index into sounds[]
+  regions: {},         // soundFile -> { trackIdx, start, end }
+  selection: null,     // { start, end } in seconds
+  zoom: 1,
+  scrollOffset: 0,     // 0..1 fraction of total duration
+  cursorPos: null,      // seconds under mouse
+  dragging: false,
+  panning: false,
+  panStart: null,
+  panScrollStart: null,
+  readmeName: '',
+  dragStartSample: null,
+  projectName: '',
+};
+
+// OGG Vorbis approximate bitrate by quality (kbps)
+const VORBIS_KBPS = {
+  '-1': 32, '0': 64, '1': 80, '2': 96, '3': 112,
+  '4': 128, '5': 160, '6': 176, '7': 192,
+  '8': 224, '9': 256, '10': 320
+};
+
+// ============================================================
+//  DOM refs
+// ============================================================
+const $ = id => document.getElementById(id);
+const waveformCanvas  = $('waveformCanvas');
+const rulerCanvas     = $('rulerCanvas');
+const waveformWrapper = $('waveformWrapper');
+const wCtx = waveformCanvas.getContext('2d');
+const rCtx = rulerCanvas.getContext('2d');
+
+let audioCtx = null;
+let currentSource = null;
+
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+// ============================================================
+//  README parser
+// ============================================================
+function parseReadme(text) {
+  const sounds = [];
+  const lines = text.split('\n');
+  let currentCategory = null;
+
+  for (const line of lines) {
+    // Detect category directories
+    const sfxMatch = line.match(/[├└]──\s*sfx\/\s*$/);
+    const musMatch = line.match(/[├└]──\s*music\/\s*$/);
+    if (sfxMatch) { currentCategory = 'sfx'; continue; }
+    if (musMatch) { currentCategory = 'music'; continue; }
+
+    // Extract .ogg filenames
+    const fileMatch = line.match(/([a-zA-Z0-9_]+\.ogg)/);
+    if (fileMatch && currentCategory) {
+      const fileName = fileMatch[1];
+      const name = fileName.replace('.ogg', '');
+      const file = currentCategory + '/' + fileName;
+      // Avoid duplicates
+      if (!sounds.find(s => s.file === file)) {
+        sounds.push({ name, file, category: currentCategory, assigned: false });
+      }
+    }
+  }
+  return sounds;
+}
+
+// ============================================================
+//  Load README
+// ============================================================
+$('readmeInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  state.readmeName = file.name;
+  const text = await file.text();
+  state.sounds = parseReadme(text);
+
+  // Restore regions if they exist from a previously loaded project
+  for (const s of state.sounds) {
+    s.assigned = !!state.regions[s.file];
+  }
+
+  renderSoundList();
+  updateCounts();
+  $('readmePath').textContent = state.readmeName;
+  setStatus(`Loaded ${state.sounds.length} target sounds from README`);
+  e.target.value = '';
+});
+
+// ============================================================
+//  Load tracks
+// ============================================================
+$('trackInput').addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files);
+  if (!files.length) return;
+
+  showLoading(`Decoding ${files.length} track(s)...`);
+  const ctx = getAudioCtx();
+
+  let loaded = 0;
+  for (const file of files) {
+    try {
+      const arrayBuf = await file.arrayBuffer();
+      const audioBuf = await ctx.decodeAudioData(arrayBuf);
+      // Check if already loaded (same name)
+      const existing = state.tracks.findIndex(t => t.name === file.name);
+      if (existing >= 0) {
+        state.tracks[existing] = {
+          name: file.name,
+          file: file.name,
+          duration: audioBuf.duration,
+          buffer: audioBuf
+        };
+      } else {
+        state.tracks.push({
+          name: file.name,
+          file: file.name,
+          duration: audioBuf.duration,
+          buffer: audioBuf
+        });
+      }
+      loaded++;
+    } catch (err) {
+      console.warn('Failed to decode:', file.name, err);
+      setStatus('Error decoding ' + file.name + ': ' + err.message);
+    }
+  }
+
+  hideLoading();
+  if (state.activeTrack < 0 && state.tracks.length > 0) {
+    state.activeTrack = 0;
+  }
+  renderTrackList();
+  updateCounts();
+  drawAll();
+  setStatus(`Loaded ${loaded} track(s). Total: ${state.tracks.length}`);
+  e.target.value = '';
+});
+
+// ============================================================
+//  Render track list
+// ============================================================
+function renderTrackList() {
+  const el = $('trackList');
+  if (!state.tracks.length) {
+    el.innerHTML = '<div class="placeholder"><div class="icon">&#9835;</div><p>Click <b>Load Tracks</b> to add MP3 files</p></div>';
+    return;
+  }
+  el.innerHTML = state.tracks.map((t, i) => `
+    <div class="track-item ${i === state.activeTrack ? 'active' : ''}"
+         onclick="selectTrack(${i})"
+         ondblclick="playTrack(${i})"
+         title="${t.name}">
+      <div class="track-num">${i + 1}</div>
+      <div class="track-name">${t.name}</div>
+      <div class="track-dur">${formatTime(t.duration)}</div>
+    </div>
+  `).join('');
+}
+
+function selectTrack(idx) {
+  state.activeTrack = idx;
+  state.selection = null;
+  state.zoom = 1;
+  state.scrollOffset = 0;
+  $('zoomSlider').value = 1;
+  $('zoomVal').textContent = '1x';
+  renderTrackList();
+  drawAll();
+  updateRegionInfo();
+}
+
+// ============================================================
+//  Render sound list
+// ============================================================
+function renderSoundList() {
+  const el = $('soundList');
+  if (!state.sounds.length) {
+    el.innerHTML = '<div class="placeholder"><div class="icon">&#127925;</div><p>Click <b>Load README</b> to parse the sound file list</p></div>';
+    return;
+  }
+
+  let html = '';
+  let lastCat = null;
+  state.sounds.forEach((s, i) => {
+    if (s.category !== lastCat) {
+      lastCat = s.category;
+      html += `<div class="sound-category">${s.category === 'sfx' ? 'Sound Effects (SFX)' : 'Music Tracks'}</div>`;
+    }
+    const region = state.regions[s.file];
+    const info = region != null
+      ? `T${region.trackIdx + 1} &middot; ${region.start.toFixed(2)}s &rarr; ${region.end.toFixed(2)}s<br>${region.duration.toFixed(2)}s &middot; ~${region.sizeKB} KB`
+      : '';
+    html += `
+      <div class="sound-item ${i === state.activeSound ? 'active' : ''} ${s.assigned ? 'assigned' : ''}"
+           onclick="selectSound(${i})"
+           ondblclick="jumpToRegion('${s.file}')"
+           oncontextmenu="event.preventDefault(); deleteRegion('${s.file}')"
+           title="${s.file}${s.assigned ? ' — right-click to remove' : ''}">
+        <div class="sound-status">&#10003;</div>
+        <div class="sound-name">${s.name}</div>
+        <div class="sound-info">${info}</div>
+      </div>`;
+  });
+  el.innerHTML = html;
+}
+
+function selectSound(idx) {
+  state.activeSound = (state.activeSound === idx) ? null : idx;
+  renderSoundList();
+}
+
+function jumpToRegion(file) {
+  const region = state.regions[file];
+  if (!region) return;
+  // Switch to the track this region is on
+  state.activeTrack = region.trackIdx;
+  state.selection = { start: region.start, end: region.end };
+  renderTrackList();
+  zoomToRange(region.start, region.end);
+  updateRegionInfo();
+}
+
+// ============================================================
+//  Canvas sizing
+// ============================================================
+function resizeCanvases() {
+  const wrapper = waveformWrapper;
+  const dpr = window.devicePixelRatio || 1;
+
+  waveformCanvas.width = wrapper.clientWidth * dpr;
+  waveformCanvas.height = wrapper.clientHeight * dpr;
+  waveformCanvas.style.width = wrapper.clientWidth + 'px';
+  waveformCanvas.style.height = wrapper.clientHeight + 'px';
+  wCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const ruler = $('rulerCanvas').parentElement;
+  rulerCanvas.width = ruler.clientWidth * dpr;
+  rulerCanvas.height = ruler.clientHeight * dpr;
+  rulerCanvas.style.width = ruler.clientWidth + 'px';
+  rulerCanvas.style.height = ruler.clientHeight + 'px';
+  rCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  drawAll();
+}
+window.addEventListener('resize', resizeCanvases);
+
+// ============================================================
+//  Waveform drawing
+// ============================================================
+function getTimeRange() {
+  const track = state.tracks[state.activeTrack];
+  if (!track) return { start: 0, end: 1, duration: 1 };
+  const dur = track.duration;
+  const visibleDuration = dur / state.zoom;
+  const start = state.scrollOffset * (dur - visibleDuration);
+  const end = start + visibleDuration;
+  return { start: Math.max(0, start), end: Math.min(dur, end), duration: dur };
+}
+
+function drawAll() {
+  drawWaveform();
+  drawRuler();
+}
+
+function drawWaveform() {
+  const w = waveformWrapper.clientWidth;
+  const h = waveformWrapper.clientHeight;
+  wCtx.clearRect(0, 0, w, h);
+
+  // Background
+  wCtx.fillStyle = '#0a0e17';
+  wCtx.fillRect(0, 0, w, h);
+
+  // Center line
+  wCtx.strokeStyle = '#1a2233';
+  wCtx.lineWidth = 1;
+  wCtx.beginPath();
+  wCtx.moveTo(0, h / 2);
+  wCtx.lineTo(w, h / 2);
+  wCtx.stroke();
+
+  const track = state.tracks[state.activeTrack];
+  if (!track) {
+    $('waveformPlaceholder').style.display = 'flex';
+    return;
+  }
+  $('waveformPlaceholder').style.display = 'none';
+
+  const { start, end, duration } = getTimeRange();
+  const data = track.buffer.getChannelData(0);
+  const totalSamples = data.length;
+  const samplesPerSec = track.buffer.sampleRate;
+
+  // Draw assigned regions (from OTHER tracks' sounds are skipped, only current track)
+  for (const [file, region] of Object.entries(state.regions)) {
+    if (region.trackIdx !== state.activeTrack) continue;
+    const x1 = timeToX(region.start, start, end, w);
+    const x2 = timeToX(region.end, start, end, w);
+    if (x2 < 0 || x1 > w) continue;
+    const snd = state.sounds.find(s => s.file === file);
+    const color = snd && snd.category === 'music' ? 'rgba(33, 150, 243, 0.12)' : 'rgba(76, 175, 80, 0.12)';
+    wCtx.fillStyle = color;
+    wCtx.fillRect(x1, 0, x2 - x1, h);
+    // Region label
+    if (x2 - x1 > 40) {
+      wCtx.fillStyle = 'rgba(255,255,255,0.35)';
+      wCtx.font = '10px monospace';
+      wCtx.fillText(snd ? snd.name : file, x1 + 4, 12);
+    }
+  }
+
+  // Draw current selection
+  if (state.selection) {
+    const x1 = timeToX(state.selection.start, start, end, w);
+    const x2 = timeToX(state.selection.end, start, end, w);
+    wCtx.fillStyle = 'rgba(0, 188, 212, 0.15)';
+    wCtx.fillRect(x1, 0, x2 - x1, h);
+    // Selection edges
+    wCtx.strokeStyle = 'rgba(0, 188, 212, 0.7)';
+    wCtx.lineWidth = 1;
+    wCtx.setLineDash([4, 3]);
+    wCtx.beginPath();
+    wCtx.moveTo(x1, 0); wCtx.lineTo(x1, h);
+    wCtx.moveTo(x2, 0); wCtx.lineTo(x2, h);
+    wCtx.stroke();
+    wCtx.setLineDash([]);
+  }
+
+  // Draw waveform
+  const startSample = Math.floor(start * samplesPerSec);
+  const endSample = Math.min(Math.ceil(end * samplesPerSec), totalSamples);
+  const samplesPerPixel = (endSample - startSample) / w;
+
+  // Use gradient for waveform
+  const grad = wCtx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, '#00bcd4');
+  grad.addColorStop(0.45, '#00897b');
+  grad.addColorStop(0.55, '#00897b');
+  grad.addColorStop(1, '#00bcd4');
+  wCtx.fillStyle = grad;
+
+  for (let px = 0; px < w; px++) {
+    const sStart = Math.floor(startSample + px * samplesPerPixel);
+    const sEnd = Math.min(Math.floor(sStart + samplesPerPixel), totalSamples);
+    if (sStart >= totalSamples) break;
+
+    let min = 0, max = 0;
+    // Optimize: skip samples for very zoomed out views
+    const step = samplesPerPixel > 1000 ? Math.floor(samplesPerPixel / 500) : 1;
+    for (let i = sStart; i < sEnd; i += step) {
+      const v = data[i];
+      if (v > max) max = v;
+      if (v < min) min = v;
+    }
+
+    const yTop = (1 - max) * h * 0.48 + h * 0.02;
+    const yBot = (1 - min) * h * 0.48 + h * 0.02;
+    const barH = Math.max(yBot - yTop, 0.5);
+    wCtx.fillRect(px, yTop, 1, barH);
+  }
+
+  // Cursor line
+  if (state.cursorPos != null) {
+    const cx = timeToX(state.cursorPos, start, end, w);
+    if (cx >= 0 && cx <= w) {
+      wCtx.strokeStyle = 'rgba(255, 152, 0, 0.8)';
+      wCtx.lineWidth = 1;
+      wCtx.beginPath();
+      wCtx.moveTo(cx, 0);
+      wCtx.lineTo(cx, h);
+      wCtx.stroke();
+    }
+  }
+}
+
+function drawRuler() {
+  const w = $('rulerCanvas').parentElement.clientWidth;
+  const h = $('rulerCanvas').parentElement.clientHeight;
+  rCtx.clearRect(0, 0, w, h);
+  rCtx.fillStyle = '#0f1520';
+  rCtx.fillRect(0, 0, w, h);
+
+  const track = state.tracks[state.activeTrack];
+  if (!track) return;
+
+  const { start, end } = getTimeRange();
+  const range = end - start;
+
+  // Determine tick interval
+  const intervals = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 30, 60, 120, 300];
+  let tickInterval = intervals[0];
+  for (const iv of intervals) {
+    if (range / iv <= 100) { tickInterval = iv; break; }
+  }
+
+  rCtx.fillStyle = '#6e7a8a';
+  rCtx.font = '10px monospace';
+  rCtx.textAlign = 'center';
+
+  const firstTick = Math.ceil(start / tickInterval) * tickInterval;
+  for (let t = firstTick; t <= end; t += tickInterval) {
+    const x = timeToX(t, start, end, w);
+    // Tick mark
+    rCtx.strokeStyle = '#1e2a3a';
+    rCtx.beginPath();
+    rCtx.moveTo(x, h - 6);
+    rCtx.lineTo(x, h);
+    rCtx.stroke();
+    // Label
+    rCtx.fillText(formatTimeShort(t), x, h - 8);
+  }
+
+  // Bottom border
+  rCtx.strokeStyle = '#1e2a3a';
+  rCtx.beginPath();
+  rCtx.moveTo(0, h - 1);
+  rCtx.lineTo(w, h - 1);
+  rCtx.stroke();
+}
+
+function timeToX(time, viewStart, viewEnd, width) {
+  return ((time - viewStart) / (viewEnd - viewStart)) * width;
+}
+
+function xToTime(x, viewStart, viewEnd, width) {
+  return viewStart + (x / width) * (viewEnd - viewStart);
+}
+
+// ============================================================
+//  Mouse interaction on waveform
+// ============================================================
+function getMouseTime(e) {
+  const rect = waveformCanvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const { start, end } = getTimeRange();
+  return xToTime(x, start, end, rect.width);
+}
+
+waveformCanvas.addEventListener('mousedown', (e) => {
+  const track = state.tracks[state.activeTrack];
+  if (!track) return;
+  e.preventDefault();
+
+  if (e.ctrlKey || e.metaKey) {
+    // Pan mode
+    state.panning = true;
+    state.panStart = e.clientX;
+    state.panScrollStart = state.scrollOffset;
+    waveformCanvas.style.cursor = 'grabbing';
+    return;
+  }
+
+  // Selection mode
+  state.dragging = true;
+  const t = getMouseTime(e);
+  const dur = track.duration;
+  state.selection = {
+    start: Math.max(0, Math.min(t, dur)),
+    end: Math.max(0, Math.min(t, dur))
+  };
+  updateRegionInfo();
+  drawAll();
+});
+
+window.addEventListener('mousemove', (e) => {
+  const track = state.tracks[state.activeTrack];
+  if (!track) return;
+
+  const rect = waveformCanvas.getBoundingClientRect();
+  const inCanvas = e.clientX >= rect.left && e.clientX <= rect.right &&
+                   e.clientY >= rect.top && e.clientY <= rect.bottom;
+
+  if (inCanvas) {
+    const t = getMouseTime(e);
+    state.cursorPos = Math.max(0, Math.min(t, track.duration));
+    $('cursorTime').textContent = formatTime(state.cursorPos);
+  }
+
+  if (state.panning) {
+    const dx = e.clientX - state.panStart;
+    const dur = track.duration;
+    const visibleDur = dur / state.zoom;
+    const maxScroll = Math.max(0, 1 - 1 / state.zoom);
+    // Convert pixel delta to scroll fraction: dx pixels = dx/width of visible range
+    const deltaFraction = (dx / rect.width) * state.zoom;
+    state.scrollOffset = Math.max(0, Math.min(maxScroll, state.panScrollStart - deltaFraction));
+    drawAll();
+    return;
+  }
+
+  if (state.dragging) {
+    const t = getMouseTime(e);
+    state.selection.end = Math.max(0, Math.min(t, track.duration));
+    // Normalize: start <= end
+    if (state.selection.start > state.selection.end) {
+      [state.selection.start, state.selection.end] = [state.selection.end, state.selection.start];
+    }
+    updateRegionInfo();
+    drawAll();
+    return;
+  }
+
+  drawAll();
+});
+
+window.addEventListener('mouseup', (e) => {
+  if (state.panning) {
+    state.panning = false;
+    waveformCanvas.style.cursor = '';
+    return;
+  }
+  if (state.dragging) {
+    state.dragging = false;
+    // If selection is too tiny (< 5ms), treat as cursor click
+    if (state.selection && (state.selection.end - state.selection.start) < 0.005) {
+      state.selection = null;
+      updateRegionInfo();
+      drawAll();
+    }
+  }
+});
+
+// Zoom with mouse wheel
+waveformCanvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const track = state.tracks[state.activeTrack];
+  if (!track) return;
+
+  const rect = waveformCanvas.getBoundingClientRect();
+  const mouseX = e.clientX - rect.left;
+  const fraction = mouseX / rect.width; // 0..1 position in view
+
+  const oldZoom = state.zoom;
+  const zoomFactor = e.deltaY < 0 ? 1.25 : 0.8;
+  state.zoom = Math.max(1, Math.min(500, state.zoom * zoomFactor));
+
+  // Adjust scroll so the point under the mouse stays fixed
+  const dur = track.duration;
+  const oldVisDur = dur / oldZoom;
+  const oldMaxScroll = Math.max(0, 1 - 1 / oldZoom);
+  const oldStart = state.scrollOffset * (dur - oldVisDur);
+  const timeAtMouse = oldStart + fraction * oldVisDur;
+
+  // New view should have timeAtMouse at same pixel fraction
+  const newVisDur = dur / state.zoom;
+  const newStart = timeAtMouse - fraction * newVisDur;
+  const newMaxScroll = Math.max(0, 1 - 1 / state.zoom);
+  if (newMaxScroll > 0) {
+    state.scrollOffset = Math.max(0, Math.min(newMaxScroll, newStart / (dur - newVisDur)));
+  } else {
+    state.scrollOffset = 0;
+  }
+
+  $('zoomSlider').value = Math.min(200, Math.log2(state.zoom) * 20 + 20);
+  $('zoomVal').textContent = state.zoom.toFixed(1) + 'x';
+  drawAll();
+}, { passive: false });
+
+
+
+// Zoom slider
+$('zoomSlider').addEventListener('input', (e) => {
+  const val = parseFloat(e.target.value);
+  // Map 1..200 to zoom 1..500 (exponential)
+  state.zoom = Math.pow(2, (val - 20) / 20);
+  state.zoom = Math.max(1, state.zoom);
+  clampScroll();
+  $('zoomVal').textContent = state.zoom.toFixed(1) + 'x';
+  drawAll();
+});
+
+function clampScroll() {
+  const track = state.tracks[state.activeTrack];
+  if (!track) return;
+  const maxScroll = Math.max(0, 1 - 1 / state.zoom);
+  state.scrollOffset = Math.max(0, Math.min(maxScroll, state.scrollOffset));
+}
+
+function zoomFit() {
+  state.zoom = 1;
+  state.scrollOffset = 0;
+  $('zoomSlider').value = 20;
+  $('zoomVal').textContent = '1x';
+  drawAll();
+}
+
+function zoomToSelection() {
+  if (!state.selection) return;
+  zoomToRange(state.selection.start, state.selection.end);
+}
+
+function zoomToRange(tStart, tEnd) {
+  const track = state.tracks[state.activeTrack];
+  if (!track) return;
+  const dur = track.duration;
+  const selDur = tEnd - tStart;
+  if (selDur <= 0) return;
+
+  // Add 10% padding
+  const padding = selDur * 0.1;
+  const paddedDur = selDur + padding * 2;
+  state.zoom = Math.max(1, dur / paddedDur);
+
+  const visibleDur = dur / state.zoom;
+  const center = (tStart + tEnd) / 2;
+  const newStart = center - visibleDur / 2;
+  const maxScroll = Math.max(0, 1 - 1 / state.zoom);
+  state.scrollOffset = Math.max(0, Math.min(maxScroll, newStart / (dur - visibleDur)));
+
+  $('zoomSlider').value = Math.min(200, Math.log2(state.zoom) * 20 + 20);
+  $('zoomVal').textContent = state.zoom.toFixed(1) + 'x';
+  drawAll();
+}
+
+// ============================================================
+//  Keyboard shortcuts
+// ============================================================
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+
+  if (e.code === 'Space') {
+    e.preventDefault();
+    playRegion();
+  }
+  if (e.key === 'a' || e.key === 'A' || e.key === 'ф' || e.key === 'Ф') {
+    if (!e.ctrlKey && !e.metaKey) assignRegion();
+  }
+  if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    saveProject();
+  }
+  if (e.key === 'Escape') {
+    state.selection = null;
+    state.activeSound = null;
+    updateRegionInfo();
+    renderSoundList();
+    drawAll();
+  }
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    deleteActiveSoundRegion();
+  }
+});
+
+// ============================================================
+//  Region info display
+// ============================================================
+function updateRegionInfo() {
+  if (state.selection) {
+    const dur = state.selection.end - state.selection.start;
+    const cat = getActiveSoundCategory();
+    const quality = cat === 'music'
+      ? $('musicQuality').value
+      : $('sfxQuality').value;
+    const kbps = VORBIS_KBPS[quality] || 128;
+    const sizeKB = ((kbps * dur) / 8);
+    const channels = cat === 'music' ? 2 : 1;
+
+    $('selStart').textContent = formatTime(state.selection.start);
+    $('selEnd').textContent = formatTime(state.selection.end);
+    $('selDur').textContent = dur.toFixed(3) + ' s';
+
+    const sizeEl = $('selSize');
+    sizeEl.textContent = '~' + sizeKB.toFixed(1) + ' KB';
+    sizeEl.className = 'info-value';
+    if (cat === 'sfx' && sizeKB > 50) sizeEl.classList.add('warn');
+    if (cat === 'music' && sizeKB > 2048) sizeEl.classList.add('danger');
+
+    $('btnPlayRegion').disabled = false;
+  } else {
+    $('selStart').textContent = '--:--.---';
+    $('selEnd').textContent = '--:--.---';
+    $('selDur').textContent = '-.-- s';
+    $('selSize').textContent = '- KB';
+    $('selSize').className = 'info-value';
+    $('btnPlayRegion').disabled = true;
+  }
+  updateQualityLabels();
+  updateButtons();
+}
+
+function getActiveSoundCategory() {
+  if (state.activeSound != null && state.sounds[state.activeSound]) {
+    return state.sounds[state.activeSound].category;
+  }
+  return 'sfx';
+}
+
+function updateQualityLabels() {
+  const sq = $('sfxQuality').value;
+  const mq = $('musicQuality').value;
+  $('sfxKbps').innerHTML = '&asymp;' + (VORBIS_KBPS[sq] || '?') + ' kbps (mono)';
+  $('musKbps').innerHTML = '&asymp;' + (VORBIS_KBPS[mq] || '?') + ' kbps (stereo)';
+}
+
+$('sfxQuality').addEventListener('change', () => { recalcRegionSizes(); updateRegionInfo(); renderSoundList(); });
+$('musicQuality').addEventListener('change', () => { recalcRegionSizes(); updateRegionInfo(); renderSoundList(); });
+
+function recalcRegionSizes() {
+  for (const [file, region] of Object.entries(state.regions)) {
+    const snd = state.sounds.find(s => s.file === file);
+    const cat = snd ? snd.category : 'sfx';
+    const quality = cat === 'music' ? $('musicQuality').value : $('sfxQuality').value;
+    const kbps = VORBIS_KBPS[quality] || 128;
+    region.sizeKB = parseFloat(((kbps * region.duration) / 8).toFixed(1));
+  }
+}
+
+// ============================================================
+//  Assign region to target sound
+// ============================================================
+function assignRegion() {
+  if (!state.selection) { setStatus('No region selected — drag on waveform first'); return; }
+  if (state.activeSound == null) { setStatus('No target sound selected — click one in the right panel'); return; }
+  if (state.activeTrack < 0) { setStatus('No track loaded'); return; }
+
+  const sound = state.sounds[state.activeSound];
+  const dur = state.selection.end - state.selection.start;
+  const quality = sound.category === 'music'
+    ? $('musicQuality').value
+    : $('sfxQuality').value;
+  const kbps = VORBIS_KBPS[quality] || 128;
+  const sizeKB = parseFloat(((kbps * dur) / 8).toFixed(1));
+
+  state.regions[sound.file] = {
+    trackIdx: state.activeTrack,
+    start: parseFloat(state.selection.start.toFixed(4)),
+    end: parseFloat(state.selection.end.toFixed(4)),
+    duration: parseFloat(dur.toFixed(4)),
+    sizeKB
+  };
+  sound.assigned = true;
+
+  // Move to next unassigned sound
+  const nextIdx = state.sounds.findIndex((s, i) => i > state.activeSound && !s.assigned);
+  if (nextIdx >= 0) {
+    state.activeSound = nextIdx;
+  }
+
+  renderSoundList();
+  updateCounts();
+  updateButtons();
+  setStatus(`Assigned "${sound.name}" — ${dur.toFixed(2)}s, ~${sizeKB} KB`);
+}
+
+function deleteActiveSoundRegion() {
+  if (state.activeSound == null) return;
+  const sound = state.sounds[state.activeSound];
+  if (!sound.assigned) return;
+  delete state.regions[sound.file];
+  sound.assigned = false;
+  renderSoundList();
+  updateCounts();
+  updateButtons();
+  drawAll();
+  setStatus(`Removed region for "${sound.name}"`);
+}
+
+function deleteRegion(file) {
+  const snd = state.sounds.find(s => s.file === file);
+  if (snd) snd.assigned = false;
+  delete state.regions[file];
+  renderSoundList();
+  updateCounts();
+  updateButtons();
+  drawAll();
+}
+
+// ============================================================
+//  Playback
+// ============================================================
+function playRegion() {
+  if (!state.selection || state.activeTrack < 0) return;
+  stopPlayback();
+  const track = state.tracks[state.activeTrack];
+  const ctx = getAudioCtx();
+  const source = ctx.createBufferSource();
+  source.buffer = track.buffer;
+
+  const offset = Math.max(0, state.selection.start);
+  const duration = Math.max(0.01, state.selection.end - state.selection.start);
+
+  source.connect(ctx.destination);
+  source.start(0, offset, duration);
+  currentSource = source;
+
+  source.onended = () => { if (currentSource === source) currentSource = null; };
+}
+
+function playTrack(idx) {
+  stopPlayback();
+  state.activeTrack = idx;
+  const track = state.tracks[idx];
+  const ctx = getAudioCtx();
+  const source = ctx.createBufferSource();
+  source.buffer = track.buffer;
+  source.connect(ctx.destination);
+  source.start(0);
+  currentSource = source;
+  renderTrackList();
+  drawAll();
+  setStatus('Playing: ' + track.name);
+  source.onended = () => { if (currentSource === source) currentSource = null; };
+}
+
+function playFromCursor() {
+  const track = state.tracks[state.activeTrack];
+  if (!track) return;
+  stopPlayback();
+  const ctx = getAudioCtx();
+  const source = ctx.createBufferSource();
+  source.buffer = track.buffer;
+  const offset = Math.max(0, state.cursorPos || 0);
+  source.connect(ctx.destination);
+  source.start(0, offset);
+  currentSource = source;
+  source.onended = () => { if (currentSource === source) currentSource = null; };
+}
+
+function stopPlayback() {
+  if (currentSource) {
+    try { currentSource.stop(); } catch {}
+    currentSource = null;
+  }
+}
+
+// ============================================================
+//  Save / Load project
+// ============================================================
+function saveProject() {
+  if (!state.sounds.length) { setStatus('No sounds loaded'); return; }
+
+  const project = {
+    version: 1,
+    readmeName: state.readmeName,
+    tracks: state.tracks.map(t => t.name),
+    regions: { ...state.regions },
+    settings: {
+      sfxQuality: $('sfxQuality').value,
+      musicQuality: $('musicQuality').value
+    }
+  };
+
+  const json = JSON.stringify(project, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (state.projectName || 'starflow-audio') + '-project.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  setStatus('Project saved!');
+}
+
+$('projectInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const project = JSON.parse(text);
+    if (project.version !== 1) throw new Error('Unsupported project version');
+
+    state.projectName = file.name.replace('-project.json', '');
+    state.regions = project.regions || {};
+    if (project.settings) {
+      $('sfxQuality').value = project.settings.sfxQuality || '3';
+      $('musicQuality').value = project.settings.musicQuality || '5';
+    }
+
+    // Mark sounds as assigned
+    for (const s of state.sounds) {
+      s.assigned = !!state.regions[s.file];
+    }
+
+    renderSoundList();
+    updateCounts();
+    updateButtons();
+    updateRegionInfo();
+    setStatus(`Project loaded: ${Object.keys(state.regions).length} regions restored`);
+  } catch (err) {
+    setStatus('Error loading project: ' + err.message);
+  }
+  e.target.value = '';
+});
+
+// ============================================================
+//  Generate ffmpeg script
+// ============================================================
+function generateScript() {
+  const assigned = Object.entries(state.regions);
+  if (!assigned.length) { setStatus('No regions assigned yet'); return; }
+
+  const sfxQ = $('sfxQuality').value;
+  const musQ = $('musicQuality').value;
+
+  let script = '#!/bin/bash\n';
+  script += '# ============================================\n';
+  script += '# Star Flow — Audio Export Script\n';
+  script += '# Generated by Audio Prep Tool\n';
+  script += '# ============================================\n\n';
+  script += 'set -e\n\n';
+
+  script += '# --- Configuration ---\n';
+  script += 'INPUT_DIR="${INPUT_DIR:-.}"\n';
+  script += 'OUTPUT_DIR="${OUTPUT_DIR:-./output}"\n';
+  script += 'SFX_QUALITY=' + sfxQ + '\n';
+  script += 'MUSIC_QUALITY=' + musQ + '\n\n';
+
+  script += 'mkdir -p "$OUTPUT_DIR/sfx" "$OUTPUT_DIR/music"\n\n';
+
+  // Group commands by track
+  const byTrack = {};
+  for (const [file, region] of assigned) {
+    const trackName = state.tracks[region.trackIdx]?.name || 'UNKNOWN';
+    if (!byTrack[trackName]) byTrack[trackName] = [];
+    byTrack[trackName].push({ file, region });
+  }
+
+  for (const [trackName, entries] of Object.entries(byTrack)) {
+    script += '# --- From: ' + trackName + ' ---\n';
+    for (const { file, region } of entries) {
+      const category = file.startsWith('music/') ? 'music' : 'sfx';
+      const quality = category === 'music' ? musQ : sfxQ;
+      const channels = category === 'music' ? 2 : 1;
+      const dur = region.end - region.start;
+
+      script += `ffmpeg -y \\\n`;
+      script += `  -i "$INPUT_DIR/${trackName}" \\\n`;
+      script += `  -ss ${region.start.toFixed(4)} \\\n`;
+      script += `  -t ${dur.toFixed(4)} \\\n`;
+      script += `  -ac ${channels} \\\n`;
+      script += `  -ar 44100 \\\n`;
+      script += `  -c:a libvorbis \\\n`;
+      script += `  -q:a ${quality} \\\n`;
+      script += `  "$OUTPUT_DIR/${file}"\n\n`;
+    }
+  }
+
+  script += '# --- Summary ---\n';
+  script += 'echo "Export complete! Files in $OUTPUT_DIR:"\n';
+  script += 'find "$OUTPUT_DIR" -name "*.ogg" -exec ls -lh {} \\;\n';
+
+  const blob = new Blob([script], { type: 'text/x-shellscript' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'export-audio.sh';
+  a.click();
+  URL.revokeObjectURL(url);
+  setStatus('Export script generated! Run: bash export-audio.sh');
+}
+
+// ============================================================
+//  Utilities
+// ============================================================
+function formatTime(sec) {
+  if (sec == null || isNaN(sec)) return '--:--.---';
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return String(m).padStart(2, '0') + ':' + s.toFixed(3).padStart(6, '0');
+}
+
+function formatTimeShort(sec) {
+  if (sec < 60) return sec.toFixed(sec < 10 ? 2 : 1) + 's';
+  const m = Math.floor(sec / 60);
+  const s = (sec % 60).toFixed(sec % 60 < 10 ? 1 : 0);
+  return m + ':' + (sec % 60 < 10 ? '0' : '') + s;
+}
+
+function updateCounts() {
+  $('trackCount').textContent = state.tracks.length;
+  const assigned = state.sounds.filter(s => s.assigned).length;
+  $('assignedCount').textContent = assigned + '/' + state.sounds.length;
+}
+
+function updateButtons() {
+  const hasRegions = Object.keys(state.regions).length > 0;
+  $('btnSave').disabled = !state.sounds.length;
+  $('btnExport').disabled = !hasRegions;
+  $('btnAssign').disabled = !(state.selection && state.activeSound != null && state.activeTrack >= 0);
+}
+
+function showLoading(text) {
+  $('loadingText').textContent = text || 'Loading...';
+  $('loadingOverlay').classList.remove('hidden');
+}
+
+function hideLoading() {
+  $('loadingOverlay').classList.add('hidden');
+}
+
+function setStatus(text) {
+  $('statusText').textContent = text;
+}
+
+// ============================================================
+//  Init
+// ============================================================
+resizeCanvases();
+updateQualityLabels();
+updateCounts();
+setStatus('Ready — load README and source tracks to begin');
+</script>
+</body>
+</html>
