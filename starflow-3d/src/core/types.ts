@@ -132,6 +132,10 @@ export interface MissileData {
   x: number;
   y: number;
   z: number;
+  /** @internal flag: has entered a gravity well (for one-shot SFX) */
+  _gwFlagged?: boolean;
+  /** @internal flag: has been warned about star proximity (for one-shot SFX) */
+  _starWarned?: boolean;
 }
 
 /** A persistent route between two planets — missiles sent periodically */

@@ -18,6 +18,8 @@ import {
   getLevelConfig,
   STAR_KILL_RADIUS,
   MISSILE_INTERCEPT_DISTANCE,
+  GRAVITY_WELL_RADIUS,
+  GRAVITY_WELL_MIN_PLANET_RADIUS,
 } from '../core/constants';
 
 // Re-export for renderer HUD
@@ -58,13 +60,27 @@ export function createAIStatesForLevel(levelConfig: { aiCount: number; aiThinkIn
   return createAIs(levelConfig.aiCount, levelConfig.aiThinkInterval);
 }
 
+export interface GameEvents {
+  destroyedMissileIds: string[];
+  explosions: Array<{ x: number; y: number; z: number }>;
+  missileArrivals: Array<{ targetPlanetId: string; captured: boolean; newOwner: OwnerId }>;
+  gravityWellHits: Array<{ missileId: string; planetId: string }>;
+  starDangerAlerts: Array<{ missileId: string; starId: string }>;
+}
+
 /** Main update tick */
 export function updateGame(
   state: GameState,
   aiStates: AIState[],
   dt: number,
-): { destroyedMissileIds: string[]; explosions: Array<{ x: number; y: number; z: number }> } {
-  const result = { destroyedMissileIds: [] as string[], explosions: [] as Array<{ x: number; y: number; z: number }> };
+): GameEvents {
+  const result: GameEvents = {
+    destroyedMissileIds: [],
+    explosions: [],
+    missileArrivals: [],
+    gravityWellHits: [],
+    starDangerAlerts: [],
+  };
 
   if (state.phase !== 'playing') return result;
 
@@ -100,14 +116,41 @@ export function updateGame(
     const target = state.planets.find(p => p.id === missile.targetId);
     if (!source || !target) continue;
 
+    // Detect gravity well proximity (before move, only once per missile)
+    if (!missile._gwFlagged) {
+      for (const planet of state.planets) {
+        if (planet.radius < GRAVITY_WELL_MIN_PLANET_RADIUS) continue;
+        if (planet.id === missile.sourceId || planet.id === missile.targetId) continue;
+        const pdx = planet.x - missile.x;
+        const pdy = planet.y - missile.y;
+        const pdz = planet.z - missile.z;
+        const dist = Math.sqrt(pdx * pdx + pdy * pdy + pdz * pdz);
+        const gravRange = GRAVITY_WELL_RADIUS + planet.radius;
+        if (dist < gravRange) {
+          missile._gwFlagged = true;
+          result.gravityWellHits.push({ missileId: missile.id, planetId: planet.id });
+          break;
+        }
+      }
+    }
+
     const arrived = updateMissile(missile, source.x, source.y, source.z, target.x, target.y, target.z, dt, state.planets);
     if (arrived) arrivedMissiles.push(missile);
   }
 
-  // 5. Check star collisions — missiles destroyed by stars
+  // 5. Check star proximity (danger alert) and star collisions
   const starKilled: Set<string> = new Set();
   for (const missile of state.missiles) {
     if (arrivedMissiles.includes(missile)) continue;
+
+    // Star danger alert — when missile is approaching a star (2x kill radius)
+    const dangerStar = checkStarCollision(missile.x, missile.y, missile.z, state.stars, STAR_KILL_RADIUS * 2.0);
+    if (dangerStar && !missile._starWarned) {
+      missile._starWarned = true;
+      result.starDangerAlerts.push({ missileId: missile.id, starId: dangerStar.id });
+    }
+
+    // Star kill — within actual kill radius
     const hitStar = checkStarCollision(missile.x, missile.y, missile.z, state.stars, STAR_KILL_RADIUS);
     if (hitStar) {
       starKilled.add(missile.id);
@@ -146,14 +189,21 @@ export function updateGame(
     }
   }
 
-  // 7. Resolve arrivals
+  // 7. Resolve arrivals — track captures for sound events
   for (const missile of arrivedMissiles) {
     if (starKilled.has(missile.id) || intercepted.has(missile.id)) continue;
     const idx = state.planets.findIndex(p => p.id === missile.targetId);
     if (idx < 0) continue;
+    const oldOwner = state.planets[idx].owner;
     state.planets[idx] = resolveMissileArrival(
       state.planets[idx], missile.strength, missile.owner
     );
+    const captured = state.planets[idx].owner !== oldOwner;
+    result.missileArrivals.push({
+      targetPlanetId: missile.targetId,
+      captured,
+      newOwner: state.planets[idx].owner,
+    });
   }
 
   // 8. Clean up dead missiles

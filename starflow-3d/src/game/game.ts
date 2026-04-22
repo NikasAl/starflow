@@ -39,6 +39,13 @@ let running = false;
 let lastTime = 0;
 let autoSaveTimer = 0;
 
+// ── Battle music system ──────────────────────────────────
+let activeMissileCount = 0;
+let battleMusicCooldown = 0;   // seconds since battle ended before switching back
+let isBattleMusic = false;
+const BATTLE_MISSILE_THRESHOLD = 6;   // missiles in flight to trigger battle
+const BATTLE_FADE_BACK_DELAY = 8;     // seconds of calm before switching back
+
 /** Callback to notify main.ts that game was saved */
 let onGameSaved: (() => void) | null = null;
 
@@ -135,6 +142,11 @@ function goToLevel(level: number): void {
   knownMissiles.clear();
   knownRoutes.clear();
 
+  // Reset battle music state on level change
+  isBattleMusic = false;
+  battleMusicCooldown = 0;
+  audioManager.playMusic(MUSIC.AMBIENT_SPACE, { fadeIn: 1.0 });
+
   // Reset Three.js scene (removes all game objects)
   resetScene();
 
@@ -186,6 +198,42 @@ function gameLoop(now: number): void {
     // Spawn explosions
     for (const exp of updateResult.explosions) {
       addExplosion(exp.x, exp.y, exp.z);
+    }
+
+    // ── SFX events from game logic ───────────────────────
+    // Missile arrivals (hit or reinforce)
+    for (const arrival of updateResult.missileArrivals) {
+      if (arrival.captured) {
+        audioManager.play(SFX.PLANET_CAPTURE);
+      } else {
+        audioManager.play(SFX.MISSILE_HIT);
+      }
+    }
+
+    // Gravity well entry
+    for (const gw of updateResult.gravityWellHits) {
+      audioManager.play(SFX.GRAVITY_WELL);
+    }
+
+    // Star danger alerts
+    for (const sd of updateResult.starDangerAlerts) {
+      audioManager.play(SFX.STAR_DANGER);
+    }
+
+    // ── Battle music switching ───────────────────────────
+    activeMissileCount = gameState.missiles.length;
+    if (activeMissileCount >= BATTLE_MISSILE_THRESHOLD && !isBattleMusic) {
+      isBattleMusic = true;
+      battleMusicCooldown = 0;
+      audioManager.playMusic(MUSIC.BATTLE_INTENSE, { fadeIn: 1.5 });
+    } else if (activeMissileCount < BATTLE_MISSILE_THRESHOLD && isBattleMusic) {
+      battleMusicCooldown += dt;
+      if (battleMusicCooldown >= BATTLE_FADE_BACK_DELAY) {
+        isBattleMusic = false;
+        audioManager.playMusic(MUSIC.AMBIENT_SPACE, { fadeIn: 2.0 });
+      }
+    } else if (activeMissileCount >= BATTLE_MISSILE_THRESHOLD) {
+      battleMusicCooldown = 0; // reset cooldown while battle still active
     }
 
     // Sync new missiles
