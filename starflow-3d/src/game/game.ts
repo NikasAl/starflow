@@ -43,6 +43,7 @@ let autoSaveTimer = 0;
 let activeMissileCount = 0;
 let battleMusicCooldown = 0;   // seconds since battle ended before switching back
 let isBattleMusic = false;
+let endMusicStarted = false;    // one-shot: menu music on win/lose
 const BATTLE_MISSILE_THRESHOLD = 6;   // missiles in flight to trigger battle
 const BATTLE_FADE_BACK_DELAY = 8;     // seconds of calm before switching back
 
@@ -145,6 +146,7 @@ function goToLevel(level: number): void {
   // Reset battle music state on level change
   isBattleMusic = false;
   battleMusicCooldown = 0;
+  endMusicStarted = false;
   audioManager.playMusic(MUSIC.AMBIENT_SPACE, { fadeIn: 1.0 });
 
   // Reset Three.js scene (removes all game objects)
@@ -201,12 +203,10 @@ function gameLoop(now: number): void {
     }
 
     // ── SFX events from game logic ───────────────────────
-    // Missile arrivals (hit or reinforce)
+    // Planet captures (arrival that changes ownership)
     for (const arrival of updateResult.missileArrivals) {
       if (arrival.captured) {
         audioManager.play(SFX.PLANET_CAPTURE);
-      } else {
-        audioManager.play(SFX.MISSILE_HIT);
       }
     }
 
@@ -241,7 +241,6 @@ function gameLoop(now: number): void {
       if (!knownMissiles.has(missile.id)) {
         addMissile(missile);
         knownMissiles.add(missile.id);
-        audioManager.play(SFX.MISSILE_LAUNCH);
       }
     }
 
@@ -274,8 +273,12 @@ function gameLoop(now: number): void {
       saveGame(gameState, aiStates);
     }
   } else {
-    // Save on win/lose
+    // Save once + switch to menu music on win/lose (one-shot)
     saveGame(gameState, aiStates);
+    if (!endMusicStarted) {
+      endMusicStarted = true;
+      audioManager.playMusic(MUSIC.MENU_THEME, { fadeIn: 1.0 });
+    }
   }
 
   syncVisuals(gameState, now / 1000, dt);
