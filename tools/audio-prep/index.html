@@ -466,6 +466,9 @@
       <span style="color:var(--text-dim); margin-left:12px;">Fit:</span>
       <button class="btn sm" onclick="zoomFit()">All</button>
       <button class="btn sm" onclick="zoomToSelection()">Sel</button>
+      <span style="color:var(--text-dim); margin-left:12px;">Scroll:</span>
+      <button class="btn sm" onclick="scrollBy(-1)" title="Scroll left">&#9664;&#9664;</button>
+      <button class="btn sm" onclick="scrollBy(1)" title="Scroll right">&#9654;&#9654;</button>
       <span class="spacer"></span>
       <span class="cursor-time" id="cursorTime">--:--.---</span>
     </div>
@@ -508,9 +511,11 @@
       <kbd>Drag</kbd> select region &nbsp;
       <kbd>Ctrl+Drag</kbd> pan &nbsp;
       <kbd>Scroll</kbd> zoom &nbsp;
+      <kbd>&larr;&rarr;</kbd> / <kbd>&#9664;&#9664; &#9654;&#9654;</kbd> scroll &nbsp;
       <kbd>Space</kbd> play region &nbsp;
-      <kbd>A</kbd> assign to selected target &nbsp;
-      <kbd>Ctrl+S</kbd> save project
+      <kbd>A</kbd> assign &nbsp;
+      <kbd>Del</kbd> remove &nbsp;
+      <kbd>Ctrl+S</kbd> save
     </div>
   </div>
 
@@ -594,15 +599,25 @@ function parseReadme(text) {
   const sounds = [];
   const lines = text.split('\n');
   let currentCategory = null;
+  let insideTree = false;
 
   for (const line of lines) {
-    // Detect category directories
-    const sfxMatch = line.match(/[├└]──\s*sfx\/\s*$/);
-    const musMatch = line.match(/[├└]──\s*music\/\s*$/);
-    if (sfxMatch) { currentCategory = 'sfx'; continue; }
-    if (musMatch) { currentCategory = 'music'; continue; }
+    // Detect code block boundaries (the tree is inside ```)
+    if (line.match(/^```/)) { insideTree = !insideTree; continue; }
 
-    // Extract .ogg filenames
+    if (!insideTree) {
+      // Also detect category headers outside tree (Markdown ## headings)
+      if (line.match(/##.*SFX|sound.?effect/i)) { currentCategory = 'sfx'; }
+      else if (line.match(/##.*[Mm]usic/)) { currentCategory = 'music'; }
+      continue;
+    }
+
+    // Inside tree block — detect category directories
+    // Match lines like: ├── sfx/   or   └── music/   (with optional trailing text)
+    const catMatch = line.match(/[├└│ ]──\s*(sfx|music)\//);
+    if (catMatch) { currentCategory = catMatch[1]; continue; }
+
+    // Extract .ogg filenames (skip directory-only lines)
     const fileMatch = line.match(/([a-zA-Z0-9_]+\.ogg)/);
     if (fileMatch && currentCategory) {
       const fileName = fileMatch[1];
@@ -1031,12 +1046,12 @@ window.addEventListener('mousemove', (e) => {
 
   if (state.panning) {
     const dx = e.clientX - state.panStart;
-    const dur = track.duration;
-    const visibleDur = dur / state.zoom;
-    const maxScroll = Math.max(0, 1 - 1 / state.zoom);
-    // Convert pixel delta to scroll fraction: dx pixels = dx/width of visible range
-    const deltaFraction = (dx / rect.width) * state.zoom;
-    state.scrollOffset = Math.max(0, Math.min(maxScroll, state.panScrollStart - deltaFraction));
+    if (state.zoom <= 1) { drawAll(); return; }
+    const maxScroll = 1 - 1 / state.zoom;
+    // dx pixels → fraction of visible window → fraction of scroll range
+    // delta = (dx / width) / (zoom - 1)
+    const deltaScroll = (dx / rect.width) / (state.zoom - 1);
+    state.scrollOffset = Math.max(0, Math.min(maxScroll, state.panScrollStart - deltaScroll));
     drawAll();
     return;
   }
@@ -1129,6 +1144,17 @@ function clampScroll() {
   state.scrollOffset = Math.max(0, Math.min(maxScroll, state.scrollOffset));
 }
 
+/** Scroll by direction: -1 = left, +1 = right. Shifts by 20% of visible window. */
+function scrollBy(direction) {
+  const track = state.tracks[state.activeTrack];
+  if (!track || state.zoom <= 1) return;
+  const maxScroll = 1 - 1 / state.zoom;
+  // 20% of visible window in scroll-fraction units
+  const step = 0.2 / (state.zoom - 1);
+  state.scrollOffset = Math.max(0, Math.min(maxScroll, state.scrollOffset + direction * step));
+  drawAll();
+}
+
 function zoomFit() {
   state.zoom = 1;
   state.scrollOffset = 0;
@@ -1192,6 +1218,8 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Delete' || e.key === 'Backspace') {
     deleteActiveSoundRegion();
   }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); scrollBy(-1); }
+  if (e.key === 'ArrowRight') { e.preventDefault(); scrollBy(1); }
 });
 
 // ============================================================
