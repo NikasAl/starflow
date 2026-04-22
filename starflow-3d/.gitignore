@@ -2,3 +2,9 @@ node_modules/
 dist/
 .capacitor/
 android/
+
+# Signing
+signing.properties
+keystore/
+*.keystore
+*.jks

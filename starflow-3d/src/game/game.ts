@@ -27,6 +27,7 @@ import {
   recreateMenuButton,
 } from '../rendering/renderer';
 import { saveGame, loadGame, clearSave, type SaveData } from '../core/save';
+import { audioManager, SFX, MUSIC } from '../audio';
 
 const knownMissiles = new Set<string>();
 const knownRoutes = new Set<string>();
@@ -89,11 +90,18 @@ function initGameScene(canvas: HTMLCanvasElement): void {
     for (const rid of result.routeRemoved) {
       removeRouteLine(rid);
       knownRoutes.delete(rid);
+      audioManager.play(SFX.ROUTE_DISCONNECT);
     }
 
     if (result.routeAdded) {
       addRouteLine(result.routeAdded);
       knownRoutes.add(result.routeAdded.id);
+      audioManager.play(SFX.ROUTE_CREATE);
+    }
+
+    // Play planet select sound when a planet is newly selected
+    if (gameState.selectedPlanetId && !result.routeAdded && result.routeRemoved.length === 0) {
+      audioManager.play(SFX.PLANET_SELECT);
     }
 
     updateSelection(gameState.selectedPlanetId);
@@ -185,6 +193,7 @@ function gameLoop(now: number): void {
       if (!knownMissiles.has(missile.id)) {
         addMissile(missile);
         knownMissiles.add(missile.id);
+        audioManager.play(SFX.MISSILE_LAUNCH);
       }
     }
 

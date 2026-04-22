@@ -22,6 +22,7 @@ import {
 } from '../core/constants';
 import { getGameStats, getRouteSendInterval } from '../game/state';
 import { generatePlanetTextures, type TextureSet } from '../core/texture-gen';
+import { audioManager, SFX, MUSIC } from '../audio';
 
 // Store texture sets per planet for disposal
 const planetTextures = new Map<string, TextureSet>();
@@ -248,8 +249,10 @@ function toggleMenu(): void {
   menuOpen = !menuOpen;
   if (menuOpen) {
     showMenu();
+    audioManager.play(SFX.MENU_OPEN);
   } else {
     hideMenu();
+    audioManager.play(SFX.UI_CLICK);
   }
 }
 
@@ -315,6 +318,7 @@ function hideMenu(): void {
 
 function handleMenuItem(itemId: string): void {
   hideMenu();
+  audioManager.play(SFX.UI_CLICK);
 
   if (itemId === 'menu-toggle-help') {
     hudVisible = !hudVisible;
@@ -547,6 +551,13 @@ function showOverlay(state: GameState): void {
     </div>
   `;
 
+  // Play victory / defeat sound
+  if (isWin) {
+    audioManager.play(SFX.VICTORY);
+  } else {
+    audioManager.play(SFX.DEFEAT);
+  }
+
   document.body.appendChild(overlayElement);
 
   // Wire buttons
@@ -776,6 +787,8 @@ export function addExplosion(x: number, y: number, z: number): void {
     maxLife: 0.8,
     velocities,
   });
+
+  audioManager.play(SFX.EXPLOSION);
 }
 
 function updateExplosions(dt: number): void {

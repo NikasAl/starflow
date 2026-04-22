@@ -1,0 +1,12 @@
+# Star Flow Command — Signing Configuration
+# Copy this file to signing.properties and fill in your values
+#
+# Generate a keystore:
+#   keytool -genkey -v -keystore keystore/release.keystore -alias starflow -keyalg RSA -keysize 2048 -validity 10000
+#
+# Store the keystore in keystore/release.keystore (relative to starflow-3d/)
+
+storeFile=keystore/release.keystore
+storePassword=CHANGE_ME
+keyAlias=starflow
+keyPassword=CHANGE_ME

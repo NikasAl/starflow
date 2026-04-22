@@ -5,6 +5,7 @@
 import { startGame, startGameFromSave, setOnGameSaved } from './game/game';
 import { hasSave, loadGame, getSaveInfo } from './core/save';
 import { i18n } from './i18n';
+import { audioManager, MUSIC } from './audio';
 
 /** Apply localized text to all DOM elements with data-i18n attribute */
 function applyDOMTranslations(): void {
@@ -70,6 +71,12 @@ document.addEventListener('DOMContentLoaded', () => {
   applyDOMTranslations();
   updateContinueButton();
 
+  // Preload audio assets (fire-and-forget — game starts regardless)
+  audioManager.preloadAll();
+
+  // Start menu theme music (will play silently until AudioContext is unlocked)
+  audioManager.playMusic(MUSIC.MENU_THEME, { fadeIn: 1 });
+
   // Subscribe to language changes — retranslate everything
   i18n.onChange(() => {
     applyDOMTranslations();
@@ -89,6 +96,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function launchGame(continueSave: boolean = false): void {
     if (!gameContainer || !startScreen) return;
+
+    // Unlock audio on first user gesture (required for Android WebView)
+    audioManager.unlock();
 
     // Request fullscreen (works in WebView and browser)
     requestFullscreen();
@@ -118,6 +128,10 @@ document.addEventListener('DOMContentLoaded', () => {
         startGame(canvas);
       }
 
+      // Switch from menu theme to ambient game music
+      audioManager.stopMusic(0.5);
+      audioManager.playMusic(MUSIC.AMBIENT_SPACE, { fadeIn: 1.5 });
+
       console.log('Star Flow Command — 3D initialized');
 
       // Hide loading overlay
@@ -130,6 +144,10 @@ document.addEventListener('DOMContentLoaded', () => {
   setOnGameSaved(() => {
     updateContinueButton();
   });
+
+  // Handle Android app pause / resume (Capacitor)
+  document.addEventListener('pause', () => audioManager.suspend());
+  document.addEventListener('resume', () => audioManager.resume());
 
   if (startBtn) {
     startBtn.addEventListener('click', () => launchGame(false));
