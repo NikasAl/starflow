@@ -113,6 +113,7 @@ let menuButtonElement: HTMLButtonElement | null = null;
 let isOrbiting = false;
 let orbitAngle = 0;
 let orbitCenter = { x: 0, z: 0 };
+let orbitRadius = 0;
 const ORBIT_SPEED = 0.15; // radians per second
 
 // ============================================================
@@ -449,34 +450,38 @@ function showOverlay(state: GameState): void {
   let buttonsHtml = '';
   if (isWin) {
     buttonsHtml = `<button id="btn-next-level" style="
-      margin-top: 24px; padding: 14px 48px; font-size: 18px; font-weight: 600;
-      color: #000; background: #00ff88; border: none; border-radius: 50px;
-      cursor: pointer; letter-spacing: 2px; text-transform: uppercase;
-      box-shadow: 0 0 20px rgba(0,255,136,0.4);
+      padding: 14px 48px; font-size: 18px; font-weight: 600;
+      color: #00ff88; background: transparent; border: 2px solid rgba(0,255,136,0.5);
+      border-radius: 50px; cursor: pointer; letter-spacing: 2px; text-transform: uppercase;
+      text-shadow: 0 0 10px rgba(0,255,136,0.6);
       transition: all 0.2s;
     ">NEXT LEVEL</button>`;
   }
   buttonsHtml += `<button id="btn-retry" style="
-    margin-top: ${isWin ? '12px' : '24px'}; padding: 12px 40px; font-size: 16px; font-weight: 500;
+    margin-top: ${isWin ? '14px' : '0'}; padding: 12px 40px; font-size: 16px; font-weight: 500;
     color: #fff; background: transparent; border: 2px solid rgba(255,255,255,0.3);
     border-radius: 50px; cursor: pointer; letter-spacing: 1px;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.9);
     transition: all 0.2s;
   ">${isWin ? 'REPLAY' : 'RETRY'}</button>`;
 
   overlayElement.innerHTML = `
     <div style="text-align: center; pointer-events: auto;
       background: transparent;
-      padding: 36px 48px 32px;
+      display: flex; flex-direction: column; justify-content: space-between;
+      height: 100%; padding: 10vh 24px 8vh;
     ">
-      <div style="font-size: 48px; font-weight: 700; color: ${titleColor};
-        text-shadow: 0 0 30px ${titleColor}80, 0 2px 8px rgba(0,0,0,0.8); letter-spacing: 4px;">${title}</div>
-      <div style="font-size: 18px; color: rgba(255,255,255,0.8); margin-top: 12px;
-        text-shadow: 0 1px 6px rgba(0,0,0,0.9);">${subtitle}</div>
-      <div style="font-size: 14px; color: rgba(255,255,255,0.6); margin-top: 8px;
-        text-shadow: 0 1px 4px rgba(0,0,0,0.9);">Time: ${timeStr}</div>
-      ${playerData ? `<div style="font-size: 14px; color: rgba(255,255,255,0.6); margin-top: 4px;
-        text-shadow: 0 1px 4px rgba(0,0,0,0.9);">Your power: ${playerData.power} | Planets: ${playerData.planets}</div>` : ''}
-      ${buttonsHtml}
+      <div>
+        <div style="font-size: 48px; font-weight: 700; color: ${titleColor};
+          text-shadow: 0 0 30px ${titleColor}80, 0 2px 8px rgba(0,0,0,0.8); letter-spacing: 4px;">${title}</div>
+        <div style="font-size: 18px; color: rgba(255,255,255,0.8); margin-top: 12px;
+          text-shadow: 0 1px 6px rgba(0,0,0,0.9);">${subtitle}</div>
+        <div style="font-size: 14px; color: rgba(255,255,255,0.6); margin-top: 8px;
+          text-shadow: 0 1px 4px rgba(0,0,0,0.9);">Time: ${timeStr}</div>
+        ${playerData ? `<div style="font-size: 14px; color: rgba(255,255,255,0.6); margin-top: 4px;
+          text-shadow: 0 1px 4px rgba(0,0,0,0.9);">Your power: ${playerData.power} | Planets: ${playerData.planets}</div>` : ''}
+      </div>
+      <div>${buttonsHtml}</div>
     </div>
   `;
 
@@ -1349,6 +1354,7 @@ export function resetScene(): void {
   // Reset orbit state
   isOrbiting = false;
   orbitAngle = 0;
+  orbitRadius = 0;
 
   // Remove menu
   hideMenu();
@@ -1378,12 +1384,25 @@ function startOrbit(planets: PlanetData[]): void {
   isOrbiting = true;
   orbitAngle = camState.theta; // start from current angle
 
-  // Calculate center of all planets
+  // Calculate center and radius to fit all planets
   if (planets.length > 0) {
     let cx = 0, cz = 0;
     for (const p of planets) { cx += p.x; cz += p.z; }
     orbitCenter.x = cx / planets.length;
     orbitCenter.z = cz / planets.length;
+
+    // Find max distance from center to any planet
+    let maxDist = 0;
+    for (const p of planets) {
+      const dx = p.x - orbitCenter.x;
+      const dz = p.z - orbitCenter.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist > maxDist) maxDist = dist;
+    }
+    // Camera distance to see the whole field: farthest planet + padding
+    orbitRadius = (maxDist + 10) / Math.sin(CAM_DEFAULT_PHI);
+  } else {
+    orbitRadius = CAM_DEFAULT_DISTANCE;
   }
 }
 
@@ -1401,9 +1420,8 @@ function updateOrbit(dt: number, time: number): void {
   // Gentle phi oscillation for cinematic feel
   camState.phi = CAM_DEFAULT_PHI + Math.sin(time * 0.3) * 0.08;
 
-  // Zoom out a bit for overview
-  const targetDist = CAM_DEFAULT_DISTANCE * 1.1;
-  camState.distance += (targetDist - camState.distance) * 0.01;
+  // Zoom out to fit the whole battlefield
+  camState.distance += (orbitRadius - camState.distance) * 0.01;
 
   updateCamera();
 }
