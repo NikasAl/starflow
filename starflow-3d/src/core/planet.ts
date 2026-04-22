@@ -37,17 +37,62 @@ function tooClose(x: number, y: number, z: number, planets: PlanetData[], minDis
 
 function randomPosition(planets: PlanetData[], cfg: LevelConfig, radius: number = 1.0): { x: number; y: number; z: number } {
   const [hMin, hMax] = cfg.heightRange;
+
+  // Phase 1: strict placement with full minDistance spacing
   for (let attempts = 0; attempts < 500; attempts++) {
     const x = (Math.random() - 0.5) * cfg.worldSize * 0.8;
     const y = hMin + Math.random() * (hMax - hMin);
     const z = (Math.random() - 0.5) * cfg.worldSize * 0.8;
     if (!tooClose(x, y, z, planets, cfg.planetMinDistance, radius)) return { x, y, z };
   }
-  return {
-    x: (Math.random() - 0.5) * cfg.worldSize * 0.8,
-    y: hMin + Math.random() * (hMax - hMin),
-    z: (Math.random() - 0.5) * cfg.worldSize * 0.8,
-  };
+
+  // Phase 2: relaxed placement — only prevent physical overlap (no minDistance, just radii)
+  for (let attempts = 0; attempts < 500; attempts++) {
+    const x = (Math.random() - 0.5) * cfg.worldSize * 0.8;
+    const y = hMin + Math.random() * (hMax - hMin);
+    const z = (Math.random() - 0.5) * cfg.worldSize * 0.8;
+    if (!tooClose(x, y, z, planets, 0, radius)) return { x, y, z };
+  }
+
+  // Absolute fallback — guaranteed no overlap with a small gap (0.5 units)
+  for (let attempts = 0; attempts < 1000; attempts++) {
+    const x = (Math.random() - 0.5) * cfg.worldSize;
+    const y = hMin + Math.random() * (hMax - hMin);
+    const z = (Math.random() - 0.5) * cfg.worldSize;
+    let overlap = false;
+    for (const p of planets) {
+      const dx = p.x - x;
+      const dy = p.y - y;
+      const dz = p.z - z;
+      if (Math.sqrt(dx * dx + dy * dy + dz * dz) < p.radius + radius + 0.5) {
+        overlap = true;
+        break;
+      }
+    }
+    if (!overlap) return { x, y, z };
+  }
+
+  // Last resort — push away from nearest planet
+  let bestX = 0, bestY = 0, bestZ = 0, bestMinGap = -Infinity;
+  for (let attempts = 0; attempts < 200; attempts++) {
+    const x = (Math.random() - 0.5) * cfg.worldSize;
+    const y = hMin + Math.random() * (hMax - hMin);
+    const z = (Math.random() - 0.5) * cfg.worldSize;
+    let minGap = Infinity;
+    for (const p of planets) {
+      const dx = p.x - x;
+      const dy = p.y - y;
+      const dz = p.z - z;
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      const gap = dist - p.radius - radius;
+      if (gap < minGap) minGap = gap;
+    }
+    if (minGap > bestMinGap) {
+      bestMinGap = minGap;
+      bestX = x; bestY = y; bestZ = z;
+    }
+  }
+  return { x: bestX, y: bestY, z: bestZ };
 }
 
 /** Alias for randomPosition with explicit radius parameter */
