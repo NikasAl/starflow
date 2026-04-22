@@ -1,0 +1,86 @@
+{
+  "app": {
+    "title": "Star Flow Command",
+    "subtitle": "3D Space Strategy"
+  },
+  "ui": {
+    "newGame": "NEW GAME",
+    "continue": "CONTINUE",
+    "loading": "Loading Star Flow Command...",
+    "instructions": {
+      "select": "Click planet to select",
+      "createRoute": "Click target to create route",
+      "disconnect": "Click source again to disconnect",
+      "rotate": "Drag to rotate",
+      "pan": "Shift+Drag to pan",
+      "zoom": "Scroll to zoom",
+      "pinch": "Pinch to zoom (mobile)",
+      "routes1": "Power >15 = 2 routes",
+      "routes2": ">30 = 3 routes"
+    }
+  },
+  "menu": {
+    "hideHelp": "Hide Help",
+    "showHelp": "Show Help",
+    "restart": "Restart Level",
+    "language": "Language"
+  },
+  "hud": {
+    "you": "You",
+    "crimson": "Crimson",
+    "emerald": "Emerald",
+    "golden": "Golden",
+    "neutral": "Neutral",
+    "level": "Level {level}: {name}",
+    "power": "pw:{power}",
+    "stars": "Stars: {count} hazard(s)",
+    "stars_one": "Stars: {count} hazard",
+    "stars_other": "Stars: {count} hazards",
+    "routes": "Routes: {count} active",
+    "routes_one": "Routes: {count} active",
+    "routes_other": "Routes: {count} active",
+    "missiles": "Missiles in flight: {count}",
+    "missiles_one": "Missiles in flight: {count}",
+    "missiles_other": "Missiles in flight: {count}",
+    "victory": "VICTORY",
+    "defeat": "DEFEAT",
+    "selectedInfo": "{name}: power {power} ({current}/{max} routes)",
+    "fireRate": "Fire rate: {rate}s/missile",
+    "clickTarget": "Click target to create route"
+  },
+  "overlay": {
+    "victory": "VICTORY",
+    "defeat": "DEFEAT",
+    "levelCompleted": "Level {level}: {name} completed!",
+    "levelFailed": "Level {level}: {name}",
+    "time": "Time: {time}",
+    "yourStats": "Your power: {power} | Planets: {planets}",
+    "nextLevel": "NEXT LEVEL",
+    "replay": "REPLAY",
+    "retry": "RETRY"
+  },
+  "owner": {
+    "neutral": "Neutral",
+    "player": "Player",
+    "crimsonFleet": "Crimson Fleet",
+    "emeraldHorde": "Emerald Horde",
+    "goldenArmada": "Golden Armada"
+  },
+  "level": {
+    "1": "First Contact",
+    "2": "Expanding Borders",
+    "3": "Rising Tensions",
+    "4": "Two Front War",
+    "5": "Galactic Conflict",
+    "6": "Deep Space",
+    "7": "Supernova",
+    "8": "Endgame",
+    "infinite": "Infinite {n}"
+  },
+  "planet": {
+    "maxLinks": "max:{n} link"
+  },
+  "save": {
+    "info": "Level {level}: {name} \u2014 {time}"
+  }
+}

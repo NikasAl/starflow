@@ -6,9 +6,10 @@ import * as THREE from 'three';
 import {
   type GameState, type PlanetData, type MissileData,
   type CameraState, type ShipRoute, type OwnerId, type StarData,
-  OWNER_COLORS, OWNER_NAMES,
+  OWNER_COLORS, OWNER_NAMES, OWNER_NAME_KEYS,
   PLAYER,
 } from '../core/types';
+import { i18n, SUPPORTED_LOCALES, LOCALE_NAMES } from '../i18n';
 import {
   SELECTION_RING_COLOR, SELECTION_RING_RADIUS_MULTIPLIER,
   BACKGROUND_COLOR, STAR_COUNT, AMBIENT_LIGHT, DIRECTIONAL_LIGHT,
@@ -273,10 +274,13 @@ function showMenu(): void {
     animation: fadeIn 0.15s ease;
   `;
 
-  const toggleLabel = hudVisible ? 'Hide Help' : 'Show Help';
+  const toggleLabel = hudVisible
+    ? i18n.t('menu.hideHelp')
+    : i18n.t('menu.showHelp');
   const items = [
     { label: toggleLabel, id: 'menu-toggle-help' },
-    { label: 'Restart Level', id: 'menu-restart' },
+    { label: i18n.t('menu.restart'), id: 'menu-restart' },
+    { label: i18n.t('menu.language'), id: 'menu-language' },
   ];
 
   for (const item of items) {
@@ -319,18 +323,75 @@ function handleMenuItem(itemId: string): void {
     if (instructions) instructions.style.display = hudVisible ? '' : 'none';
   } else if (itemId === 'menu-restart') {
     if (onRestartLevel) onRestartLevel();
+  } else if (itemId === 'menu-language') {
+    showLanguageMenu();
   }
+}
+
+// ============================================================
+// Language selector submenu
+// ============================================================
+
+function showLanguageMenu(): void {
+  hideMenu();
+
+  const currentLocale = i18n.getLocale();
+
+  const langMenu = document.createElement('div');
+  langMenu.id = 'language-menu';
+  langMenu.style.cssText = `
+    position: fixed;
+    top: 62px;
+    right: 12px;
+    z-index: 160;
+    min-width: 150px;
+    background: rgba(10,10,30,0.95);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px;
+    padding: 6px 0;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: #fff;
+    animation: fadeIn 0.15s ease;
+  `;
+
+  for (const locale of SUPPORTED_LOCALES) {
+    const row = document.createElement('div');
+    row.textContent = LOCALE_NAMES[locale];
+    row.style.cssText = `
+      padding: 10px 18px;
+      cursor: pointer;
+      font-size: 14px;
+      letter-spacing: 0.5px;
+      color: ${locale === currentLocale ? '#00ff88' : 'rgba(255,255,255,0.85)'};
+      transition: background 0.15s;
+    `;
+    row.addEventListener('mouseenter', () => { row.style.background = 'rgba(255,255,255,0.08)'; });
+    row.addEventListener('mouseleave', () => { row.style.background = 'transparent'; });
+    row.addEventListener('click', () => {
+      i18n.setLocale(locale);
+      langMenu.remove();
+    });
+    row.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      i18n.setLocale(locale);
+      langMenu.remove();
+    });
+    langMenu.appendChild(row);
+  }
+
+  document.body.appendChild(langMenu);
 }
 
 function updateHTMLHUD(state: GameState): void {
   const stats = getGameStats(state);
 
   const owners: [number, string, number][] = [
-    [1, 'You', 0x4488ff],
-    [2, 'Crimson', 0xff4444],
-    [3, 'Emerald', 0x44cc44],
-    [4, 'Golden', 0xffaa00],
-    [0, 'Neutral', 0x888888],
+    [1, i18n.t('hud.you'), 0x4488ff],
+    [2, i18n.t('hud.crimson'), 0xff4444],
+    [3, i18n.t('hud.emerald'), 0x44cc44],
+    [4, i18n.t('hud.golden'), 0xffaa00],
+    [0, i18n.t('hud.neutral'), 0x888888],
   ];
 
   let html = `<div style="
@@ -344,7 +405,7 @@ function updateHTMLHUD(state: GameState): void {
 
   // Level + Timer
   html += `<div style="font-size:13px; color:rgba(255,255,255,0.5); margin-bottom:4px;">
-    Level ${state.level}: ${state.levelConfig.name}
+    ${i18n.t('hud.level', { level: state.level, name: i18n.t(state.levelConfig.nameKey, state.levelConfig.nameParams) })}
   </div>`;
   html += `<div style="font-size:13px; color:rgba(255,255,255,0.5); margin-bottom:6px;">
     ${Math.floor(state.time / 60)}:${String(Math.floor(state.time % 60)).padStart(2, '0')}
@@ -359,7 +420,7 @@ function updateHTMLHUD(state: GameState): void {
       <span style="min-width:55px;">${name}</span>
       <span style="color:rgba(255,255,255,0.7);">${s.planets}p</span>
       <span style="color:${ch === '#888888' ? '#aaa' : '#66bbff'}; font-size:11px;">
-        pw:${s.power}
+        ${i18n.t('hud.power', { power: s.power })}
       </span>
     </div>`;
   }
@@ -367,7 +428,7 @@ function updateHTMLHUD(state: GameState): void {
   // Star count
   if (state.stars.length > 0) {
     html += `<div style="margin-top:6px; font-size:11px; color:#ff6644;">
-      Stars: ${state.stars.length} hazard(s)
+      ${i18n.tp('hud.stars', state.stars.length)}
     </div>`;
   }
 
@@ -375,7 +436,7 @@ function updateHTMLHUD(state: GameState): void {
   const playerRoutes = state.routes.filter(r => r.owner === PLAYER);
   if (playerRoutes.length > 0) {
     html += `<div style="margin-top:4px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.1); font-size:11px; color:#00ff88;">
-      Routes: ${playerRoutes.length} active
+      ${i18n.tp('hud.routes', playerRoutes.length)}
     </div>`;
   }
 
@@ -383,15 +444,15 @@ function updateHTMLHUD(state: GameState): void {
   const playerMissiles = state.missiles.filter(m => m.owner === PLAYER).length;
   if (playerMissiles > 0) {
     html += `<div style="font-size:11px; color:rgba(255,255,255,0.4);">
-      Missiles in flight: ${playerMissiles}
+      ${i18n.tp('hud.missiles', playerMissiles)}
     </div>`;
   }
 
   // Phase indicator (subtle, overlay handles the big display)
   if (state.phase === 'won') {
-    html += `<div style="font-size:14px; font-weight:bold; color:#00ff88; text-align:center; margin-top:8px;">VICTORY</div>`;
+    html += `<div style="font-size:14px; font-weight:bold; color:#00ff88; text-align:center; margin-top:8px;">${i18n.t('hud.victory')}</div>`;
   } else if (state.phase === 'lost') {
-    html += `<div style="font-size:14px; font-weight:bold; color:#ff4444; text-align:center; margin-top:8px;">DEFEAT</div>`;
+    html += `<div style="font-size:14px; font-weight:bold; color:#ff4444; text-align:center; margin-top:8px;">${i18n.t('hud.defeat')}</div>`;
   }
 
   // Selected hint
@@ -402,9 +463,9 @@ function updateHTMLHUD(state: GameState): void {
       const currentR = state.routes.filter(r => r.sourceId === p.id && r.owner === PLAYER).length;
       const fireRate = getRouteSendInterval(p.power);
       html += `<div style="margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.1); font-size:12px; color:#00ff88;">
-        ${p.name}: power ${Math.floor(p.power)} (${currentR}/${maxR} routes)<br>
-        <span style="color:rgba(255,255,255,0.5);">Fire rate: ${fireRate.toFixed(1)}s/missile</span><br>
-        <span style="color:rgba(255,255,255,0.5);">Click target to create route</span>
+        ${i18n.t('hud.selectedInfo', { name: p.name, power: Math.floor(p.power), current: currentR, max: maxR })}<br>
+        <span style="color:rgba(255,255,255,0.5);">${i18n.t('hud.fireRate', { rate: fireRate.toFixed(1) })}</span><br>
+        <span style="color:rgba(255,255,255,0.5);">${i18n.t('hud.clickTarget')}</span>
       </div>`;
     }
   }
@@ -435,10 +496,11 @@ function showOverlay(state: GameState): void {
 
   const isWin = state.phase === 'won';
   const titleColor = isWin ? '#00ff88' : '#ff4444';
-  const title = isWin ? 'VICTORY' : 'DEFEAT';
+  const levelName = i18n.t(state.levelConfig.nameKey, state.levelConfig.nameParams);
+  const title = isWin ? i18n.t('overlay.victory') : i18n.t('overlay.defeat');
   const subtitle = isWin
-    ? `Level ${state.level}: ${state.levelConfig.name} completed!`
-    : `Level ${state.level}: ${state.levelConfig.name}`;
+    ? i18n.t('overlay.levelCompleted', { level: state.level, name: levelName })
+    : i18n.t('overlay.levelFailed', { level: state.level, name: levelName });
 
   const minutes = Math.floor(state.time / 60);
   const seconds = Math.floor(state.time % 60);
@@ -455,7 +517,7 @@ function showOverlay(state: GameState): void {
       border-radius: 50px; cursor: pointer; letter-spacing: 2px; text-transform: uppercase;
       text-shadow: 0 0 10px rgba(0,255,136,0.6);
       transition: all 0.2s;
-    ">NEXT LEVEL</button>`;
+    ">${i18n.t('overlay.nextLevel')}</button>`;
   }
   buttonsHtml += `<button id="btn-retry" style="
     margin-top: ${isWin ? '14px' : '0'}; padding: 12px 40px; font-size: 16px; font-weight: 500;
@@ -463,7 +525,7 @@ function showOverlay(state: GameState): void {
     border-radius: 50px; cursor: pointer; letter-spacing: 1px;
     text-shadow: 0 1px 4px rgba(0,0,0,0.9);
     transition: all 0.2s;
-  ">${isWin ? 'REPLAY' : 'RETRY'}</button>`;
+  ">${isWin ? i18n.t('overlay.replay') : i18n.t('overlay.retry')}</button>`;
 
   overlayElement.innerHTML = `
     <div style="text-align: center; pointer-events: auto;
@@ -477,9 +539,9 @@ function showOverlay(state: GameState): void {
         <div style="font-size: 18px; color: rgba(255,255,255,0.8); margin-top: 12px;
           text-shadow: 0 1px 6px rgba(0,0,0,0.9);">${subtitle}</div>
         <div style="font-size: 14px; color: rgba(255,255,255,0.6); margin-top: 8px;
-          text-shadow: 0 1px 4px rgba(0,0,0,0.9);">Time: ${timeStr}</div>
+          text-shadow: 0 1px 4px rgba(0,0,0,0.9);">${i18n.t('overlay.time', { time: timeStr })}</div>
         ${playerData ? `<div style="font-size: 14px; color: rgba(255,255,255,0.6); margin-top: 4px;
-          text-shadow: 0 1px 4px rgba(0,0,0,0.9);">Your power: ${playerData.power} | Planets: ${playerData.planets}</div>` : ''}
+          text-shadow: 0 1px 4px rgba(0,0,0,0.9);">${i18n.t('overlay.yourStats', { power: playerData.power, planets: playerData.planets })}</div>` : ''}
       </div>
       <div>${buttonsHtml}</div>
     </div>
@@ -848,8 +910,8 @@ function drawPlanetLabel(ctx: CanvasRenderingContext2D, planet: PlanetData): voi
   const maxR = getMaxRoutesFromPlanet(planet.power);
   ctx.font = '10px Arial';
   ctx.fillStyle = 'rgba(255,255,255,0.3)';
-  ctx.strokeText(`max:${maxR} link`, 80, 60);
-  ctx.fillText(`max:${maxR} link`, 80, 60);
+  ctx.strokeText(i18n.t('planet.maxLinks', { n: maxR }), 80, 60);
+  ctx.fillText(i18n.t('planet.maxLinks', { n: maxR }), 80, 60);
 }
 
 export function updatePlanet(planet: PlanetData): void {

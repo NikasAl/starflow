@@ -190,17 +190,17 @@
   <!-- Start Screen -->
   <div id="start-screen">
     <div class="content">
-      <h1>STAR FLOW COMMAND</h1>
-      <div class="subtitle">3D Space Strategy</div>
-      <button id="start-btn">NEW GAME</button>
-      <button id="continue-btn">CONTINUE</button>
+      <h1 id="title-text">STAR FLOW COMMAND</h1>
+      <div class="subtitle" id="subtitle-text">3D Space Strategy</div>
+      <button id="start-btn" data-i18n="ui.newGame">NEW GAME</button>
+      <button id="continue-btn" data-i18n="ui.continue">CONTINUE</button>
       <div id="save-info"></div>
     </div>
   </div>
 
   <!-- Game -->
   <div id="game-container">
-    <div id="loading">Loading Star Flow Command...</div>
+    <div id="loading"><span id="loading-text">Loading Star Flow Command...</span></div>
     <canvas id="game-canvas"></canvas>
     <div id="instructions">
       Click planet to select &bull; Click target to create route &bull; Click source again to disconnect &bull; Drag to rotate &bull; Shift+Drag to pan &bull; Scroll to zoom &bull; Pinch to zoom (mobile) &bull; Power &gt;15 = 2 routes, &gt;30 = 3 routes

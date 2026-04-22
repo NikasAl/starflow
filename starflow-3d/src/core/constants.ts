@@ -45,7 +45,7 @@ export function getGrowthMultiplier(sizeType: PlanetSizeType): number {
 
 export const LEVELS: LevelConfig[] = [
   {
-    level: 1, name: 'First Contact',
+    level: 1, name: 'First Contact', nameKey: 'level.1',
     planetCount: 4, aiCount: 1,
     heightRange: [-2, 2], worldSize: 50,
     starCount: 0,
@@ -54,7 +54,7 @@ export const LEVELS: LevelConfig[] = [
     planetMinDistance: 14,
   },
   {
-    level: 2, name: 'Expanding Borders',
+    level: 2, name: 'Expanding Borders', nameKey: 'level.2',
     planetCount: 6, aiCount: 1,
     heightRange: [-5, 5], worldSize: 55,
     starCount: 1,
@@ -63,7 +63,7 @@ export const LEVELS: LevelConfig[] = [
     planetMinDistance: 15,
   },
   {
-    level: 3, name: 'Rising Tensions',
+    level: 3, name: 'Rising Tensions', nameKey: 'level.3',
     planetCount: 8, aiCount: 1,
     heightRange: [-8, 8], worldSize: 60,
     starCount: 1,
@@ -72,7 +72,7 @@ export const LEVELS: LevelConfig[] = [
     planetMinDistance: 16,
   },
   {
-    level: 4, name: 'Two Front War',
+    level: 4, name: 'Two Front War', nameKey: 'level.4',
     planetCount: 10, aiCount: 2,
     heightRange: [-10, 10], worldSize: 70,
     starCount: 2,
@@ -81,7 +81,7 @@ export const LEVELS: LevelConfig[] = [
     planetMinDistance: 17,
   },
   {
-    level: 5, name: 'Galactic Conflict',
+    level: 5, name: 'Galactic Conflict', nameKey: 'level.5',
     planetCount: 12, aiCount: 2,
     heightRange: [-12, 12], worldSize: 80,
     starCount: 2,
@@ -90,7 +90,7 @@ export const LEVELS: LevelConfig[] = [
     planetMinDistance: 18,
   },
   {
-    level: 6, name: 'Deep Space',
+    level: 6, name: 'Deep Space', nameKey: 'level.6',
     planetCount: 14, aiCount: 2,
     heightRange: [-14, 14], worldSize: 85,
     starCount: 3,
@@ -99,7 +99,7 @@ export const LEVELS: LevelConfig[] = [
     planetMinDistance: 18,
   },
   {
-    level: 7, name: 'Supernova',
+    level: 7, name: 'Supernova', nameKey: 'level.7',
     planetCount: 16, aiCount: 3,
     heightRange: [-15, 15], worldSize: 90,
     starCount: 3,
@@ -108,7 +108,7 @@ export const LEVELS: LevelConfig[] = [
     planetMinDistance: 19,
   },
   {
-    level: 8, name: 'Endgame',
+    level: 8, name: 'Endgame', nameKey: 'level.8',
     planetCount: 18, aiCount: 3,
     heightRange: [-15, 15], worldSize: 100,
     starCount: 4,
@@ -127,7 +127,7 @@ export function getLevelConfig(level: number): LevelConfig {
   return {
     ...base,
     level,
-    name: `Infinite ${extra}`,
+    name: `Infinite ${extra}`, nameKey: 'level.infinite', nameParams: { n: extra },
     planetCount: Math.min(24, base.planetCount + extra * 2),
     aiCount: Math.min(4, base.aiCount + Math.floor(extra / 3)),
     heightRange: [-15, 15] as [number, number],

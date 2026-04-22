@@ -29,6 +29,15 @@ export const OWNER_NAMES: Record<OwnerId, string> = {
   [AI_3]:    'Golden Armada',
 };
 
+/** i18n keys for owner names — used for localized display */
+export const OWNER_NAME_KEYS: Record<OwnerId, string> = {
+  [NEUTRAL]: 'owner.neutral',
+  [PLAYER]:  'owner.player',
+  [AI_1]:    'owner.crimsonFleet',
+  [AI_2]:    'owner.emeraldHorde',
+  [AI_3]:    'owner.goldenArmada',
+};
+
 // ============================================================
 // Planet Visual Types
 // ============================================================
@@ -61,6 +70,10 @@ export interface PlanetSizeConfig {
 export interface LevelConfig {
   level: number;
   name: string;
+  /** i18n key for localized level name */
+  nameKey: string;
+  /** i18n params for level name (e.g. { n: 3 } for infinite levels) */
+  nameParams?: Record<string, string | number>;
   planetCount: number;
   aiCount: number;
   /** Y-axis height variation range */
