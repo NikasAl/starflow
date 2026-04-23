@@ -4,13 +4,14 @@
 // ============================================================
 
 import {
-  type GameState,
+  type GameState, type ActiveBoost,
 } from './types';
 import { type AIState } from './ai';
 import { getRouteCounter, setRouteCounter } from '../game/state';
+import { ENERGY_START } from '../core/constants';
 
 const SAVE_KEY = 'starflow_save';
-const SAVE_VERSION = 1;
+const SAVE_VERSION = 2;
 
 /** Serializable save data */
 export interface SaveData {
@@ -57,6 +58,14 @@ export function loadGame(): SaveData | null {
     if (!raw) return null;
 
     const data: SaveData = JSON.parse(raw);
+
+    // Migrate v1 saves (pre-energy/boosts)
+    if (data.version === 1) {
+      data.gameState.energy = ENERGY_START;
+      data.gameState.activeBoosts = [];
+      data.version = SAVE_VERSION;
+    }
+
     if (data.version !== SAVE_VERSION) {
       console.warn('Save version mismatch, clearing save');
       clearSave();

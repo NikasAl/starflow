@@ -25,7 +25,8 @@
     "restart": "Restart Level",
     "language": "Language",
     "muteAll": "Mute All",
-    "unmuteAll": "Unmute All"
+    "unmuteAll": "Unmute All",
+    "watchAd": "Ad +5 ⚡"
   },
   "hud": {
     "you": "You",
@@ -81,6 +82,25 @@
   },
   "planet": {
     "maxLinks": "max:{n} link"
+  },
+  "boost": {
+    "energy": "Energy: {amount}",
+    "watchAd": "Ad +{amount}",
+    "speed": {
+      "name": "Speed",
+      "desc": "x2 missiles, {duration}s"
+    },
+    "freeze": {
+      "name": "Freeze",
+      "desc": "Stop missiles, {duration}s"
+    },
+    "shield": {
+      "name": "Shield",
+      "desc": "Invulnerability, {duration}s"
+    },
+    "cost": "{cost} ⚡",
+    "alreadyActive": "Already active",
+    "notEnough": "Not enough energy"
   },
   "save": {
     "info": "Level {level}: {name} \u2014 {time}"

@@ -244,3 +244,34 @@ export const GRAVITY_WELL_RADIUS = 8.0;
 export const GRAVITY_WELL_MIN_PLANET_RADIUS = 3.0;
 /** How close two enemy missiles must be to intercept each other */
 export const MISSILE_INTERCEPT_DISTANCE = 1.5;
+
+// ---- Energy & Boosts ----
+
+/** Starting energy for a new game */
+export const ENERGY_START = 5;
+/** Energy granted per ad watch */
+export const ENERGY_AD_REWARD = 5;
+
+/** Speed boost: cost to activate */
+export const BOOST_SPEED_COST = 5;
+/** Speed boost: duration in seconds */
+export const BOOST_SPEED_DURATION = 15;
+/** Speed boost: multiplies route interval by this (0.5 = 2x speed) */
+export const BOOST_SPEED_MULTIPLIER = 0.5;
+
+/** Freeze boost: cost to activate */
+export const BOOST_FREEZE_COST = 8;
+/** Freeze boost: duration in seconds */
+export const BOOST_FREEZE_DURATION = 10;
+
+/** Shield boost: cost to activate */
+export const BOOST_SHIELD_COST = 10;
+/** Shield boost: duration in seconds */
+export const BOOST_SHIELD_DURATION = 8;
+
+/** Colors for boost indicator rings */
+export const BOOST_COLORS: Record<string, number> = {
+  speed: 0xff8800,
+  freeze: 0x44aaff,
+  shield: 0x00ffcc,
+};

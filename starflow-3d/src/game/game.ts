@@ -20,6 +20,8 @@ import {
   setLevelCompleteCallback,
   setGameOverCallback,
   setRestartLevelCallback,
+  setBoostActivateCallback,
+  setWatchAdCallback,
   removeOverlay,
   dispose,
   addStar,
@@ -28,6 +30,8 @@ import {
 } from '../rendering/renderer';
 import { saveGame, loadGame, clearSave, type SaveData } from '../core/save';
 import { audioManager, SFX, MUSIC } from '../audio';
+import { activateBoost, grantEnergy } from '../core/boosts';
+import { adManager } from '../ads/ad-manager';
 
 const knownMissiles = new Set<string>();
 const knownRoutes = new Set<string>();
@@ -138,6 +142,23 @@ function initGameScene(canvas: HTMLCanvasElement): void {
       audioManager.playMusic(MUSIC.BATTLE_INTENSE, { fadeIn: 1.0 });
     } else {
       audioManager.playMusic(MUSIC.AMBIENT_SPACE, { fadeIn: 1.0 });
+    }
+  });
+
+  // Wire boost activation from HUD buttons
+  setBoostActivateCallback((type: string, planetId: string) => {
+    const err = activateBoost(gameState, type as any, planetId);
+    if (!err) {
+      audioManager.play(SFX.UI_CLICK);
+    }
+  });
+
+  // Wire watch-ad button in HUD
+  setWatchAdCallback(async () => {
+    const granted = await adManager.showRewardedAd();
+    if (granted) {
+      grantEnergy(gameState);
+      audioManager.play(SFX.UI_CLICK);
     }
   });
 

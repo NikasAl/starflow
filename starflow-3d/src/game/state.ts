@@ -7,6 +7,7 @@ import {
   type ShipRoute, type StarData,
   PLAYER, NEUTRAL,
 } from '../core/types';
+import { hasBoost, updateBoosts } from '../core/boosts';
 import { generateMap, updatePlanetGrowth, resolveMissileArrival } from '../core/planet';
 import { generateStars, checkStarCollision } from '../core/star';
 import { createMissile, updateMissile } from '../core/fleet';
@@ -20,6 +21,8 @@ import {
   MISSILE_INTERCEPT_DISTANCE,
   GRAVITY_WELL_RADIUS,
   GRAVITY_WELL_MIN_PLANET_RADIUS,
+  BOOST_SPEED_MULTIPLIER,
+  ENERGY_START,
 } from '../core/constants';
 
 // Re-export for renderer HUD
@@ -52,6 +55,8 @@ export function createGameState(level: number = 1): GameState {
     time: 0,
     level,
     levelConfig,
+    energy: ENERGY_START,
+    activeBoosts: [],
   };
 }
 
@@ -90,6 +95,9 @@ export function updateGame(
   for (const planet of state.planets) {
     updatePlanetGrowth(planet, dt);
   }
+
+  // 1.5. Update boost timers (remove expired)
+  updateBoosts(state, dt);
 
   // 2. AI thinking — create/remove routes
   for (const ai of aiStates) {
@@ -194,6 +202,15 @@ export function updateGame(
     if (starKilled.has(missile.id) || intercepted.has(missile.id)) continue;
     const idx = state.planets.findIndex(p => p.id === missile.targetId);
     if (idx < 0) continue;
+
+    // Shield boost: block enemy missiles on shielded player planets
+    const targetPlanet = state.planets[idx];
+    if (targetPlanet.owner === PLAYER && missile.owner !== PLAYER && hasBoost(state, missile.targetId, 'shield')) {
+      result.destroyedMissileIds.push(missile.id);
+      result.explosions.push({ x: targetPlanet.x, y: targetPlanet.y, z: targetPlanet.z });
+      continue;
+    }
+
     const oldOwner = state.planets[idx].owner;
     state.planets[idx] = resolveMissileArrival(
       state.planets[idx], missile.strength, missile.owner
@@ -226,6 +243,9 @@ export function updateGame(
 /** Process all active routes — send missiles on timer (interval scales with power) */
 function processRoutes(state: GameState, dt: number): void {
   for (const route of state.routes) {
+    // Freeze boost: skip routes from frozen enemy planets
+    if (hasBoost(state, route.sourceId, 'freeze')) continue;
+
     route.sendTimer -= dt;
     if (route.sendTimer > 0) continue;
 
@@ -234,8 +254,13 @@ function processRoutes(state: GameState, dt: number): void {
     if (!source || !target) continue;
     if (source.owner !== route.owner) continue;
 
-    // Dynamic interval: higher power = faster sends
-    route.sendTimer = getRouteSendInterval(source.power);
+    // Speed boost: halve the interval for boosted player planets
+    let interval = getRouteSendInterval(source.power);
+    if (hasBoost(state, source.id, 'speed')) {
+      interval *= BOOST_SPEED_MULTIPLIER;
+    }
+
+    route.sendTimer = interval;
 
     const missile = createMissile(
       route.owner,

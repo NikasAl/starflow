@@ -25,7 +25,8 @@
     "restart": "Reiniciar nivel",
     "language": "Idioma",
     "muteAll": "Silenciar todo",
-    "unmuteAll": "Activar sonido"
+    "unmuteAll": "Activar sonido",
+    "watchAd": "Anuncio +5 ⚡"
   },
   "hud": {
     "you": "T\u00fa",
@@ -81,6 +82,25 @@
   },
   "planet": {
     "maxLinks": "m\u00e1x:{n} enl."
+  },
+  "boost": {
+    "energy": "Energía: {amount}",
+    "watchAd": "Anuncio +{amount}",
+    "speed": {
+      "name": "Velocidad",
+      "desc": "x2 misiles, {duration}s"
+    },
+    "freeze": {
+      "name": "Congelación",
+      "desc": "Parar misiles, {duration}s"
+    },
+    "shield": {
+      "name": "Escudo",
+      "desc": "Invulnerabilidad, {duration}s"
+    },
+    "cost": "{cost} ⚡",
+    "alreadyActive": "Ya activo",
+    "notEnough": "Energía insuficiente"
   },
   "save": {
     "info": "Nivel {level}: {name} \u2014 {time}"

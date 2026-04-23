@@ -138,6 +138,19 @@ export interface MissileData {
   _starWarned?: boolean;
 }
 
+/** Active boost types */
+export type BoostType = 'speed' | 'freeze' | 'shield';
+
+/** An active boost on a planet */
+export interface ActiveBoost {
+  /** Type of boost */
+  type: BoostType;
+  /** Planet the boost is applied to */
+  planetId: string;
+  /** Remaining duration in seconds */
+  remaining: number;
+}
+
 /** A persistent route between two planets — missiles sent periodically */
 export interface ShipRoute {
   id: string;
@@ -183,6 +196,10 @@ export interface GameState {
   level: number;
   /** Configuration for the current level */
   levelConfig: LevelConfig;
+  /** In-game energy currency for boosts */
+  energy: number;
+  /** Currently active boosts */
+  activeBoosts: ActiveBoost[];
 }
 
 /** Camera state */

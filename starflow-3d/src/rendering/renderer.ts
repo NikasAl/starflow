@@ -20,6 +20,11 @@ import {
   GRAVITY_WELL_RADIUS, GRAVITY_WELL_MIN_PLANET_RADIUS,
   getMaxRoutesFromPlanet,
 } from '../core/constants';
+import { type BoostType, PLAYER as PLAYER_ID } from '../core/types';
+import {
+  BOOST_COLORS,
+  ENERGY_AD_REWARD,
+} from '../core/constants';
 import { getGameStats, getRouteSendInterval } from '../game/state';
 import { generatePlanetTextures, type TextureSet } from '../core/texture-gen';
 import { audioManager, SFX, MUSIC } from '../audio';
@@ -53,6 +58,9 @@ const starPointLights = new Map<string, THREE.PointLight>();
 
 // Gravity well rings (for giant/supergiant planets)
 const gravityWellRings = new Map<string, THREE.Mesh>();
+
+// Boost indicator rings (colored rings around boosted planets)
+const boostRingMeshes = new Map<string, THREE.Mesh>();
 
 // Explosion particles
 interface ExplosionEffect {
@@ -101,6 +109,8 @@ let onPlanetClick: ((planetId: string) => void) | null = null;
 let onLevelComplete: (() => void) | null = null;
 let onGameOver: (() => void) | null = null;
 let onRestartLevel: (() => void) | null = null;
+let onBoostActivate: ((type: string, planetId: string) => void) | null = null;
+let onWatchAd: (() => void) | null = null;
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -421,6 +431,14 @@ function updateHTMLHUD(state: GameState): void {
     ${Math.floor(state.time / 60)}:${String(Math.floor(state.time % 60)).padStart(2, '0')}
   </div>`;
 
+  // Energy counter + watch ad button (only during gameplay)
+  if (state.phase === 'playing') {
+    html += `<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; padding:6px 10px; background:rgba(255,170,0,0.1); border-radius:6px; border:1px solid rgba(255,170,0,0.2);">
+      <div style="font-size:14px; font-weight:bold; color:#ffaa00;">&#9889; ${state.energy}</div>
+      <div id="btn-watch-ad" style="font-size:11px; padding:2px 8px; background:rgba(255,170,0,0.2); border:1px solid rgba(255,170,0,0.3); border-radius:4px; color:#ffaa00; cursor:pointer; pointer-events:auto;">+${i18n.t('boost.cost', { cost: ENERGY_AD_REWARD })}</div>
+    </div>`;
+  }
+
   for (const [id, name, color] of owners) {
     const s = stats[id as OwnerId];
     if (!s) continue;
@@ -480,8 +498,63 @@ function updateHTMLHUD(state: GameState): void {
     }
   }
 
+  // Boost buttons for selected planet (only during gameplay)
+  if (state.selectedPlanetId && state.phase === 'playing') {
+    const sp = state.planets.find(pl => pl.id === state.selectedPlanetId);
+    if (sp) {
+      const boostTypes: { type: BoostType; color: string }[] = [];
+      if (sp.owner === PLAYER_ID) {
+        boostTypes.push({ type: 'speed', color: '#ff8800' });
+        boostTypes.push({ type: 'shield', color: '#00ffcc' });
+      } else if (sp.owner !== 0) {
+        boostTypes.push({ type: 'freeze', color: '#44aaff' });
+      }
+
+      if (boostTypes.length > 0) {
+        html += `<div style="margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.1);">`;
+        for (const bt of boostTypes) {
+          const bKey = `boost.${bt.type}`;
+          const cost = i18n.t('boost.cost', { cost: bt.type === 'speed' ? 5 : bt.type === 'freeze' ? 8 : 10 });
+          const dur = bt.type === 'speed' ? 15 : bt.type === 'freeze' ? 10 : 8;
+          const isActive = state.activeBoosts.some(b => b.planetId === sp.id && b.type === bt.type);
+          const canAfford = state.energy >= (bt.type === 'speed' ? 5 : bt.type === 'freeze' ? 8 : 10);
+          const disabled = isActive || !canAfford;
+          const opacity = disabled ? '0.35' : '0.9';
+          html += `<div id="btn-boost-${bt.type}" style="display:flex; align-items:center; justify-content:space-between; padding:4px 8px; margin-bottom:2px; border-radius:4px; font-size:12px; color:${bt.color}; opacity:${opacity}; cursor:pointer; pointer-events:auto; background:${isActive ? 'rgba(255,255,255,0.05)' : 'transparent'};">
+            <span><b>${i18n.t(`${bKey}.name`)}</b> <span style="color:rgba(255,255,255,0.5); font-size:10px;">${i18n.t(`${bKey}.desc`, { duration: dur })}</span></span>
+            <span style="font-weight:bold; font-size:11px;">${isActive ? i18n.t('boost.alreadyActive') : cost}</span>
+          </div>`;
+        }
+        html += `</div>`;
+      }
+    }
+  }
+
   html += `</div>`;
   hudElement.innerHTML = html;
+
+  // Wire ad button
+  const adBtn = hudElement.querySelector('#btn-watch-ad');
+  if (adBtn) {
+    adBtn.addEventListener('click', () => { if (onWatchAd) onWatchAd(); });
+    adBtn.addEventListener('touchend', (e) => { e.preventDefault(); if (onWatchAd) onWatchAd(); });
+  }
+
+  // Wire boost buttons
+  for (const bt of ['speed', 'freeze', 'shield']) {
+    const btn = hudElement.querySelector(`#btn-boost-${bt}`);
+    if (btn) {
+      btn.addEventListener('click', () => {
+        const pid = state.selectedPlanetId;
+        if (pid && onBoostActivate) onBoostActivate(bt, pid);
+      });
+      btn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        const pid = state.selectedPlanetId;
+        if (pid && onBoostActivate) onBoostActivate(bt, pid);
+      });
+    }
+  }
 }
 
 // ============================================================
@@ -1317,6 +1390,15 @@ export function setPlanetClickCallback(cb: (planetId: string) => void): void { o
 export function setLevelCompleteCallback(cb: () => void): void { onLevelComplete = cb; }
 export function setGameOverCallback(cb: () => void): void { onGameOver = cb; }
 export function setRestartLevelCallback(cb: () => void): void { onRestartLevel = cb; }
+
+export function setBoostActivateCallback(cb: (type: string, planetId: string) => void): void {
+  onBoostActivate = cb;
+}
+
+export function setWatchAdCallback(cb: () => void): void {
+  onWatchAd = cb;
+}
+
 export function getCameraState(): CameraState { return { ...camState }; }
 
 // ============================================================
@@ -1360,6 +1442,14 @@ export function resetScene(): void {
     (ring.material as THREE.Material).dispose();
   }
   gravityWellRings.clear();
+
+  // Clear boost indicator rings
+  for (const ring of boostRingMeshes.values()) {
+    scene.remove(ring);
+    ring.geometry.dispose();
+    (ring.material as THREE.Material).dispose();
+  }
+  boostRingMeshes.clear();
 
   // Remove stars
   for (const [id, group] of starMeshes) {
@@ -1511,6 +1601,54 @@ function stopOrbit(): void {
   isOrbiting = false;
 }
 
+function syncBoostIndicators(state: GameState): void {
+  const activeKeys = new Set<string>();
+
+  for (const boost of state.activeBoosts) {
+    const key = `${boost.type}:${boost.planetId}`;
+    activeKeys.add(key);
+
+    if (!boostRingMeshes.has(key)) {
+      // Create ring for this boost
+      const planet = planetMeshes.get(boost.planetId);
+      if (!planet) continue;
+      const radius = (planet.geometry as THREE.SphereGeometry).parameters?.radius || 1.5;
+      const rr = radius * 1.8;
+      const color = BOOST_COLORS[boost.type] || 0xffffff;
+
+      const geo = new THREE.TorusGeometry(Math.max(0.1, rr), 0.12, 16, 32);
+      const mat = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.6,
+      });
+      const ring = new THREE.Mesh(geo, mat);
+      ring.position.copy(planet.position);
+      ring.position.y += 0.15;
+      ring.rotation.x = Math.PI / 2;
+      scene.add(ring);
+      boostRingMeshes.set(key, ring);
+    }
+  }
+
+  // Remove rings for expired boosts
+  for (const [key, ring] of boostRingMeshes) {
+    if (!activeKeys.has(key)) {
+      scene.remove(ring);
+      ring.geometry.dispose();
+      (ring.material as THREE.Material).dispose();
+      boostRingMeshes.delete(key);
+    }
+  }
+}
+
+function animateBoostRings(time: number): void {
+  for (const ring of boostRingMeshes.values()) {
+    ring.rotation.z = time * 2;
+    (ring.material as THREE.MeshBasicMaterial).opacity = 0.4 + Math.sin(time * 4) * 0.2;
+  }
+}
+
 export function syncVisuals(state: GameState, time: number, dt: number = 0): void {
   // Update camera fly-forward animation
   updateCameraFly(dt);
@@ -1524,6 +1662,8 @@ export function syncVisuals(state: GameState, time: number, dt: number = 0): voi
 
   animateSelection(time);
   animateRoutes(time);
+  syncBoostIndicators(state);
+  animateBoostRings(time);
   animateStars(time);
   animateGravityWells(time);
   updateExplosions(dt);
