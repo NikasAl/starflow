@@ -280,9 +280,13 @@ function showMenu(): void {
   const toggleLabel = hudVisible
     ? i18n.t('menu.hideHelp')
     : i18n.t('menu.showHelp');
+  const muteLabel = audioManager.isMuted()
+    ? i18n.t('menu.unmuteAll')
+    : i18n.t('menu.muteAll');
   const items = [
     { label: toggleLabel, id: 'menu-toggle-help' },
     { label: i18n.t('menu.restart'), id: 'menu-restart' },
+    { label: muteLabel, id: 'menu-toggle-mute' },
     { label: i18n.t('menu.language'), id: 'menu-language' },
   ];
 
@@ -327,6 +331,8 @@ function handleMenuItem(itemId: string): void {
     if (instructions) instructions.style.display = hudVisible ? '' : 'none';
   } else if (itemId === 'menu-restart') {
     if (onRestartLevel) onRestartLevel();
+  } else if (itemId === 'menu-toggle-mute') {
+    audioManager.toggleMute();
   } else if (itemId === 'menu-language') {
     showLanguageMenu();
   }

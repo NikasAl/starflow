@@ -23,7 +23,9 @@
     "hideHelp": "Hide Help",
     "showHelp": "Show Help",
     "restart": "Restart Level",
-    "language": "Language"
+    "language": "Language",
+    "muteAll": "Mute All",
+    "unmuteAll": "Unmute All"
   },
   "hud": {
     "you": "You",
