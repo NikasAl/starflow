@@ -14,8 +14,6 @@ public/audio/
 │   ├── planet_select.ogg
 │   ├── route_create.ogg
 │   ├── route_disconnect.ogg
-│   ├── missile_launch.ogg
-│   ├── missile_hit.ogg
 │   ├── explosion.ogg
 │   ├── planet_capture.ogg
 │   ├── gravity_well.ogg
