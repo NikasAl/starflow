@@ -1507,6 +1507,7 @@ function generateScript() {
 
       script += `ffmpeg -y \\\n`;
       script += `  -i "$INPUT_DIR/${trackName}" \\\n`;
+      script += `  -map_metadata -1`;
       script += `  -ss ${region.start.toFixed(4)} \\\n`;
       script += `  -t ${dur.toFixed(4)} \\\n`;
       script += `  -ac ${channels} \\\n`;
