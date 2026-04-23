@@ -130,6 +130,17 @@ function initGameScene(canvas: HTMLCanvasElement): void {
     goToLevel(currentLevel);
   });
 
+  // Register callback to restart music after unmute
+  audioManager.setOnUnmute(() => {
+    if (gameState.phase !== 'playing') {
+      audioManager.playMusic(MUSIC.MENU_THEME, { fadeIn: 1.0 });
+    } else if (isBattleMusic) {
+      audioManager.playMusic(MUSIC.BATTLE_INTENSE, { fadeIn: 1.0 });
+    } else {
+      audioManager.playMusic(MUSIC.AMBIENT_SPACE, { fadeIn: 1.0 });
+    }
+  });
+
   running = true;
   autoSaveTimer = 0;
   lastTime = performance.now();
@@ -287,6 +298,7 @@ function gameLoop(now: number): void {
 
 export function stopGame(): void {
   running = false;
+  audioManager.setOnUnmute(null);
   dispose();
 }
 

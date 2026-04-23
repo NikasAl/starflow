@@ -43,6 +43,7 @@ export class AudioManager {
   };
   private muted = false;
   private unlockAttempted = false;
+  private onUnmuteCallback: (() => void) | null = null;
 
   // ── Context lifecycle ────────────────────────────────────
 
@@ -182,6 +183,7 @@ export class AudioManager {
    * it is cross-faded out first.
    */
   playMusic(name: string, options?: MusicPlayOptions): void {
+    if (this.muted) return;
     if (this.activeMusic) {
       this.stopMusic(0.3); // quick cross-fade
     }
@@ -292,11 +294,18 @@ export class AudioManager {
 
   // ── Mute / unmute ────────────────────────────────────────
 
+  /** Register a callback fired when the user unmutes. */
+  setOnUnmute(cb: (() => void) | null): void {
+    this.onUnmuteCallback = cb;
+  }
+
   /** Toggle mute.  Returns the new muted state. */
   toggleMute(): boolean {
     this.muted = !this.muted;
     if (this.muted) {
       this.stopMusic(0.2);
+    } else if (this.onUnmuteCallback) {
+      this.onUnmuteCallback();
     }
     return this.muted;
   }
