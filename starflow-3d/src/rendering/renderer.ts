@@ -115,11 +115,18 @@ let onWatchAd: (() => void) | null = null;
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 
+// HUD dirty check — skip innerHTML when nothing changed
+let hudDirty = true;
+let lastHudHash = '';
+
 // HUD visibility toggle
 let hudVisible = true;
 let menuOpen = false;
 let menuElement: HTMLDivElement | null = null;
 let menuButtonElement: HTMLButtonElement | null = null;
+
+// Track selected planet ID for boost delegation (survives innerHTML rebuilds)
+let currentSelectedPlanetId: string | null = null;
 
 // Camera orbit on win/lose
 let isOrbiting = false;
@@ -215,6 +222,35 @@ function createHTMLHUD(): void {
     user-select: none;
   `;
   document.body.appendChild(hudElement);
+
+  // Event delegation for boost & ad buttons (stable listener survives innerHTML rebuilds)
+  hudElement.addEventListener('click', (e: Event) => {
+    const target = (e.target as HTMLElement).closest('[data-action]');
+    if (!target) return;
+    const action = target.getAttribute('data-action');
+    if (action === 'watch-ad') {
+      if (onWatchAd) onWatchAd();
+    } else if (action && action.startsWith('boost:')) {
+      const boostType = action.slice(6); // e.g. 'speed', 'freeze', 'shield'
+      if (onBoostActivate && currentSelectedPlanetId) {
+        onBoostActivate(boostType, currentSelectedPlanetId);
+      }
+    }
+  });
+  hudElement.addEventListener('touchend', (e: Event) => {
+    const target = (e.target as HTMLElement).closest('[data-action]');
+    if (!target) return;
+    e.preventDefault();
+    const action = target.getAttribute('data-action');
+    if (action === 'watch-ad') {
+      if (onWatchAd) onWatchAd();
+    } else if (action && action.startsWith('boost:')) {
+      const boostType = action.slice(6);
+      if (onBoostActivate && currentSelectedPlanetId) {
+        onBoostActivate(boostType, currentSelectedPlanetId);
+      }
+    }
+  });
 
   createMenuButton();
 }
@@ -435,7 +471,7 @@ function updateHTMLHUD(state: GameState): void {
   if (state.phase === 'playing') {
     html += `<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; padding:6px 10px; background:rgba(255,170,0,0.1); border-radius:6px; border:1px solid rgba(255,170,0,0.2);">
       <div style="font-size:14px; font-weight:bold; color:#ffaa00;">&#9889; ${state.energy}</div>
-      <div id="btn-watch-ad" style="font-size:11px; padding:2px 8px; background:rgba(255,170,0,0.2); border:1px solid rgba(255,170,0,0.3); border-radius:4px; color:#ffaa00; cursor:pointer; pointer-events:auto;">+${i18n.t('boost.cost', { cost: ENERGY_AD_REWARD })}</div>
+      <div data-action="watch-ad" style="font-size:11px; padding:2px 8px; background:rgba(255,170,0,0.2); border:1px solid rgba(255,170,0,0.3); border-radius:4px; color:#ffaa00; cursor:pointer; pointer-events:auto;">+${i18n.t('boost.cost', { cost: ENERGY_AD_REWARD })}</div>
     </div>`;
   }
 
@@ -520,7 +556,7 @@ function updateHTMLHUD(state: GameState): void {
           const canAfford = state.energy >= (bt.type === 'speed' ? 5 : bt.type === 'freeze' ? 8 : 10);
           const disabled = isActive || !canAfford;
           const opacity = disabled ? '0.35' : '0.9';
-          html += `<div id="btn-boost-${bt.type}" style="display:flex; align-items:center; justify-content:space-between; padding:4px 8px; margin-bottom:2px; border-radius:4px; font-size:12px; color:${bt.color}; opacity:${opacity}; cursor:pointer; pointer-events:auto; background:${isActive ? 'rgba(255,255,255,0.05)' : 'transparent'};">
+          html += `<div data-action="boost:${bt.type}" style="display:flex; align-items:center; justify-content:space-between; padding:4px 8px; margin-bottom:2px; border-radius:4px; font-size:12px; color:${bt.color}; opacity:${opacity}; cursor:pointer; pointer-events:auto; background:${isActive ? 'rgba(255,255,255,0.05)' : 'transparent'};">
             <span><b>${i18n.t(`${bKey}.name`)}</b> <span style="color:rgba(255,255,255,0.5); font-size:10px;">${i18n.t(`${bKey}.desc`, { duration: dur })}</span></span>
             <span style="font-weight:bold; font-size:11px;">${isActive ? i18n.t('boost.alreadyActive') : cost}</span>
           </div>`;
@@ -531,30 +567,13 @@ function updateHTMLHUD(state: GameState): void {
   }
 
   html += `</div>`;
+
+  // Dirty check — only rebuild innerHTML when content actually changes
+  currentSelectedPlanetId = state.selectedPlanetId || null;
+  const newHash = html.length + '|' + state.energy + '|' + (state.selectedPlanetId || '') + '|' + state.phase;
+  if (newHash === lastHudHash) return;
+  lastHudHash = newHash;
   hudElement.innerHTML = html;
-
-  // Wire ad button
-  const adBtn = hudElement.querySelector('#btn-watch-ad');
-  if (adBtn) {
-    adBtn.addEventListener('click', () => { if (onWatchAd) onWatchAd(); });
-    adBtn.addEventListener('touchend', (e) => { e.preventDefault(); if (onWatchAd) onWatchAd(); });
-  }
-
-  // Wire boost buttons
-  for (const bt of ['speed', 'freeze', 'shield']) {
-    const btn = hudElement.querySelector(`#btn-boost-${bt}`);
-    if (btn) {
-      btn.addEventListener('click', () => {
-        const pid = state.selectedPlanetId;
-        if (pid && onBoostActivate) onBoostActivate(bt, pid);
-      });
-      btn.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        const pid = state.selectedPlanetId;
-        if (pid && onBoostActivate) onBoostActivate(bt, pid);
-      });
-    }
-  }
 }
 
 // ============================================================
@@ -1399,6 +1418,11 @@ export function setWatchAdCallback(cb: () => void): void {
   onWatchAd = cb;
 }
 
+/** Force HUD rebuild on next frame (e.g. after boost activation) */
+export function invalidateHud(): void {
+  lastHudHash = '';
+}
+
 export function getCameraState(): CameraState { return { ...camState }; }
 
 // ============================================================
@@ -1406,6 +1430,10 @@ export function getCameraState(): CameraState { return { ...camState }; }
 // ============================================================
 
 export function resetScene(): void {
+  // Force HUD rebuild on next frame
+  lastHudHash = '';
+  currentSelectedPlanetId = null;
+
   // Remove and dispose all planets
   for (const [id, mesh] of planetMeshes) {
     scene.remove(mesh);

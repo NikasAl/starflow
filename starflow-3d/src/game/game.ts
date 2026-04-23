@@ -27,6 +27,7 @@ import {
   addStar,
   addExplosion,
   recreateMenuButton,
+  invalidateHud,
 } from '../rendering/renderer';
 import { saveGame, loadGame, clearSave, type SaveData } from '../core/save';
 import { audioManager, SFX, MUSIC } from '../audio';
@@ -150,6 +151,7 @@ function initGameScene(canvas: HTMLCanvasElement): void {
     const err = activateBoost(gameState, type as any, planetId);
     if (!err) {
       audioManager.play(SFX.UI_CLICK);
+      invalidateHud(); // force HUD rebuild to reflect new energy & boost state
     }
   });
 
@@ -159,6 +161,7 @@ function initGameScene(canvas: HTMLCanvasElement): void {
     if (granted) {
       grantEnergy(gameState);
       audioManager.play(SFX.UI_CLICK);
+      invalidateHud(); // force HUD rebuild to show updated energy
     }
   });
 
