@@ -61,9 +61,9 @@ FastAPI
 │  Star Flow (Capacitor / WebView)                         │
 │                                                          │
 │  Игрок нажимает «Купить энергию»                         │
-│  ├── 10 энергии — 10₽                                   │
-│  ├── 30 энергии — 25₽                                   │
-│  └── 100 энергии — 79₽                                  │
+│  ├── 10 энергии — 10₽                                    │
+│  ├── 30 энергии — 25₽                                    │
+│  └── 100 энергии — 79₽                                   │
 │                                                          │
 │  → fetch POST /api/billing/create                        │
 │    { device_id, amount, product: "energy_30" }           │
@@ -71,10 +71,10 @@ FastAPI
 │  ← { invoice_id, payment_url }                           │
 │                                                          │
 │  → @capacitor/browser.open({ url: payment_url })         │
-│  → Системный браузер: оплата картой/СБП/ЮMoney          │
+│  → Системный браузер: оплата картой/СБП/ЮMoney           │
 │                                                          │
-│  ← Пользователь платит → YooKassa редиректит:           │
-│    starflow://payment/success?invoice_id=xxx              │
+│  ← Пользователь платит → YooKassa редиректит:            │
+│    starflow://payment/success?invoice_id=xxx             │
 │  или:                                                    │
 │    starflow://payment/fail?invoice_id=xxx                │
 │                                                          │
@@ -84,20 +84,17 @@ FastAPI
 └──────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────┐
-│  Сервер kreagenium.ru (FastAPI)                           │
+│  Сервер kreagenium.ru (FastAPI)                          │
 │                                                          │
 │  POST /api/billing/create                                │
-│  ├── Валидация product → amount                           │
+│  ├── Валидация product → amount                          │
 │  ├── create_invoice(amount, description, device_id,      │
-│  │                 metadata: { product, game: "starflow" })│
-│  └── return { invoice_id, payment_url }                   │
+│  │               metadata: { product, game: "starflow" })│
+│  └── return { invoice_id, payment_url }                  │
 │                                                          │
-│  GET /api/billing/check/:id                               │
-│  └── return { is_paid: true/false }                       │
+│  GET /api/billing/check/:id                              │
+│  └── return { is_paid: true/false }                      │
 │                                                          │
-│  Webhook от YooKassa (опционально):                        │
-│  POST /api/billing/webhook                                │
-│  └── Подтверждение платежа от YooKassa                    │
 └──────────────────────────────────────────────────────────┘
 ```
 
