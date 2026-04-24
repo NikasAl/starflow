@@ -13,8 +13,8 @@
       "disconnect": "Haz clic en el origen para desconectar",
       "rotate": "Arrastra para rotar",
       "pan": "Shift+Arrastra para mover",
-      "zoom": "Rueda del rat\u00f3n para zoom",
-      "pinch": "Pellizca para zoom (m\u00f3vil)",
+      "zoom": "Rueda del ratón para zoom",
+      "pinch": "Pellizca para zoom (móvil)",
       "routes1": "Poder >15 = 2 rutas",
       "routes2": ">30 = 3 rutas"
     }
@@ -29,13 +29,13 @@
     "watchAd": "Anuncio +5 ⚡"
   },
   "hud": {
-    "you": "T\u00fa",
-    "crimson": "Carmes\u00ed",
+    "you": "Tú",
+    "crimson": "Carmesí",
     "emerald": "Esmeralda",
     "golden": "Dorado",
     "neutral": "Neutral",
     "level": "Nivel {level}: {name}",
-    "power": "p\u00f3d:{power}",
+    "power": "pód:{power}",
     "stars": "Estrellas: {count} peligro(s)",
     "stars_one": "Estrellas: {count} peligro",
     "stars_other": "Estrellas: {count} peligros",
@@ -45,16 +45,16 @@
     "missiles": "Misiles en vuelo: {count}",
     "missiles_one": "Misiles en vuelo: {count}",
     "missiles_other": "Misiles en vuelo: {count}",
-    "victory": "\u00a1VICTORIA!",
+    "victory": "¡VICTORIA!",
     "defeat": "DERROTA",
     "selectedInfo": "{name}: poder {power} ({current}/{max} rutas)",
     "fireRate": "Cadencia: {rate}s/misil",
     "clickTarget": "Haz clic en el objetivo para crear ruta"
   },
   "overlay": {
-    "victory": "\u00a1VICTORIA!",
+    "victory": "¡VICTORIA!",
     "defeat": "DERROTA",
-    "levelCompleted": "\u00a1Nivel {level}: {name} completado!",
+    "levelCompleted": "¡Nivel {level}: {name} completado!",
     "levelFailed": "Nivel {level}: {name}",
     "time": "Tiempo: {time}",
     "yourStats": "Poder: {power} | Planetas: {planets}",
@@ -65,23 +65,23 @@
   "owner": {
     "neutral": "Neutral",
     "player": "Jugador",
-    "crimsonFleet": "Flota Carmes\u00ed",
+    "crimsonFleet": "Flota Carmesí",
     "emeraldHorde": "Horda Esmeralda",
     "goldenArmada": "Armada Dorada"
   },
   "level": {
     "1": "Primer Contacto",
-    "2": "Fronteras en Expansi\u00f3n",
+    "2": "Fronteras en Expansión",
     "3": "Tensiones Crecientes",
     "4": "Guerra en Dos Frentes",
-    "5": "Conflicto Gal\u00e1ctico",
+    "5": "Conflicto Galáctico",
     "6": "Espacio Profundo",
     "7": "Supernova",
     "8": "El Final",
     "infinite": "Infinito {n}"
   },
   "planet": {
-    "maxLinks": "m\u00e1x:{n} enl."
+    "maxLinks": "máx:{n} enl."
   },
   "boost": {
     "energy": "Energía: {amount}",
@@ -103,6 +103,21 @@
     "notEnough": "Energía insuficiente"
   },
   "save": {
-    "info": "Nivel {level}: {name} \u2014 {time}"
+    "info": "Nivel {level}: {name} — {time}"
+  },
+  "shop": {
+    "title": "Tienda de energía",
+    "buyEnergy": "Comprar energía",
+    "watchAd": "Gratis con anuncio",
+    "close": "Cerrar",
+    "scout": "Explorador",
+    "commander": "Comandante",
+    "admiral": "Almirante",
+    "price": "{price}₽",
+    "energy": "+{amount} ⚡",
+    "waitingForPayment": "Esperando pago...",
+    "paymentSuccess": "¡Pago exitoso! +{amount} ⚡",
+    "paymentError": "Error de pago. Intenta más tarde.",
+    "bestValue": "Mejor oferta"
   }
 }

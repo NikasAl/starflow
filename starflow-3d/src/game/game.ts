@@ -22,17 +22,25 @@ import {
   setRestartLevelCallback,
   setBoostActivateCallback,
   setWatchAdCallback,
+  setBuyEnergyCallback,
+  setEnergyProductCallback,
   removeOverlay,
   dispose,
   addStar,
   addExplosion,
   recreateMenuButton,
   invalidateHud,
+  showEnergyShop,
+  hideEnergyShop,
+  showPaymentStatus,
+  hidePaymentStatus,
 } from '../rendering/renderer';
 import { saveGame, loadGame, clearSave, type SaveData } from '../core/save';
 import { audioManager, SFX, MUSIC } from '../audio';
 import { activateBoost, grantEnergy } from '../core/boosts';
 import { adManager } from '../ads/ad-manager';
+import { createPayment, checkPayment, type EnergyProduct } from '../services/yookassa';
+import { i18n } from '../i18n';
 
 const knownMissiles = new Set<string>();
 const knownRoutes = new Set<string>();
@@ -43,6 +51,14 @@ let currentLevel = 1;
 let running = false;
 let lastTime = 0;
 let autoSaveTimer = 0;
+
+// Pending payment tracking
+let pendingInvoiceId: string | null = null;
+let pendingEnergyAmount: number | null = null;
+let pollingTimer: number | null = null;
+let pollingRetries = 0;
+const MAX_POLLING_RETRIES = 30;
+const POLLING_INTERVAL = 3000;
 
 // ── Battle music system ──────────────────────────────────
 let activeMissileCount = 0;
@@ -165,10 +181,95 @@ function initGameScene(canvas: HTMLCanvasElement): void {
     }
   });
 
+  // Wire buy-energy button in HUD
+  setBuyEnergyCallback(() => {
+    audioManager.play(SFX.UI_CLICK);
+    showEnergyShop();
+  });
+
+  // Wire energy product purchase from shop dialog
+  setEnergyProductCallback(async (product: { amount: number; energy: number; name: string; type: string }) => {
+    try {
+      showPaymentStatus('loading');
+      const result = await createPayment(product.amount);
+      pendingInvoiceId = result.invoice_id;
+      pendingEnergyAmount = product.energy;
+
+      // Open payment URL in system browser
+      window.open(result.payment_url, '_system');
+      hideEnergyShop();
+      showPaymentStatus('loading');
+
+      // Start polling (in case user pays in same browser tab)
+      startPaymentPolling(result.invoice_id, product.energy);
+    } catch (err) {
+      console.error('Payment error:', err);
+      showPaymentStatus('error');
+    }
+  });
+
+  // Listen for app resume (Capacitor) to check payment status
+  document.addEventListener('resume', async () => {
+    if (pendingInvoiceId && pendingEnergyAmount) {
+      try {
+        const status = await checkPayment(pendingInvoiceId);
+        if (status.is_paid) {
+          const granted = pendingEnergyAmount;
+          grantEnergy(gameState, granted);
+          audioManager.play(SFX.UI_CLICK);
+          invalidateHud();
+          pendingInvoiceId = null;
+          pendingEnergyAmount = null;
+          stopPaymentPolling();
+          showPaymentStatus('success', i18n.t('shop.paymentSuccess', { amount: granted }));
+        }
+      } catch (err) {
+        console.error('Payment check error:', err);
+      }
+    }
+  });
+
   running = true;
   autoSaveTimer = 0;
   lastTime = performance.now();
   requestAnimationFrame(gameLoop);
+}
+
+/** Start polling for payment confirmation */
+function startPaymentPolling(invoiceId: string, energyAmount: number): void {
+  stopPaymentPolling();
+  pollingRetries = 0;
+
+  pollingTimer = window.setInterval(async () => {
+    pollingRetries++;
+    if (pollingRetries > MAX_POLLING_RETRIES) {
+      stopPaymentPolling();
+      hidePaymentStatus();
+      return;
+    }
+    try {
+      const status = await checkPayment(invoiceId);
+      if (status.is_paid) {
+        grantEnergy(gameState, energyAmount);
+        audioManager.play(SFX.UI_CLICK);
+        invalidateHud();
+        stopPaymentPolling();
+        showPaymentStatus('success', i18n.t('shop.paymentSuccess', { amount: energyAmount }));
+        pendingInvoiceId = null;
+        pendingEnergyAmount = null;
+      }
+    } catch (err) {
+      console.error('Polling error:', err);
+    }
+  }, POLLING_INTERVAL);
+}
+
+/** Stop payment polling */
+function stopPaymentPolling(): void {
+  if (pollingTimer) {
+    clearInterval(pollingTimer);
+    pollingTimer = null;
+  }
 }
 
 function goToLevel(level: number): void {
@@ -322,6 +423,7 @@ function gameLoop(now: number): void {
 
 export function stopGame(): void {
   running = false;
+  stopPaymentPolling();
   audioManager.setOnUnmute(null);
   dispose();
 }

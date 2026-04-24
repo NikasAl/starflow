@@ -111,6 +111,13 @@ let onGameOver: (() => void) | null = null;
 let onRestartLevel: (() => void) | null = null;
 let onBoostActivate: ((type: string, planetId: string) => void) | null = null;
 let onWatchAd: (() => void) | null = null;
+let onBuyEnergy: (() => void) | null = null;
+let onEnergyProduct: ((product: { amount: number; energy: number; name: string; type: string }) => void) | null = null;
+
+// Energy shop dialog element
+let shopElement: HTMLDivElement | null = null;
+// Payment status toast element
+let paymentStatusElement: HTMLDivElement | null = null;
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -230,6 +237,8 @@ function createHTMLHUD(): void {
     const action = target.getAttribute('data-action');
     if (action === 'watch-ad') {
       if (onWatchAd) onWatchAd();
+    } else if (action === 'buy-energy') {
+      if (onBuyEnergy) onBuyEnergy();
     } else if (action && action.startsWith('boost:')) {
       const boostType = action.slice(6); // e.g. 'speed', 'freeze', 'shield'
       if (onBoostActivate && currentSelectedPlanetId) {
@@ -244,6 +253,8 @@ function createHTMLHUD(): void {
     const action = target.getAttribute('data-action');
     if (action === 'watch-ad') {
       if (onWatchAd) onWatchAd();
+    } else if (action === 'buy-energy') {
+      if (onBuyEnergy) onBuyEnergy();
     } else if (action && action.startsWith('boost:')) {
       const boostType = action.slice(6);
       if (onBoostActivate && currentSelectedPlanetId) {
@@ -472,6 +483,7 @@ function updateHTMLHUD(state: GameState): void {
     html += `<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; padding:6px 10px; background:rgba(255,170,0,0.1); border-radius:6px; border:1px solid rgba(255,170,0,0.2);">
       <div style="font-size:14px; font-weight:bold; color:#ffaa00;">&#9889; ${state.energy}</div>
       <div data-action="watch-ad" style="font-size:11px; padding:2px 8px; background:rgba(255,170,0,0.2); border:1px solid rgba(255,170,0,0.3); border-radius:4px; color:#ffaa00; cursor:pointer; pointer-events:auto;">+${i18n.t('boost.cost', { cost: ENERGY_AD_REWARD })}</div>
+      <div data-action="buy-energy" style="font-size:14px; padding:2px 8px; background:rgba(0,200,100,0.2); border:1px solid rgba(0,200,100,0.3); border-radius:4px; color:#00c864; cursor:pointer; pointer-events:auto; font-weight:bold;">+</div>
     </div>`;
   }
 
@@ -1418,9 +1430,180 @@ export function setWatchAdCallback(cb: () => void): void {
   onWatchAd = cb;
 }
 
+export function setBuyEnergyCallback(cb: () => void): void {
+  onBuyEnergy = cb;
+}
+
+export function setEnergyProductCallback(cb: (product: { amount: number; energy: number; name: string; type: string }) => void): void {
+  onEnergyProduct = cb;
+}
+
 /** Force HUD rebuild on next frame (e.g. after boost activation) */
 export function invalidateHud(): void {
   lastHudHash = '';
+}
+
+// ============================================================
+// Energy Shop Dialog
+// ============================================================
+
+export function showEnergyShop(): void {
+  hideEnergyShop();
+
+  const products = [
+    { amount: 10, energy: 10, name: 'scout', type: 'energy' },
+    { amount: 25, energy: 30, name: 'commander', type: 'energy' },
+    { amount: 79, energy: 100, name: 'admiral', type: 'energy' },
+  ];
+
+  shopElement = document.createElement('div');
+  shopElement.id = 'energy-shop-overlay';
+  shopElement.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    z-index: 250; display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(6px);
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: #fff;
+    animation: fadeIn 0.2s ease;
+  `;
+
+  let cardsHtml = '';
+  for (const product of products) {
+    const isBest = product.name === 'admiral';
+    const nameKey = `shop.${product.name}`;
+    const priceStr = i18n.t('shop.price', { price: product.amount });
+    const energyStr = i18n.t('shop.energy', { amount: product.energy });
+    const borderStyle = isBest
+      ? 'border: 2px solid rgba(255,200,0,0.6);'
+      : 'border: 1px solid rgba(255,255,255,0.12);';
+    const badgeHtml = isBest
+      ? `<div style="position:absolute; top:-10px; right:-6px; background:linear-gradient(135deg,#ffcc00,#ff8800); color:#000; font-size:9px; font-weight:bold; padding:2px 8px; border-radius:8px; text-transform:uppercase; letter-spacing:0.5px;">${i18n.t('shop.bestValue')}</div>`
+      : '';
+
+    cardsHtml += `
+      <div style="position:relative; background:rgba(10,10,30,0.9); ${borderStyle} border-radius:12px; padding:16px; cursor:pointer; transition:transform 0.15s,background 0.15s; min-width:200px;"
+        class="shop-product-card" data-product-amount="${product.amount}" data-product-energy="${product.energy}" data-product-name="${product.name}" data-product-type="${product.type}">
+        ${badgeHtml}
+        <div style="font-size:15px; font-weight:600; color:#fff; margin-bottom:6px;">${i18n.t(nameKey)}</div>
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <div style="font-size:20px; font-weight:700; color:#ffaa00;">${priceStr}</div>
+          <div style="font-size:16px; font-weight:bold; color:#00ff88;">${energyStr}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  shopElement.innerHTML = `
+    <div style="background:rgba(5,5,20,0.95); border-radius:16px; padding:24px; max-width:90vw; width:340px; border:1px solid rgba(255,255,255,0.12);">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+        <div style="font-size:18px; font-weight:700; color:#ffaa00;">&#9889; ${i18n.t('shop.title')}</div>
+        <div id="shop-close-btn" style="width:32px; height:32px; display:flex; align-items:center; justify-content:center; border-radius:8px; background:rgba(255,255,255,0.08); cursor:pointer; font-size:18px; color:rgba(255,255,255,0.7); transition:background 0.15s;">&#10005;</div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        ${cardsHtml}
+      </div>
+      <div style="margin-top:14px; text-align:center; font-size:11px; color:rgba(255,255,255,0.4);">${i18n.t('shop.watchAd')}</div>
+    </div>
+  `;
+
+  document.body.appendChild(shopElement);
+
+  // Wire close button
+  const closeBtn = shopElement.querySelector('#shop-close-btn');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => { hideEnergyShop(); audioManager.play(SFX.UI_CLICK); });
+    closeBtn.addEventListener('touchend', (e) => { e.preventDefault(); hideEnergyShop(); audioManager.play(SFX.UI_CLICK); });
+  }
+
+  // Wire product cards
+  const cards = shopElement.querySelectorAll('.shop-product-card');
+  cards.forEach(card => {
+    const el = card as HTMLElement;
+    el.addEventListener('mouseenter', () => { el.style.background = 'rgba(20,20,50,0.95)'; el.style.transform = 'scale(1.02)'; });
+    el.addEventListener('mouseleave', () => { el.style.background = 'rgba(10,10,30,0.9)'; el.style.transform = 'scale(1)'; });
+    const handleBuy = () => {
+      const product = {
+        amount: parseInt(el.dataset.productAmount || '0'),
+        energy: parseInt(el.dataset.productEnergy || '0'),
+        name: el.dataset.productName || '',
+        type: el.dataset.productType || '',
+      };
+      if (onEnergyProduct) onEnergyProduct(product);
+    };
+    el.addEventListener('click', handleBuy);
+    el.addEventListener('touchend', (e) => { e.preventDefault(); handleBuy(); });
+  });
+
+  // Close on backdrop click
+  shopElement.addEventListener('click', (e: Event) => {
+    if (e.target === shopElement) { hideEnergyShop(); audioManager.play(SFX.UI_CLICK); }
+  });
+}
+
+export function hideEnergyShop(): void {
+  if (shopElement && shopElement.parentNode) {
+    shopElement.parentNode.removeChild(shopElement);
+    shopElement = null;
+  }
+}
+
+// ============================================================
+// Payment Status Toast
+// ============================================================
+
+export function showPaymentStatus(status: 'loading' | 'success' | 'error', message?: string): void {
+  hidePaymentStatus();
+
+  paymentStatusElement = document.createElement('div');
+  paymentStatusElement.id = 'payment-status-toast';
+
+  let bgColor = 'rgba(0,0,0,0.85)';
+  let borderColor = 'rgba(255,255,255,0.15)';
+  let text = '';
+  let icon = '';
+
+  if (status === 'loading') {
+    text = message || i18n.t('shop.waitingForPayment');
+    icon = '<div style="width:18px; height:18px; border:2px solid rgba(255,170,0,0.3); border-top-color:#ffaa00; border-radius:50%; animation:spin 0.8s linear infinite;"></div>';
+  } else if (status === 'success') {
+    bgColor = 'rgba(0,40,20,0.9)';
+    borderColor = 'rgba(0,255,136,0.4)';
+    text = message || i18n.t('shop.paymentSuccess', { amount: 0 });
+    icon = '<div style="color:#00ff88; font-size:16px;">&#10003;</div>';
+  } else {
+    bgColor = 'rgba(40,0,0,0.9)';
+    borderColor = 'rgba(255,68,68,0.4)';
+    text = message || i18n.t('shop.paymentError');
+    icon = '<div style="color:#ff4444; font-size:16px;">&#10007;</div>';
+  }
+
+  paymentStatusElement.style.cssText = `
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    z-index: 300; display: flex; align-items: center; gap: 10px;
+    background: ${bgColor}; border: 1px solid ${borderColor};
+    border-radius: 10px; padding: 10px 20px;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 13px; color: #fff;
+    backdrop-filter: blur(6px);
+    animation: fadeIn 0.2s ease;
+    pointer-events: ${status === 'loading' ? 'none' : 'auto'};
+  `;
+  paymentStatusElement.innerHTML = `${icon}<span>${text}</span>`;
+
+  document.body.appendChild(paymentStatusElement);
+
+  // Auto-hide success/error after 3 seconds
+  if (status === 'success' || status === 'error') {
+    setTimeout(() => { hidePaymentStatus(); }, 3000);
+  }
+}
+
+export function hidePaymentStatus(): void {
+  if (paymentStatusElement && paymentStatusElement.parentNode) {
+    paymentStatusElement.parentNode.removeChild(paymentStatusElement);
+    paymentStatusElement = null;
+  }
 }
 
 export function getCameraState(): CameraState { return { ...camState }; }
@@ -1433,6 +1616,10 @@ export function resetScene(): void {
   // Force HUD rebuild on next frame
   lastHudHash = '';
   currentSelectedPlanetId = null;
+
+  // Close shop & payment status on reset
+  hideEnergyShop();
+  hidePaymentStatus();
 
   // Remove and dispose all planets
   for (const [id, mesh] of planetMeshes) {

@@ -103,6 +103,21 @@
     "notEnough": "Not enough energy"
   },
   "save": {
-    "info": "Level {level}: {name} \u2014 {time}"
+    "info": "Level {level}: {name} — {time}"
+  },
+  "shop": {
+    "title": "Energy Shop",
+    "buyEnergy": "Buy Energy",
+    "watchAd": "Free via Ad",
+    "close": "Close",
+    "scout": "Scout",
+    "commander": "Commander",
+    "admiral": "Admiral",
+    "price": "{price}₽",
+    "energy": "+{amount} ⚡",
+    "waitingForPayment": "Waiting for payment...",
+    "paymentSuccess": "Payment successful! +{amount} ⚡",
+    "paymentError": "Payment error. Try again later.",
+    "bestValue": "Best value"
   }
 }
