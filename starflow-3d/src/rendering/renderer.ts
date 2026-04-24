@@ -109,15 +109,15 @@ let onPlanetClick: ((planetId: string) => void) | null = null;
 let onLevelComplete: (() => void) | null = null;
 let onGameOver: (() => void) | null = null;
 let onRestartLevel: (() => void) | null = null;
+let onPauseToggle: (() => void) | null = null;
 let onBoostActivate: ((type: string, planetId: string) => void) | null = null;
 let onWatchAd: (() => void) | null = null;
 let onBuyEnergy: (() => void) | null = null;
 let onEnergyProduct: ((product: { amount: number; energy: number; name: string; type: string }) => void) | null = null;
+let onPaymentCheck: (() => void) | null = null;
 
 // Energy shop dialog element
 let shopElement: HTMLDivElement | null = null;
-// Payment status toast element
-let paymentStatusElement: HTMLDivElement | null = null;
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -341,6 +341,7 @@ function showMenu(): void {
     ? i18n.t('menu.unmuteAll')
     : i18n.t('menu.muteAll');
   const items = [
+    { label: i18n.t('menu.pause'), id: 'menu-pause' },
     { label: toggleLabel, id: 'menu-toggle-help' },
     { label: i18n.t('menu.restart'), id: 'menu-restart' },
     { label: muteLabel, id: 'menu-toggle-mute' },
@@ -386,6 +387,8 @@ function handleMenuItem(itemId: string): void {
     hudElement.style.display = hudVisible ? '' : 'none';
     const instructions = document.getElementById('instructions');
     if (instructions) instructions.style.display = hudVisible ? '' : 'none';
+  } else if (itemId === 'menu-pause') {
+    if (onPauseToggle) onPauseToggle();
   } else if (itemId === 'menu-restart') {
     if (onRestartLevel) onRestartLevel();
   } else if (itemId === 'menu-toggle-mute') {
@@ -1422,6 +1425,8 @@ export function setLevelCompleteCallback(cb: () => void): void { onLevelComplete
 export function setGameOverCallback(cb: () => void): void { onGameOver = cb; }
 export function setRestartLevelCallback(cb: () => void): void { onRestartLevel = cb; }
 
+export function setPauseToggleCallback(cb: () => void): void { onPauseToggle = cb; }
+
 export function setBoostActivateCallback(cb: (type: string, planetId: string) => void): void {
   onBoostActivate = cb;
 }
@@ -1438,23 +1443,41 @@ export function setEnergyProductCallback(cb: (product: { amount: number; energy:
   onEnergyProduct = cb;
 }
 
+export function setPaymentCheckCallback(cb: () => void): void {
+  onPaymentCheck = cb;
+}
+
 /** Force HUD rebuild on next frame (e.g. after boost activation) */
 export function invalidateHud(): void {
   lastHudHash = '';
 }
 
 // ============================================================
-// Energy Shop Dialog
+// Energy Shop Dialog (with payment states)
 // ============================================================
 
+const SHOP_PRODUCTS = [
+  { amount: 10, energy: 10, name: 'scout', type: 'energy' },
+  { amount: 25, energy: 30, name: 'commander', type: 'energy' },
+  { amount: 79, energy: 100, name: 'admiral', type: 'energy' },
+];
+
+let shopResumeFn: (() => void) | null = null;
+
+/** Set a resume function to be called when shop closes */
+export function setShopResumeCallback(cb: () => void): void {
+  shopResumeFn = cb;
+}
+
+/** Close shop and unpause game */
+function closeShopAndResume(): void {
+  hideEnergyShop();
+  if (shopResumeFn) shopResumeFn();
+}
+
+/** Show product selection (initial state) */
 export function showEnergyShop(): void {
   hideEnergyShop();
-
-  const products = [
-    { amount: 10, energy: 10, name: 'scout', type: 'energy' },
-    { amount: 25, energy: 30, name: 'commander', type: 'energy' },
-    { amount: 79, energy: 100, name: 'admiral', type: 'energy' },
-  ];
 
   shopElement = document.createElement('div');
   shopElement.id = 'energy-shop-overlay';
@@ -1469,7 +1492,7 @@ export function showEnergyShop(): void {
   `;
 
   let cardsHtml = '';
-  for (const product of products) {
+  for (const product of SHOP_PRODUCTS) {
     const isBest = product.name === 'admiral';
     const nameKey = `shop.${product.name}`;
     const priceStr = i18n.t('shop.price', { price: product.amount });
@@ -1512,8 +1535,8 @@ export function showEnergyShop(): void {
   // Wire close button
   const closeBtn = shopElement.querySelector('#shop-close-btn');
   if (closeBtn) {
-    closeBtn.addEventListener('click', () => { hideEnergyShop(); audioManager.play(SFX.UI_CLICK); });
-    closeBtn.addEventListener('touchend', (e) => { e.preventDefault(); hideEnergyShop(); audioManager.play(SFX.UI_CLICK); });
+    closeBtn.addEventListener('click', () => { closeShopAndResume(); audioManager.play(SFX.UI_CLICK); });
+    closeBtn.addEventListener('touchend', (e) => { e.preventDefault(); closeShopAndResume(); audioManager.play(SFX.UI_CLICK); });
   }
 
   // Wire product cards
@@ -1537,72 +1560,119 @@ export function showEnergyShop(): void {
 
   // Close on backdrop click
   shopElement.addEventListener('click', (e: Event) => {
-    if (e.target === shopElement) { hideEnergyShop(); audioManager.play(SFX.UI_CLICK); }
+    if (e.target === shopElement) { closeShopAndResume(); audioManager.play(SFX.UI_CLICK); }
   });
+}
+
+/** Show pending payment state (waiting for user to pay) */
+export function showEnergyShopPending(invoiceId: string, energyAmount: number): void {
+  hideEnergyShop();
+
+  shopElement = document.createElement('div');
+  shopElement.id = 'energy-shop-overlay';
+  shopElement.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    z-index: 250; display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(6px);
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: #fff;
+    animation: fadeIn 0.2s ease;
+  `;
+
+  const checkBtnStyle = `
+    background: linear-gradient(135deg, #ffaa00, #ff8800);
+    border: none; border-radius: 10px;
+    padding: 14px 32px;
+    color: #000; font-size: 15px; font-weight: 700;
+    cursor: pointer; transition: transform 0.15s, opacity 0.15s;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  `;
+
+  shopElement.innerHTML = `
+    <div style="background:rgba(5,5,20,0.95); border-radius:16px; padding:28px; max-width:90vw; width:340px; border:1px solid rgba(255,255,255,0.12); text-align:center;">
+      <div style="width:48px; height:48px; margin:0 auto 16px; border:3px solid rgba(255,170,0,0.3); border-top-color:#ffaa00; border-radius:50%; animation:spin 1.0s linear infinite;"></div>
+      <div style="font-size:16px; font-weight:600; color:#fff; margin-bottom:8px;">${i18n.t('shop.waitingForPayment')}</div>
+      <div style="font-size:13px; color:rgba(255,255,255,0.5); margin-bottom:24px;">
+        ${i18n.t('shop.pendingDesc')}
+      </div>
+      <button id="shop-check-btn" style="${checkBtnStyle}">${i18n.t('shop.checkPayment')}</button>
+      <div id="shop-cancel-btn" style="margin-top:16px; font-size:12px; color:rgba(255,255,255,0.4); cursor:pointer; text-decoration:underline;">${i18n.t('shop.cancelPayment')}</div>
+    </div>
+  `;
+
+  document.body.appendChild(shopElement);
+
+  // Wire check button
+  const checkBtn = shopElement.querySelector('#shop-check-btn') as HTMLElement;
+  if (checkBtn) {
+    checkBtn.addEventListener('mouseenter', () => { checkBtn.style.transform = 'scale(1.04)'; checkBtn.style.opacity = '0.9'; });
+    checkBtn.addEventListener('mouseleave', () => { checkBtn.style.transform = 'scale(1)'; checkBtn.style.opacity = '1'; });
+    const handleCheck = () => {
+      if (onPaymentCheck) onPaymentCheck();
+    };
+    checkBtn.addEventListener('click', handleCheck);
+    checkBtn.addEventListener('touchend', (e) => { e.preventDefault(); handleCheck(); });
+  }
+
+  // Wire cancel button
+  const cancelBtn = shopElement.querySelector('#shop-cancel-btn');
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', () => { closeShopAndResume(); audioManager.play(SFX.UI_CLICK); });
+    cancelBtn.addEventListener('touchend', (e) => { e.preventDefault(); closeShopAndResume(); audioManager.play(SFX.UI_CLICK); });
+  }
+}
+
+/** Show checking state (spinner while API request in progress) */
+export function showEnergyShopChecking(): void {
+  if (!shopElement) return;
+
+  const inner = shopElement.querySelector('div');
+  if (inner) {
+    inner.innerHTML = `
+      <div style="background:rgba(5,5,20,0.95); border-radius:16px; padding:28px; max-width:90vw; width:340px; border:1px solid rgba(255,255,255,0.12); text-align:center;">
+        <div style="width:48px; height:48px; margin:0 auto 16px; border:3px solid rgba(100,180,255,0.3); border-top-color:#64b4ff; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+        <div style="font-size:15px; font-weight:600; color:rgba(255,255,255,0.8);">${i18n.t('shop.checking')}</div>
+      </div>
+    `;
+  }
+}
+
+/** Show success state (energy credited) */
+export function showEnergyShopSuccess(energyGranted: number): void {
+  if (!shopElement) return;
+
+  const inner = shopElement.querySelector('div');
+  if (inner) {
+    inner.innerHTML = `
+      <div style="background:rgba(5,5,20,0.95); border-radius:16px; padding:28px; max-width:90vw; width:340px; border:1px solid rgba(0,255,136,0.3); text-align:center;">
+        <div style="font-size:40px; margin-bottom:12px;">&#9889;</div>
+        <div style="font-size:16px; font-weight:700; color:#00ff88; margin-bottom:8px;">${i18n.t('shop.paymentSuccess', { amount: energyGranted })}</div>
+        <button id="shop-done-btn" style="
+          margin-top:20px;
+          background: rgba(255,255,255,0.08);
+          border: 1px solid rgba(255,255,255,0.15);
+          border-radius: 10px;
+          padding: 12px 32px;
+          color: #fff; font-size: 14px; font-weight: 600;
+          cursor: pointer; transition: background 0.15s;
+        ">${i18n.t('shop.close')}</button>
+      </div>
+    `;
+
+    const doneBtn = shopElement.querySelector('#shop-done-btn');
+    if (doneBtn) {
+      const handleDone = () => { closeShopAndResume(); audioManager.play(SFX.UI_CLICK); };
+      doneBtn.addEventListener('click', handleDone);
+      doneBtn.addEventListener('touchend', (e) => { e.preventDefault(); handleDone(); });
+    }
+  }
 }
 
 export function hideEnergyShop(): void {
   if (shopElement && shopElement.parentNode) {
     shopElement.parentNode.removeChild(shopElement);
     shopElement = null;
-  }
-}
-
-// ============================================================
-// Payment Status Toast
-// ============================================================
-
-export function showPaymentStatus(status: 'loading' | 'success' | 'error', message?: string): void {
-  hidePaymentStatus();
-
-  paymentStatusElement = document.createElement('div');
-  paymentStatusElement.id = 'payment-status-toast';
-
-  let bgColor = 'rgba(0,0,0,0.85)';
-  let borderColor = 'rgba(255,255,255,0.15)';
-  let text = '';
-  let icon = '';
-
-  if (status === 'loading') {
-    text = message || i18n.t('shop.waitingForPayment');
-    icon = '<div style="width:18px; height:18px; border:2px solid rgba(255,170,0,0.3); border-top-color:#ffaa00; border-radius:50%; animation:spin 0.8s linear infinite;"></div>';
-  } else if (status === 'success') {
-    bgColor = 'rgba(0,40,20,0.9)';
-    borderColor = 'rgba(0,255,136,0.4)';
-    text = message || i18n.t('shop.paymentSuccess', { amount: 0 });
-    icon = '<div style="color:#00ff88; font-size:16px;">&#10003;</div>';
-  } else {
-    bgColor = 'rgba(40,0,0,0.9)';
-    borderColor = 'rgba(255,68,68,0.4)';
-    text = message || i18n.t('shop.paymentError');
-    icon = '<div style="color:#ff4444; font-size:16px;">&#10007;</div>';
-  }
-
-  paymentStatusElement.style.cssText = `
-    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-    z-index: 300; display: flex; align-items: center; gap: 10px;
-    background: ${bgColor}; border: 1px solid ${borderColor};
-    border-radius: 10px; padding: 10px 20px;
-    font-family: 'Segoe UI', Arial, sans-serif;
-    font-size: 13px; color: #fff;
-    backdrop-filter: blur(6px);
-    animation: fadeIn 0.2s ease;
-    pointer-events: ${status === 'loading' ? 'none' : 'auto'};
-  `;
-  paymentStatusElement.innerHTML = `${icon}<span>${text}</span>`;
-
-  document.body.appendChild(paymentStatusElement);
-
-  // Auto-hide success/error after 3 seconds
-  if (status === 'success' || status === 'error') {
-    setTimeout(() => { hidePaymentStatus(); }, 3000);
-  }
-}
-
-export function hidePaymentStatus(): void {
-  if (paymentStatusElement && paymentStatusElement.parentNode) {
-    paymentStatusElement.parentNode.removeChild(paymentStatusElement);
-    paymentStatusElement = null;
   }
 }
 
@@ -1617,9 +1687,8 @@ export function resetScene(): void {
   lastHudHash = '';
   currentSelectedPlanetId = null;
 
-  // Close shop & payment status on reset
+  // Close shop on reset
   hideEnergyShop();
-  hidePaymentStatus();
 
   // Remove and dispose all planets
   for (const [id, mesh] of planetMeshes) {

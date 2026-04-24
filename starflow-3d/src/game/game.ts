@@ -20,6 +20,7 @@ import {
   setLevelCompleteCallback,
   setGameOverCallback,
   setRestartLevelCallback,
+  setPauseToggleCallback,
   setBoostActivateCallback,
   setWatchAdCallback,
   setBuyEnergyCallback,
@@ -32,8 +33,11 @@ import {
   invalidateHud,
   showEnergyShop,
   hideEnergyShop,
-  showPaymentStatus,
-  hidePaymentStatus,
+  showEnergyShopPending,
+  showEnergyShopChecking,
+  showEnergyShopSuccess,
+  setPaymentCheckCallback,
+  setShopResumeCallback,
 } from '../rendering/renderer';
 import { saveGame, loadGame, clearSave, type SaveData } from '../core/save';
 import { audioManager, SFX, MUSIC } from '../audio';
@@ -49,18 +53,13 @@ let gameState: GameState;
 let aiStates: AIState[];
 let currentLevel = 1;
 let running = false;
+let paused = false;
 let lastTime = 0;
 let autoSaveTimer = 0;
 
 // Pending payment tracking
 let pendingInvoiceId: string | null = null;
 let pendingEnergyAmount: number | null = null;
-let pollingTimer: number | null = null;
-let pollingRetries = 0;
-let consecutiveErrors = 0;
-const MAX_POLLING_RETRIES = 30;
-const MAX_CONSECUTIVE_ERRORS = 3;
-const POLLING_INTERVAL = 3000;
 
 // ── Battle music system ──────────────────────────────────
 let activeMissileCount = 0;
@@ -106,6 +105,9 @@ export function startGameFromSave(canvas: HTMLCanvasElement, save: SaveData): vo
 
 function initGameScene(canvas: HTMLCanvasElement): void {
   initRenderer(canvas);
+
+  // Wire shop close → resume game
+  setShopResumeCallback(resumeGame);
 
   for (const star of gameState.stars) {
     addStar(star);
@@ -153,6 +155,14 @@ function initGameScene(canvas: HTMLCanvasElement): void {
     goToLevel(currentLevel);
   });
 
+  setPauseToggleCallback(() => {
+    if (paused) {
+      resumeGame();
+    } else {
+      pauseGame();
+    }
+  });
+
   // Register callback to restart music after unmute
   audioManager.setOnUnmute(() => {
     if (gameState.phase !== 'playing') {
@@ -186,48 +196,49 @@ function initGameScene(canvas: HTMLCanvasElement): void {
   // Wire buy-energy button in HUD
   setBuyEnergyCallback(() => {
     audioManager.play(SFX.UI_CLICK);
+    pauseGame();
     showEnergyShop();
   });
 
   // Wire energy product purchase from shop dialog
   setEnergyProductCallback(async (product: { amount: number; energy: number; name: string; type: string }) => {
     try {
-      showPaymentStatus('loading');
       const result = await createPayment(product.amount);
       pendingInvoiceId = result.invoice_id;
       pendingEnergyAmount = product.energy;
 
       // Open payment URL in system browser
       window.open(result.payment_url, '_system');
-      hideEnergyShop();
-      showPaymentStatus('loading');
 
-      // Start polling (in case user pays in same browser tab)
-      startPaymentPolling(result.invoice_id, product.energy);
+      // Show pending state in shop dialog (user will check manually)
+      showEnergyShopPending(result.invoice_id, product.energy);
     } catch (err) {
       console.error('Payment error:', err);
-      showPaymentStatus('error');
+      hideEnergyShop();
+      resumeGame();
     }
   });
 
-  // Listen for app resume (Capacitor) to check payment status
-  document.addEventListener('resume', async () => {
-    if (pendingInvoiceId && pendingEnergyAmount) {
-      try {
-        const status = await checkPayment(pendingInvoiceId);
-        if (status.is_paid) {
-          const granted = pendingEnergyAmount;
-          grantEnergy(gameState, granted);
-          audioManager.play(SFX.UI_CLICK);
-          invalidateHud();
-          pendingInvoiceId = null;
-          pendingEnergyAmount = null;
-          stopPaymentPolling();
-          showPaymentStatus('success', i18n.t('shop.paymentSuccess', { amount: granted }));
-        }
-      } catch (err) {
-        console.error('Payment check error:', err);
+  // Wire manual payment check from shop dialog
+  setPaymentCheckCallback(async () => {
+    if (!pendingInvoiceId || !pendingEnergyAmount) return;
+    try {
+      showEnergyShopChecking();
+      const status = await checkPayment(pendingInvoiceId);
+      if (status.is_paid) {
+        const granted = pendingEnergyAmount;
+        grantEnergy(gameState, granted);
+        audioManager.play(SFX.UI_CLICK);
+        invalidateHud();
+        pendingInvoiceId = null;
+        pendingEnergyAmount = null;
+        showEnergyShopSuccess(granted);
+      } else {
+        showEnergyShopPending(pendingInvoiceId!, pendingEnergyAmount!);
       }
+    } catch (err) {
+      console.error('Payment check error:', err);
+      showEnergyShopPending(pendingInvoiceId!, pendingEnergyAmount!);
     }
   });
 
@@ -237,49 +248,20 @@ function initGameScene(canvas: HTMLCanvasElement): void {
   requestAnimationFrame(gameLoop);
 }
 
-/** Start polling for payment confirmation */
-function startPaymentPolling(invoiceId: string, energyAmount: number): void {
-  stopPaymentPolling();
-  pollingRetries = 0;
-  consecutiveErrors = 0;
-
-  pollingTimer = window.setInterval(async () => {
-    pollingRetries++;
-    if (pollingRetries > MAX_POLLING_RETRIES) {
-      stopPaymentPolling();
-      hidePaymentStatus();
-      return;
-    }
-    try {
-      const status = await checkPayment(invoiceId);
-      consecutiveErrors = 0;  // reset on successful check
-      if (status.is_paid) {
-        grantEnergy(gameState, energyAmount);
-        audioManager.play(SFX.UI_CLICK);
-        invalidateHud();
-        stopPaymentPolling();
-        showPaymentStatus('success', i18n.t('shop.paymentSuccess', { amount: energyAmount }));
-        pendingInvoiceId = null;
-        pendingEnergyAmount = null;
-      }
-    } catch (err) {
-      console.error('Polling error:', err);
-      consecutiveErrors++;
-      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-        console.warn(`Polling stopped after ${MAX_CONSECUTIVE_ERRORS} consecutive errors`);
-        stopPaymentPolling();
-        showPaymentStatus('error');
-      }
-    }
-  }, POLLING_INTERVAL);
+/** Pause game loop */
+export function pauseGame(): void {
+  paused = true;
 }
 
-/** Stop payment polling */
-function stopPaymentPolling(): void {
-  if (pollingTimer) {
-    clearInterval(pollingTimer);
-    pollingTimer = null;
-  }
+/** Resume game loop */
+export function resumeGame(): void {
+  paused = false;
+  lastTime = performance.now();  // reset to avoid huge dt jump
+}
+
+/** Check if game is paused */
+export function isPaused(): boolean {
+  return paused;
 }
 
 function goToLevel(level: number): void {
@@ -329,6 +311,14 @@ function goToLevel(level: number): void {
 
 function gameLoop(now: number): void {
   if (!running) return;
+
+  // When paused, keep rendering but don't update game state
+  if (paused) {
+    lastTime = now;  // keep lastTime current to avoid dt jump on resume
+    syncVisuals(gameState, now / 1000, 0);
+    requestAnimationFrame(gameLoop);
+    return;
+  }
 
   const dt = Math.min((now - lastTime) / 1000, 0.1);
   lastTime = now;
@@ -433,7 +423,9 @@ function gameLoop(now: number): void {
 
 export function stopGame(): void {
   running = false;
-  stopPaymentPolling();
+  paused = false;
+  pendingInvoiceId = null;
+  pendingEnergyAmount = null;
   audioManager.setOnUnmute(null);
   dispose();
 }

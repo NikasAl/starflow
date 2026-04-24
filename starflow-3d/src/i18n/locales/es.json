@@ -23,6 +23,8 @@
     "hideHelp": "Ocultar ayuda",
     "showHelp": "Mostrar ayuda",
     "restart": "Reiniciar nivel",
+    "pause": "Pausa",
+    "resume": "Continuar",
     "language": "Idioma",
     "muteAll": "Silenciar todo",
     "unmuteAll": "Activar sonido",
@@ -115,9 +117,13 @@
     "admiral": "Almirante",
     "price": "{price}₽",
     "energy": "+{amount} ⚡",
-    "waitingForPayment": "Esperando pago...",
-    "paymentSuccess": "¡Pago exitoso! +{amount} ⚡",
-    "paymentError": "Error de pago. Intenta más tarde.",
+    "waitingForPayment": "Esperando pago",
+    "pendingDesc": "Complete el pago en el navegador, luego presione el boton",
+    "checkPayment": "Verificar pago",
+    "checking": "Verificando...",
+    "cancelPayment": "Cancelar",
+    "paymentSuccess": "Pago exitoso! +{amount} ⚡",
+    "paymentError": "Error de pago. Intenta mas tarde.",
     "bestValue": "Mejor oferta"
   }
 }
