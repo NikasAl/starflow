@@ -61,10 +61,23 @@ export async function createPayment(amount: number): Promise<PaymentResult> {
   return resp.json();
 }
 
+/**
+ * Check payment status.
+ * Throws on network/server errors so the caller can stop polling.
+ * Returns is_paid=false for unpaid invoices (caller continues polling).
+ */
 export async function checkPayment(invoiceId: string): Promise<PaymentStatus> {
   const resp = await fetch(`${API_BASE}/billing/check/${encodeURIComponent(invoiceId)}`);
   if (!resp.ok) {
     throw new Error(`Payment check failed: ${resp.status}`);
   }
-  return resp.json();
+  const data = await resp.json();
+
+  // If the server returned an error indicator (invoice not found, etc.),
+  // throw so the caller stops polling rather than retrying endlessly.
+  if (data.error) {
+    throw new Error(`Payment check error: ${data.error}`);
+  }
+
+  return data as PaymentStatus;
 }

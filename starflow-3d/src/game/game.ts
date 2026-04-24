@@ -57,7 +57,9 @@ let pendingInvoiceId: string | null = null;
 let pendingEnergyAmount: number | null = null;
 let pollingTimer: number | null = null;
 let pollingRetries = 0;
+let consecutiveErrors = 0;
 const MAX_POLLING_RETRIES = 30;
+const MAX_CONSECUTIVE_ERRORS = 3;
 const POLLING_INTERVAL = 3000;
 
 // ── Battle music system ──────────────────────────────────
@@ -239,6 +241,7 @@ function initGameScene(canvas: HTMLCanvasElement): void {
 function startPaymentPolling(invoiceId: string, energyAmount: number): void {
   stopPaymentPolling();
   pollingRetries = 0;
+  consecutiveErrors = 0;
 
   pollingTimer = window.setInterval(async () => {
     pollingRetries++;
@@ -249,6 +252,7 @@ function startPaymentPolling(invoiceId: string, energyAmount: number): void {
     }
     try {
       const status = await checkPayment(invoiceId);
+      consecutiveErrors = 0;  // reset on successful check
       if (status.is_paid) {
         grantEnergy(gameState, energyAmount);
         audioManager.play(SFX.UI_CLICK);
@@ -260,6 +264,12 @@ function startPaymentPolling(invoiceId: string, energyAmount: number): void {
       }
     } catch (err) {
       console.error('Polling error:', err);
+      consecutiveErrors++;
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        console.warn(`Polling stopped after ${MAX_CONSECUTIVE_ERRORS} consecutive errors`);
+        stopPaymentPolling();
+        showPaymentStatus('error');
+      }
     }
   }, POLLING_INTERVAL);
 }
