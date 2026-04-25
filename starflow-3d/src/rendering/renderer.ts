@@ -562,10 +562,13 @@ function updateHTMLHUD(state: GameState): void {
           const isActive = state.activeBoosts.some(b => b.planetId === sp.id && b.type === bt.type);
           const canAfford = state.energy >= (bt.type === 'speed' ? 5 : bt.type === 'freeze' ? 8 : 10);
           const disabled = isActive || !canAfford;
-          const opacity = disabled ? '0.35' : '0.9';
-          html += `<div data-action="boost:${bt.type}" style="display:flex; align-items:center; justify-content:space-between; padding:4px 8px; margin-bottom:2px; border-radius:4px; font-size:12px; color:${bt.color}; opacity:${opacity}; cursor:pointer; pointer-events:auto; background:${isActive ? 'rgba(255,255,255,0.05)' : 'transparent'};">
+          const opacity = disabled ? '0.35' : '1';
+          const bgStyle = isActive
+            ? 'background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1);'
+            : `background:${bt.color}11; border:1px solid ${bt.color}44;`;
+          html += `<div data-action="boost:${bt.type}" style="display:flex; align-items:center; justify-content:space-between; padding:6px 10px; margin-bottom:4px; border-radius:6px; font-size:12px; color:${bt.color}; opacity:${opacity}; cursor:pointer; pointer-events:auto; transition:background 0.15s; ${bgStyle}">
             <span><b>${i18n.t(`${bKey}.name`)}</b> <span style="color:rgba(255,255,255,0.5); font-size:10px;">${i18n.t(`${bKey}.desc`, { duration: dur })}</span></span>
-            <span style="font-weight:bold; font-size:11px;">${isActive ? i18n.t('boost.alreadyActive') : cost}</span>
+            <span style="font-weight:bold; font-size:11px; background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px;">${isActive ? i18n.t('boost.alreadyActive') : cost}</span>
           </div>`;
         }
         html += `</div>`;
