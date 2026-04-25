@@ -46,9 +46,8 @@ function getDeviceId(): string {
 
 export async function createPayment(amount: number): Promise<PaymentResult> {
   const device_id = getDeviceId();
-  const resp = await fetch(`${API_BASE}/billing/create-starflow`, {
+  const resp = await fetch(`${API_BASE}/billing/create/starflow`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ device_id, amount, app: 'starflow' }),
   });
   if (!resp.ok) {
@@ -60,11 +59,12 @@ export async function createPayment(amount: number): Promise<PaymentResult> {
 
 /**
  * Check payment status.
+ * Uses the unified /billing/check/{payment_id} endpoint.
  * Throws on network/server errors so the caller can stop checking.
  * Returns is_paid=false for unpaid payments (caller shows pending UI).
  */
-export async function checkPayment(invoiceId: string): Promise<PaymentStatus> {
-  const resp = await fetch(`${API_BASE}/billing/check/${encodeURIComponent(invoiceId)}`);
+export async function checkPayment(paymentId: string): Promise<PaymentStatus> {
+  const resp = await fetch(`${API_BASE}/billing/check/${encodeURIComponent(paymentId)}`);
   if (!resp.ok) {
     throw new Error(`Payment check failed: ${resp.status}`);
   }
@@ -79,36 +79,25 @@ export async function checkPayment(invoiceId: string): Promise<PaymentStatus> {
 }
 
 // ============================================================
-// Deep Link Handling (starflow://payment/success?invoice_id=xxx)
+// Deep Link Handling (starflow://payment/success)
+// The server creates a redirect link WITHOUT invoice_id parameter.
+// The app is still running (paused) and remembers the payment_id
+// from when the payment was created. Deep link is just a trigger.
 // ============================================================
 
-const DEEP_LINK_SCHEME = 'starflow://payment/success';
-
-export type PaymentDeepLinkCallback = (invoiceId: string) => void;
+export type PaymentDeepLinkCallback = () => void;
 
 let deepLinkCallback: PaymentDeepLinkCallback | null = null;
 
-/** Set callback for when app receives a payment deep link */
+/** Set callback for when app receives a payment deep link (no params needed) */
 export function setPaymentDeepLinkCallback(cb: PaymentDeepLinkCallback): void {
   deepLinkCallback = cb;
 }
 
 /** Manually trigger the deep link callback (e.g. for deferred browser deep links) */
-export function triggerPaymentDeepLink(invoiceId: string): void {
+export function triggerPaymentDeepLink(): void {
   if (deepLinkCallback) {
-    deepLinkCallback(invoiceId);
-  }
-}
-
-/** Try to extract invoice_id from a starflow:// deep link URL */
-export function parsePaymentDeepLink(url: string): string | null {
-  try {
-    if (!url.startsWith('starflow://payment')) return null;
-    const parsed = new URL(url);
-    const invoiceId = parsed.searchParams.get('invoice_id');
-    return invoiceId;
-  } catch {
-    return null;
+    deepLinkCallback();
   }
 }
 
@@ -122,10 +111,11 @@ export function initDeepLinkHandler(): void {
   try {
     const { App } = require('@capacitor/app');
     App.addListener('appUrlOpen', (event: { url: string }) => {
-      const invoiceId = parsePaymentDeepLink(event.url);
-      if (invoiceId && deepLinkCallback) {
-        console.log(`[YooKassa] Deep link received: ${event.url}`);
-        deepLinkCallback(invoiceId);
+      if (event.url.startsWith('starflow://payment/success')) {
+        console.log('[YooKassa] Deep link received (no params):', event.url);
+        if (deepLinkCallback) {
+          deepLinkCallback();
+        }
       }
     });
     console.log('[YooKassa] Capacitor deep link listener registered');
@@ -136,10 +126,10 @@ export function initDeepLinkHandler(): void {
 
   // --- Browser: check current URL on page load (handles direct navigation) ---
   if (typeof window !== 'undefined' && window.location) {
-    const invoiceId = parsePaymentDeepLink(window.location.href);
-    if (invoiceId) {
-      // Store for later pickup (game may not be initialized yet)
-      sessionStorage.setItem('starflow_pending_payment', invoiceId);
+    const href = window.location.href;
+    if (href.includes('starflow://payment/success')) {
+      // Store flag for later pickup (game may not be initialized yet)
+      sessionStorage.setItem('starflow_deep_link_received', '1');
       // Clean URL so refresh doesn't re-trigger
       window.history.replaceState({}, '', '/');
     }
@@ -147,16 +137,16 @@ export function initDeepLinkHandler(): void {
 }
 
 /**
- * Check if there's a pending payment from a deep link (sessionStorage).
+ * Check if there's a pending deep link flag from page load (sessionStorage).
  * Call after game is initialized to process any deferred deep link.
  */
-export function consumePendingDeepLink(): string | null {
-  const id = sessionStorage.getItem('starflow_pending_payment');
-  if (id) {
-    sessionStorage.removeItem('starflow_pending_payment');
-    return id;
+export function consumePendingDeepLink(): boolean {
+  const flag = sessionStorage.getItem('starflow_deep_link_received');
+  if (flag) {
+    sessionStorage.removeItem('starflow_deep_link_received');
+    return true;
   }
-  return null;
+  return false;
 }
 
 // Persist pending payment locally so deep link handler can reference it

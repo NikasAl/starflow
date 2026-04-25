@@ -112,18 +112,26 @@ function initGameScene(canvas: HTMLCanvasElement): void {
   // Initialize deep link handler (registers Capacitor listener + checks sessionStorage)
   initDeepLinkHandler();
 
-  // Handle deep link: user returns from payment browser after paying
-  setPaymentDeepLinkCallback(async (invoiceId: string) => {
+  // Handle deep link: user returns from YooKassa payment page via starflow://payment/success
+  // The deep link has NO parameters — app remembers invoice_id from payment creation.
+  setPaymentDeepLinkCallback(async () => {
+    // Use stored payment ID from memory (set when createPayment was called)
+    const paymentId = pendingInvoiceId || loadPendingPayment()?.invoiceId;
+    if (!paymentId) {
+      console.warn('[YooKassa] Deep link received but no pending payment found');
+      return;
+    }
+
     // If game was not paused (user navigated away without shop open), pause now
     if (!paused) pauseGame();
 
     try {
       showEnergyShopChecking();
-      const status = await checkPayment(invoiceId);
+      const status = await checkPayment(paymentId);
       if (status.is_paid) {
         // Get energy amount from saved pending payment
         const pending = loadPendingPayment();
-        const energyAmount = pending?.energyAmount || 0;
+        const energyAmount = pending?.energyAmount || pendingEnergyAmount || 0;
         if (energyAmount > 0) {
           grantEnergy(gameState, energyAmount);
           audioManager.play(SFX.UI_CLICK);
@@ -135,21 +143,21 @@ function initGameScene(canvas: HTMLCanvasElement): void {
         showEnergyShopSuccess(energyAmount);
       } else {
         // Still pending — show pending dialog with manual check button
-        showEnergyShopPending(invoiceId, pendingEnergyAmount || 0);
+        showEnergyShopPending(paymentId, pendingEnergyAmount || 0);
       }
     } catch (err) {
       console.error('Deep link payment check error:', err);
       const pending = loadPendingPayment();
-      showEnergyShopPending(invoiceId, pending?.energyAmount || 0);
+      showEnergyShopPending(paymentId, pending?.energyAmount || pendingEnergyAmount || 0);
     }
   });
 
-  // Check if there's a deferred deep link from page load (browser mode)
+  // Check if there's a deferred deep link flag from page load (browser mode)
   // This handles the case where user opens starflow://... directly in browser
-  const deferredPaymentId = consumePendingDeepLink();
-  if (deferredPaymentId) {
+  const hasDeferredDeepLink = consumePendingDeepLink();
+  if (hasDeferredDeepLink) {
     setTimeout(() => {
-      triggerPaymentDeepLink(deferredPaymentId);
+      triggerPaymentDeepLink();
     }, 500);
   }
 
