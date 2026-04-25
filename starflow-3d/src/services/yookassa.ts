@@ -46,12 +46,9 @@ function getDeviceId(): string {
 
 export async function createPayment(amount: number): Promise<PaymentResult> {
   const device_id = getDeviceId();
-  // Intentionally NO Content-Type header to avoid CORS preflight.
-  // Without an explicit Content-Type, the browser sends "text/plain"
-  // which is a "simple" request — no OPTIONS preflight is triggered.
-  // FastAPI still parses the JSON body correctly from the raw request body.
   const resp = await fetch(`${API_BASE}/billing/create-starflow`, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ device_id, amount, app: 'starflow' }),
   });
   if (!resp.ok) {
