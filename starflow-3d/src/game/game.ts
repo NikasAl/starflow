@@ -5,7 +5,7 @@
 
 import { type GameState } from '../core/types';
 import { type AIState } from '../core/ai';
-import { createGameState, updateGame, handlePlayerAction, createAIStatesForLevel, getRouteCounter, setRouteCounter } from '../game/state';
+import { createGameState, updateGame, handlePlayerAction, createAIStatesForLevel, getRouteCounter, setRouteCounter, ENERGY_START } from '../game/state';
 import {
   initRenderer,
   addPlanet,
@@ -344,8 +344,12 @@ function goToLevel(level: number): void {
 
   // Create new game state
   currentLevel = level;
+  const prevEnergy = gameState.energy;
   gameState = createGameState(currentLevel);
   aiStates = createAIStatesForLevel(gameState.levelConfig);
+
+  // Carry over energy from previous level; give starting bonus only if energy is 0
+  gameState.energy = prevEnergy > 0 ? prevEnergy : ENERGY_START;
 
   // Add new stars
   for (const star of gameState.stars) {

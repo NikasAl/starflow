@@ -27,6 +27,7 @@ import {
 
 // Re-export for renderer HUD
 export { getRouteSendInterval };
+export { ENERGY_START };
 
 let routeCounter = 0;
 
