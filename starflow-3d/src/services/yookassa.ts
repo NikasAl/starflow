@@ -60,8 +60,8 @@ export async function createPayment(amount: number): Promise<PaymentResult> {
 
 /**
  * Check payment status.
- * Throws on network/server errors so the caller can stop polling.
- * Returns is_paid=false for unpaid invoices (caller continues polling).
+ * Throws on network/server errors so the caller can stop checking.
+ * Returns is_paid=false for unpaid payments (caller shows pending UI).
  */
 export async function checkPayment(invoiceId: string): Promise<PaymentStatus> {
   const resp = await fetch(`${API_BASE}/billing/check/${encodeURIComponent(invoiceId)}`);
@@ -70,11 +70,111 @@ export async function checkPayment(invoiceId: string): Promise<PaymentStatus> {
   }
   const data = await resp.json();
 
-  // If the server returned an error indicator (invoice not found, etc.),
-  // throw so the caller stops polling rather than retrying endlessly.
+  // If the server returned an error indicator, throw
   if (data.error) {
     throw new Error(`Payment check error: ${data.error}`);
   }
 
   return data as PaymentStatus;
+}
+
+// ============================================================
+// Deep Link Handling (starflow://payment/success?invoice_id=xxx)
+// ============================================================
+
+const DEEP_LINK_SCHEME = 'starflow://payment/success';
+
+export type PaymentDeepLinkCallback = (invoiceId: string) => void;
+
+let deepLinkCallback: PaymentDeepLinkCallback | null = null;
+
+/** Set callback for when app receives a payment deep link */
+export function setPaymentDeepLinkCallback(cb: PaymentDeepLinkCallback): void {
+  deepLinkCallback = cb;
+}
+
+/** Manually trigger the deep link callback (e.g. for deferred browser deep links) */
+export function triggerPaymentDeepLink(invoiceId: string): void {
+  if (deepLinkCallback) {
+    deepLinkCallback(invoiceId);
+  }
+}
+
+/** Try to extract invoice_id from a starflow:// deep link URL */
+export function parsePaymentDeepLink(url: string): string | null {
+  try {
+    if (!url.startsWith('starflow://payment')) return null;
+    const parsed = new URL(url);
+    const invoiceId = parsed.searchParams.get('invoice_id');
+    return invoiceId;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Initialize deep link listener.
+ * Works with both Capacitor (appUrlOpen) and browser (URL check on load).
+ * Call once at app startup.
+ */
+export function initDeepLinkHandler(): void {
+  // --- Capacitor native deep link ---
+  try {
+    const { App } = require('@capacitor/app');
+    App.addListener('appUrlOpen', (event: { url: string }) => {
+      const invoiceId = parsePaymentDeepLink(event.url);
+      if (invoiceId && deepLinkCallback) {
+        console.log(`[YooKassa] Deep link received: ${event.url}`);
+        deepLinkCallback(invoiceId);
+      }
+    });
+    console.log('[YooKassa] Capacitor deep link listener registered');
+  } catch {
+    // @capacitor/app not available (web dev mode)
+    console.log('[YooKassa] Capacitor App not available, using URL check');
+  }
+
+  // --- Browser: check current URL on page load (handles direct navigation) ---
+  if (typeof window !== 'undefined' && window.location) {
+    const invoiceId = parsePaymentDeepLink(window.location.href);
+    if (invoiceId) {
+      // Store for later pickup (game may not be initialized yet)
+      sessionStorage.setItem('starflow_pending_payment', invoiceId);
+      // Clean URL so refresh doesn't re-trigger
+      window.history.replaceState({}, '', '/');
+    }
+  }
+}
+
+/**
+ * Check if there's a pending payment from a deep link (sessionStorage).
+ * Call after game is initialized to process any deferred deep link.
+ */
+export function consumePendingDeepLink(): string | null {
+  const id = sessionStorage.getItem('starflow_pending_payment');
+  if (id) {
+    sessionStorage.removeItem('starflow_pending_payment');
+    return id;
+  }
+  return null;
+}
+
+// Persist pending payment locally so deep link handler can reference it
+export function savePendingPayment(invoiceId: string, energyAmount: number): void {
+  localStorage.setItem('starflow_pending_payment_id', invoiceId);
+  localStorage.setItem('starflow_pending_energy', String(energyAmount));
+}
+
+export function loadPendingPayment(): { invoiceId: string; energyAmount: number } | null {
+  const invoiceId = localStorage.getItem('starflow_pending_payment_id');
+  const energyAmount = localStorage.getItem('starflow_pending_energy');
+  if (invoiceId && energyAmount) {
+    return { invoiceId, energyAmount: parseInt(energyAmount, 10) };
+  }
+  return null;
+}
+
+export function clearPendingPayment(): void {
+  localStorage.removeItem('starflow_pending_payment_id');
+  localStorage.removeItem('starflow_pending_energy');
 }

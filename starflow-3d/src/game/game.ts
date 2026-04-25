@@ -43,7 +43,7 @@ import { saveGame, loadGame, clearSave, type SaveData } from '../core/save';
 import { audioManager, SFX, MUSIC } from '../audio';
 import { activateBoost, grantEnergy } from '../core/boosts';
 import { adManager } from '../ads/ad-manager';
-import { createPayment, checkPayment, type EnergyProduct } from '../services/yookassa';
+import { createPayment, checkPayment, initDeepLinkHandler, consumePendingDeepLink, setPaymentDeepLinkCallback, triggerPaymentDeepLink, savePendingPayment, loadPendingPayment, clearPendingPayment, type EnergyProduct } from '../services/yookassa';
 import { i18n } from '../i18n';
 
 const knownMissiles = new Set<string>();
@@ -108,6 +108,50 @@ function initGameScene(canvas: HTMLCanvasElement): void {
 
   // Wire shop close → resume game
   setShopResumeCallback(resumeGame);
+
+  // Initialize deep link handler (registers Capacitor listener + checks sessionStorage)
+  initDeepLinkHandler();
+
+  // Handle deep link: user returns from payment browser after paying
+  setPaymentDeepLinkCallback(async (invoiceId: string) => {
+    // If game was not paused (user navigated away without shop open), pause now
+    if (!paused) pauseGame();
+
+    try {
+      showEnergyShopChecking();
+      const status = await checkPayment(invoiceId);
+      if (status.is_paid) {
+        // Get energy amount from saved pending payment
+        const pending = loadPendingPayment();
+        const energyAmount = pending?.energyAmount || 0;
+        if (energyAmount > 0) {
+          grantEnergy(gameState, energyAmount);
+          audioManager.play(SFX.UI_CLICK);
+          invalidateHud();
+        }
+        clearPendingPayment();
+        pendingInvoiceId = null;
+        pendingEnergyAmount = null;
+        showEnergyShopSuccess(energyAmount);
+      } else {
+        // Still pending — show pending dialog with manual check button
+        showEnergyShopPending(invoiceId, pendingEnergyAmount || 0);
+      }
+    } catch (err) {
+      console.error('Deep link payment check error:', err);
+      const pending = loadPendingPayment();
+      showEnergyShopPending(invoiceId, pending?.energyAmount || 0);
+    }
+  });
+
+  // Check if there's a deferred deep link from page load (browser mode)
+  // This handles the case where user opens starflow://... directly in browser
+  const deferredPaymentId = consumePendingDeepLink();
+  if (deferredPaymentId) {
+    setTimeout(() => {
+      triggerPaymentDeepLink(deferredPaymentId);
+    }, 500);
+  }
 
   for (const star of gameState.stars) {
     addStar(star);
@@ -207,6 +251,9 @@ function initGameScene(canvas: HTMLCanvasElement): void {
       pendingInvoiceId = result.invoice_id;
       pendingEnergyAmount = product.energy;
 
+      // Save pending payment for deep link callback to find energy amount
+      savePendingPayment(result.invoice_id, product.energy);
+
       // Open payment URL in system browser
       window.open(result.payment_url, '_system');
 
@@ -232,6 +279,7 @@ function initGameScene(canvas: HTMLCanvasElement): void {
         invalidateHud();
         pendingInvoiceId = null;
         pendingEnergyAmount = null;
+        clearPendingPayment();
         showEnergyShopSuccess(granted);
       } else {
         showEnergyShopPending(pendingInvoiceId!, pendingEnergyAmount!);

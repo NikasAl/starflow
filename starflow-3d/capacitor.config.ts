@@ -8,6 +8,10 @@ const config: CapacitorConfig = {
     SplashScreen: {
       launchShowDuration: 0,
     },
+    App: {
+      // Deep link scheme for returning to app after YooKassa payment
+      urlScheme: 'starflow',
+    },
   },
 };
 

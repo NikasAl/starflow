@@ -21,13 +21,14 @@
     "android:log": "adb logcat -s Capacitor chromium System.out"
   },
   "dependencies": {
-    "three": "^0.169.0",
-    "@capacitor/core": "^6.2.0"
+    "@capacitor/app": "^6.0.3",
+    "@capacitor/core": "^6.2.0",
+    "three": "^0.169.0"
   },
   "devDependencies": {
-    "@types/three": "^0.169.0",
-    "@capacitor/cli": "^6.2.0",
     "@capacitor/android": "^6.2.0",
+    "@capacitor/cli": "^6.2.0",
+    "@types/three": "^0.169.0",
     "typescript": "^5.7.0",
     "vite": "^6.1.0"
   }
