@@ -276,7 +276,13 @@ function initGameScene(canvas: HTMLCanvasElement): void {
 
   // Wire manual payment check from shop dialog
   setPaymentCheckCallback(async () => {
-    if (!pendingInvoiceId || !pendingEnergyAmount) return;
+    // Try memory first, then localStorage fallback
+    const paymentId = pendingInvoiceId || loadPendingPayment()?.invoiceId;
+    const energyAmount = pendingEnergyAmount || loadPendingPayment()?.energyAmount || 0;
+    if (!paymentId || !energyAmount) return;
+    // Restore in-memory values if they were lost (e.g. app backgrounded)
+    pendingInvoiceId = paymentId;
+    pendingEnergyAmount = energyAmount;
     try {
       showEnergyShopChecking();
       const status = await checkPayment(pendingInvoiceId);
