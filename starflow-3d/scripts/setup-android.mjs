@@ -23,19 +23,20 @@ if (!existsSync(androidDir)) {
 const wrapperPropsPath = join(androidDir, 'gradle', 'wrapper', 'gradle-wrapper.properties');
 if (existsSync(wrapperPropsPath)) {
   let props = readFileSync(wrapperPropsPath, 'utf-8');
-  const MIN_GRADLE_VERSION = '8.14';
-  const gradleMatch = props.match(/distributionUrl=.+gradle-(\d+\.\d+(?:\.\d+)?)/);
-  const currentVersion = gradleMatch ? gradleMatch[1] : null;
+  const MIN_GRADLE_VERSION = [8, 14];
+  const gradleMatch = props.match(/distributionUrl=.+gradle-(\d+)\.(\d+)(?:\.(\d+))?/);
+  let currentVersionParts = gradleMatch ? [+gradleMatch[1], +gradleMatch[2]] : null;
 
-  if (!currentVersion || currentVersion < MIN_GRADLE_VERSION) {
+  if (!currentVersionParts || currentVersionParts[0] < MIN_GRADLE_VERSION[0] || (currentVersionParts[0] === MIN_GRADLE_VERSION[0] && currentVersionParts[1] < MIN_GRADLE_VERSION[1])) {
+    const currentStr = gradleMatch ? gradleMatch[0].replace('distributionUrl=https\\://services.gradle.org/distributions/gradle-', '') : 'unknown';
     props = props.replace(
       /distributionUrl=.*/,
-      `distributionUrl=https\\://services.gradle.org/distributions/gradle-${MIN_GRADLE_VERSION}-all.zip`
+      `distributionUrl=https\\://services.gradle.org/distributions/gradle-${MIN_GRADLE_VERSION.join('.')}-all.zip`
     );
     writeFileSync(wrapperPropsPath, props, 'utf-8');
-    console.log(`[setup-android] Upgraded Gradle wrapper from ${currentVersion || 'unknown'} to ${MIN_GRADLE_VERSION}`);
+    console.log(`[setup-android] Upgraded Gradle wrapper from ${currentStr} to ${MIN_GRADLE_VERSION.join('.')}`);
   } else {
-    console.log(`[setup-android] Gradle wrapper already at ${currentVersion} (>= ${MIN_GRADLE_VERSION}).`);
+    console.log(`[setup-android] Gradle wrapper already at ${currentVersionParts.join('.')} (>= ${MIN_GRADLE_VERSION.join('.')}).`);
   }
 } else {
   console.log(`[setup-android] gradle-wrapper.properties not found at ${wrapperPropsPath}`);
