@@ -26,21 +26,6 @@ function applyDOMTranslations(): void {
   const loadingText = document.getElementById('loading-text');
   if (loadingText) loadingText.textContent = i18n.t('ui.loading');
 
-  const instructionsEl = document.getElementById('instructions');
-  if (instructionsEl) {
-    instructionsEl.textContent = [
-      i18n.t('ui.instructions.select'),
-      i18n.t('ui.instructions.createRoute'),
-      i18n.t('ui.instructions.disconnect'),
-      i18n.t('ui.instructions.rotate'),
-      i18n.t('ui.instructions.pan'),
-      i18n.t('ui.instructions.zoom'),
-      i18n.t('ui.instructions.pinch'),
-      i18n.t('ui.instructions.routes1'),
-      i18n.t('ui.instructions.routes2'),
-    ].join(' \u2022 ');
-  }
-
   // Page title
   document.title = i18n.t('app.title');
 }

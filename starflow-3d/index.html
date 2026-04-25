@@ -171,19 +171,7 @@
     }
     #loading.hidden { opacity: 0; pointer-events: none; }
 
-    /* ===== INSTRUCTIONS ===== */
-    #instructions {
-      position: fixed;
-      bottom: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      color: rgba(255,255,255,0.4);
-      font-family: 'Segoe UI', Arial, sans-serif;
-      font-size: 11px;
-      text-align: center;
-      pointer-events: none;
-      z-index: 50;
-    }
+
   </style>
 </head>
 <body>
@@ -202,9 +190,7 @@
   <div id="game-container">
     <div id="loading"><span id="loading-text">Loading Star Flow Command...</span></div>
     <canvas id="game-canvas"></canvas>
-    <div id="instructions">
-      Click planet to select &bull; Click target to create route &bull; Click source again to disconnect &bull; Drag to rotate &bull; Shift+Drag to pan &bull; Scroll to zoom &bull; Pinch to zoom (mobile) &bull; Power &gt;15 = 2 routes, &gt;30 = 3 routes
-    </div>
+
   </div>
 
   <script type="module" src="/src/main.ts"></script>

@@ -91,14 +91,13 @@ export async function playIntro(): Promise<void> {
 
     if (introCancelled) return cleanup();
 
-    // Step 4: Controls guide — items appear one by one with staggered animation
+    // Step 4: Controls guide — each tip highlights one by one with pop animation
     await wait(400);
     flyToDefault();
     await wait(800); // let camera pull back a bit before guide
-    await showControlsGuide();
-    await wait(800); // let items finish appearing (6 items × 250ms)
-    await wait(2500); // give time to read
-    await hideIntroText(600);
+    await showControlsGuide(); // sequential highlighting built-in (~3s per item)
+    await wait(500); // brief pause after all tips shown
+    await hideIntroText(800);
 
     if (introCancelled) return cleanup();
 
@@ -244,36 +243,64 @@ function showControlsGuide(): Promise<void> {
       transform: translate(-50%, -50%);
       z-index: 200;
       font-family: 'Segoe UI', Arial, sans-serif;
-      font-size: clamp(13px, 2vw, 17px);
+      font-size: clamp(14px, 2.2vw, 18px);
       color: rgba(255,255,255,0.9);
       text-align: center;
       text-shadow: 0 2px 8px rgba(0,0,0,0.8);
-      line-height: 2.2;
+      line-height: 2.4;
       pointer-events: none;
-      max-width: 80vw;
+      max-width: 85vw;
     `;
     document.body.appendChild(introElement);
 
-    // Create items one by one with staggered animation
+    const items: HTMLDivElement[] = [];
+    const HIGHLIGHT_MS = 2000;   // how long each tip stays highlighted
+    const TRANS_MS = 500;        // animation transition duration
+    const TOTAL_PER_ITEM = HIGHLIGHT_MS + TRANS_MS;
+
+    // Pre-create all items — dimmed and small
     for (let i = 0; i < lines.length; i++) {
       const item = document.createElement('div');
       item.textContent = lines[i];
       item.style.cssText = `
-        opacity: 0;
-        transform: translateY(10px);
-        transition: opacity 0.4s ease-out, transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        opacity: 0.25;
+        transform: scale(0.92);
+        transition: opacity ${TRANS_MS}ms ease, transform ${TRANS_MS}ms cubic-bezier(0.16, 1, 0.3, 1), color ${TRANS_MS}ms ease, text-shadow ${TRANS_MS}ms ease;
+        color: rgba(255,255,255,0.5);
       `;
       introElement.appendChild(item);
-
-      // Stagger each item by 250ms
-      setTimeout(() => {
-        item.style.opacity = '1';
-        item.style.transform = 'translateY(0)';
-      }, i * 250);
+      items.push(item);
     }
 
-    // Resolve after all items have started animating
-    setTimeout(resolve, lines.length * 250 + 100);
+    // Sequentially highlight each item, then dim it back
+    for (let i = 0; i < lines.length; i++) {
+      const delay = i * TOTAL_PER_ITEM;
+      const item = items[i];
+
+      // Highlight: pop bigger + bright gold color
+      setTimeout(() => {
+        if (!introElement) return;
+        item.style.opacity = '1';
+        item.style.transform = 'scale(1.18)';
+        item.style.color = '#ffcc00';
+        item.style.textShadow = '0 0 16px rgba(255,204,0,0.7), 0 0 30px rgba(255,204,0,0.3), 0 2px 8px rgba(0,0,0,0.9)';
+      }, delay);
+
+      // Dim back to normal (unless it's the last item)
+      if (i < lines.length - 1) {
+        setTimeout(() => {
+          if (!introElement) return;
+          item.style.opacity = '0.6';
+          item.style.transform = 'scale(1)';
+          item.style.color = 'rgba(255,255,255,0.8)';
+          item.style.textShadow = '0 2px 8px rgba(0,0,0,0.8)';
+        }, delay + HIGHLIGHT_MS);
+      }
+      // Last item stays highlighted until hideIntroText() is called
+    }
+
+    // Resolve after all items have been highlighted
+    setTimeout(resolve, lines.length * TOTAL_PER_ITEM + 100);
   });
 }
 
