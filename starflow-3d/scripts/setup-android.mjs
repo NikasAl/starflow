@@ -19,6 +19,23 @@ if (!existsSync(androidDir)) {
   process.exit(0);
 }
 
+// 0. Pin JDK 21 (LTS) — Gradle 8.14 max supports Java 24, Java 25+ breaks builds
+const gradlePropsPath = join(androidDir, 'gradle.properties');
+const JAVA_21_HOME = '/usr/lib/jvm/java-21-openjdk';
+if (existsSync(gradlePropsPath)) {
+  let gprops = readFileSync(gradlePropsPath, 'utf-8');
+  if (!gprops.includes('org.gradle.java.home')) {
+    gprops += `\n# Pin JDK 21 — required because Gradle 8.14 does not support Java 25+\norg.gradle.java.home=${JAVA_21_HOME}\n`;
+    writeFileSync(gradlePropsPath, gprops, 'utf-8');
+    console.log(`[setup-android] Pinned org.gradle.java.home to ${JAVA_21_HOME}`);
+  } else {
+    console.log('[setup-android] org.gradle.java.home already set in gradle.properties.');
+  }
+} else {
+  writeFileSync(gradlePropsPath, `org.gradle.java.home=${JAVA_21_HOME}\n`, 'utf-8');
+  console.log(`[setup-android] Created gradle.properties with org.gradle.java.home=${JAVA_21_HOME}`);
+}
+
 // 1. Upgrade Gradle wrapper if needed (supports newer Java versions)
 const wrapperPropsPath = join(androidDir, 'gradle', 'wrapper', 'gradle-wrapper.properties');
 if (existsSync(wrapperPropsPath)) {
