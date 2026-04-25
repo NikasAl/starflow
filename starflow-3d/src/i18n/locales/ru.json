@@ -28,7 +28,13 @@
     "language": "Язык",
     "muteAll": "Выключить звук",
     "unmuteAll": "Включить звук",
-    "watchAd": "Реклама +5 ⚡"
+    "watchAd": "Реклама +5 ⚡",
+    "showGuide": "Показать гайд"
+  },
+  "intro": {
+    "ourPlanet": "Это наша планета",
+    "enemyPlanet": "Это {enemy} — наши соперники",
+    "neutralPlanets": "Успеем освоить планеты раньше..."
   },
   "hud": {
     "you": "Вы",

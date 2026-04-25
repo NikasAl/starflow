@@ -28,7 +28,13 @@
     "language": "Idioma",
     "muteAll": "Silenciar todo",
     "unmuteAll": "Activar sonido",
-    "watchAd": "Anuncio +5 ⚡"
+    "watchAd": "Anuncio +5 ⚡",
+    "showGuide": "Mostrar guía"
+  },
+  "intro": {
+    "ourPlanet": "Este es nuestro planeta",
+    "enemyPlanet": "Estos son los {enemy} — nuestros rivales",
+    "neutralPlanets": "Conquista los planetas antes que ellos..."
   },
   "hud": {
     "you": "Tú",

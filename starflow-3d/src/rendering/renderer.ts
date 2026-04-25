@@ -101,6 +101,14 @@ let cameraFlyTarget: { x: number; z: number } | null = null;
 let cameraFlyStart: { x: number; z: number } | null = null;
 let cameraFlyProgress = 0;
 
+// Smooth camera target for intro animations (lerped each frame)
+let smoothTarget: {
+  targetX: number; targetZ: number;
+  distance: number; theta: number; phi: number;
+  active: boolean;
+} = { targetX: 0, targetZ: 0, distance: 55, theta: 0.5, phi: 1.1, active: false };
+const SMOOTH_CAM_LERP = 2.5; // interpolation speed
+
 // HTML HUD element
 let hudElement: HTMLDivElement;
 let overlayElement: HTMLDivElement | null = null;
@@ -115,6 +123,7 @@ let onWatchAd: (() => void) | null = null;
 let onBuyEnergy: (() => void) | null = null;
 let onEnergyProduct: ((product: { amount: number; energy: number; name: string; type: string }) => void) | null = null;
 let onPaymentCheck: (() => void) | null = null;
+let onShowGuide: (() => void) | null = null;
 
 // Energy shop dialog element
 let shopElement: HTMLDivElement | null = null;
@@ -126,8 +135,7 @@ const mouse = new THREE.Vector2();
 let hudDirty = true;
 let lastHudHash = '';
 
-// HUD visibility toggle
-let hudVisible = true;
+// HUD visibility toggle (reserved for future use)
 let menuOpen = false;
 let menuElement: HTMLDivElement | null = null;
 let menuButtonElement: HTMLButtonElement | null = null;
@@ -334,15 +342,12 @@ function showMenu(): void {
     animation: fadeIn 0.15s ease;
   `;
 
-  const toggleLabel = hudVisible
-    ? i18n.t('menu.hideHelp')
-    : i18n.t('menu.showHelp');
   const muteLabel = audioManager.isMuted()
     ? i18n.t('menu.unmuteAll')
     : i18n.t('menu.muteAll');
   const items = [
     { label: i18n.t('menu.pause'), id: 'menu-pause', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="6" y="4" width="4" height="16" fill="currentColor" rx="1"/><rect x="14" y="4" width="4" height="16" fill="currentColor" rx="1"/></svg>' },
-    { label: toggleLabel, id: 'menu-toggle-help', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><circle cx="12" cy="17" r="0.5" fill="currentColor"/></svg>' },
+    { label: i18n.t('menu.showGuide'), id: 'menu-show-guide', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><circle cx="12" cy="17" r="0.5" fill="currentColor"/></svg>' },
     { label: i18n.t('menu.restart'), id: 'menu-restart', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>' },
     { label: muteLabel, id: 'menu-toggle-mute', icon: audioManager.isMuted()
       ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>'
@@ -386,11 +391,8 @@ function handleMenuItem(itemId: string): void {
   hideMenu();
   audioManager.play(SFX.UI_CLICK);
 
-  if (itemId === 'menu-toggle-help') {
-    hudVisible = !hudVisible;
-    hudElement.style.display = hudVisible ? '' : 'none';
-    const instructions = document.getElementById('instructions');
-    if (instructions) instructions.style.display = hudVisible ? '' : 'none';
+  if (itemId === 'menu-show-guide') {
+    if (onShowGuide) onShowGuide();
   } else if (itemId === 'menu-pause') {
     if (onPauseToggle) onPauseToggle();
   } else if (itemId === 'menu-restart') {
@@ -458,86 +460,32 @@ function showLanguageMenu(): void {
 }
 
 function updateHTMLHUD(state: GameState): void {
-  const stats = getGameStats(state);
-
-  const owners: [number, string, number][] = [
-    [1, i18n.t('hud.you'), 0x4488ff],
-    [2, i18n.t('hud.crimson'), 0xff4444],
-    [3, i18n.t('hud.emerald'), 0x44cc44],
-    [4, i18n.t('hud.golden'), 0xffaa00],
-    [0, i18n.t('hud.neutral'), 0x888888],
-  ];
-
   let html = `<div style="
     background: rgba(0,0,0,0.7);
     border-radius: 10px;
-    padding: 12px 16px;
+    padding: 10px 14px;
     backdrop-filter: blur(4px);
     border: 1px solid rgba(255,255,255,0.1);
-    min-width: 220px;
+    min-width: 200px;
   ">`;
 
-  // Level + Timer
-  html += `<div style="font-size:13px; color:rgba(255,255,255,0.5); margin-bottom:4px;">
-    ${i18n.t('hud.level', { level: state.level, name: i18n.t(state.levelConfig.nameKey, state.levelConfig.nameParams) })}
-  </div>`;
-  html += `<div style="font-size:13px; color:rgba(255,255,255,0.5); margin-bottom:6px;">
-    ${Math.floor(state.time / 60)}:${String(Math.floor(state.time % 60)).padStart(2, '0')}
-  </div>`;
-
-  // Energy counter + watch ad button (only during gameplay)
+  // Energy counter + watch ad + buy energy buttons (only during gameplay)
   if (state.phase === 'playing') {
-    html += `<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; padding:6px 10px; background:rgba(255,170,0,0.1); border-radius:6px; border:1px solid rgba(255,170,0,0.2);">
+    html += `<div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; padding:6px 10px; background:rgba(255,170,0,0.1); border-radius:6px; border:1px solid rgba(255,170,0,0.2);">
       <div style="font-size:14px; font-weight:bold; color:#ffaa00;">&#9889; ${state.energy}</div>
       <div data-action="watch-ad" style="font-size:11px; padding:2px 8px; background:rgba(255,170,0,0.2); border:1px solid rgba(255,170,0,0.3); border-radius:4px; color:#ffaa00; cursor:pointer; pointer-events:auto;">+${i18n.t('boost.cost', { cost: ENERGY_AD_REWARD })}</div>
       <div data-action="buy-energy" style="font-size:14px; padding:2px 8px; background:rgba(0,200,100,0.2); border:1px solid rgba(0,200,100,0.3); border-radius:4px; color:#00c864; cursor:pointer; pointer-events:auto; font-weight:bold;">+</div>
     </div>`;
   }
 
-  for (const [id, name, color] of owners) {
-    const s = stats[id as OwnerId];
-    if (!s) continue;
-    const ch = '#' + color.toString(16).padStart(6, '0');
-    html += `<div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; font-size:13px;">
-      <div style="width:10px; height:10px; border-radius:50%; background:${ch}; flex-shrink:0;"></div>
-      <span style="min-width:55px;">${name}</span>
-      <span style="color:rgba(255,255,255,0.7);">${s.planets}p</span>
-      <span style="color:${ch === '#888888' ? '#aaa' : '#66bbff'}; font-size:11px;">
-        ${i18n.t('hud.power', { power: s.power })}
-      </span>
-    </div>`;
-  }
-
-  // Star count
-  if (state.stars.length > 0) {
-    html += `<div style="margin-top:6px; font-size:11px; color:#ff6644;">
-      ${i18n.tp('hud.stars', state.stars.length)}
-    </div>`;
-  }
-
-  // Active player routes
-  const playerRoutes = state.routes.filter(r => r.owner === PLAYER);
-  if (playerRoutes.length > 0) {
-    html += `<div style="margin-top:4px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.1); font-size:11px; color:#00ff88;">
-      ${i18n.tp('hud.routes', playerRoutes.length)}
-    </div>`;
-  }
-
-  // Phase indicator (subtle, overlay handles the big display)
-  if (state.phase === 'won') {
-    html += `<div style="font-size:14px; font-weight:bold; color:#00ff88; text-align:center; margin-top:8px;">${i18n.t('hud.victory')}</div>`;
-  } else if (state.phase === 'lost') {
-    html += `<div style="font-size:14px; font-weight:bold; color:#ff4444; text-align:center; margin-top:8px;">${i18n.t('hud.defeat')}</div>`;
-  }
-
-  // Selected hint
+  // Selected hint + boost buttons
   if (state.selectedPlanetId && state.phase === 'playing') {
     const p = state.planets.find(pl => pl.id === state.selectedPlanetId);
     if (p) {
       const maxR = getMaxRoutesFromPlanet(p.power);
       const currentR = state.routes.filter(r => r.sourceId === p.id && r.owner === PLAYER).length;
       const fireRate = getRouteSendInterval(p.power);
-      html += `<div style="margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.1); font-size:12px; color:#00ff88;">
+      html += `<div style="margin-top:4px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.1); font-size:12px; color:#00ff88;">
         ${i18n.t('hud.selectedInfo', { name: p.name, power: Math.floor(p.power), current: currentR, max: maxR })}<br>
         <span style="color:rgba(255,255,255,0.5);">${i18n.t('hud.fireRate', { rate: fireRate.toFixed(1) })}</span><br>
         <span style="color:rgba(255,255,255,0.5);">${i18n.t('hud.clickTarget')}</span>
@@ -1446,6 +1394,10 @@ export function setPaymentCheckCallback(cb: () => void): void {
   onPaymentCheck = cb;
 }
 
+export function setShowGuideCallback(cb: () => void): void {
+  onShowGuide = cb;
+}
+
 /** Force HUD rebuild on next frame (e.g. after boost activation) */
 export function invalidateHud(): void {
   lastHudHash = '';
@@ -1677,6 +1629,24 @@ export function hideEnergyShop(): void {
 
 export function getCameraState(): CameraState { return { ...camState }; }
 
+/** Set a smooth camera target (used by intro animation). Camera lerps to it each frame. */
+export function setCameraSmoothTarget(target: {
+  targetX: number; targetZ: number;
+  distance: number; theta: number; phi: number;
+}): void {
+  smoothTarget.targetX = target.targetX;
+  smoothTarget.targetZ = target.targetZ;
+  smoothTarget.distance = target.distance;
+  smoothTarget.theta = target.theta;
+  smoothTarget.phi = target.phi;
+  smoothTarget.active = true;
+}
+
+/** Disable smooth camera (return to user control) */
+export function disableSmoothCamera(): void {
+  smoothTarget.active = false;
+}
+
 // ============================================================
 // Scene Reset — clear all game objects, keep infrastructure
 // ============================================================
@@ -1817,9 +1787,6 @@ export function resetScene(): void {
     menuButtonElement = null;
   }
 
-  // Reset HUD visibility
-  hudVisible = true;
-
   // Reset phase tracker
   lastPhase = 'playing';
 }
@@ -1933,6 +1900,17 @@ function animateBoostRings(time: number): void {
 }
 
 export function syncVisuals(state: GameState, time: number, dt: number = 0): void {
+  // Smooth camera animation (intro sequence)
+  if (smoothTarget.active && dt > 0) {
+    const t = 1 - Math.exp(-SMOOTH_CAM_LERP * dt);
+    camState.targetX += (smoothTarget.targetX - camState.targetX) * t;
+    camState.targetZ += (smoothTarget.targetZ - camState.targetZ) * t;
+    camState.distance += (smoothTarget.distance - camState.distance) * t;
+    camState.theta += (smoothTarget.theta - camState.theta) * t;
+    camState.phi += (smoothTarget.phi - camState.phi) * t;
+    updateCamera();
+  }
+
   // Update camera fly-forward animation
   updateCameraFly(dt);
 

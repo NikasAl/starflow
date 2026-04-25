@@ -38,7 +38,11 @@ import {
   showEnergyShopSuccess,
   setPaymentCheckCallback,
   setShopResumeCallback,
+  setCameraSmoothTarget,
+  disableSmoothCamera,
+  setShowGuideCallback,
 } from '../rendering/renderer';
+import { initIntroAnim, playIntro, playLevelTitle, cancelIntro, isIntroActive } from '../rendering/intro-anim';
 import { saveGame, loadGame, clearSave, type SaveData } from '../core/save';
 import { audioManager, SFX, MUSIC } from '../audio';
 import { activateBoost, grantEnergy } from '../core/boosts';
@@ -56,6 +60,7 @@ let running = false;
 let paused = false;
 let lastTime = 0;
 let autoSaveTimer = 0;
+let isFirstLevel = true; // Track first level for intro animation
 
 // Pending payment tracking
 let pendingInvoiceId: string | null = null;
@@ -108,6 +113,17 @@ function initGameScene(canvas: HTMLCanvasElement): void {
 
   // Wire shop close → resume game
   setShopResumeCallback(resumeGame);
+
+  // Wire "Show Guide" menu button to replay intro animation
+  setShowGuideCallback(() => replayIntro());
+
+  // Initialize intro animation system
+  initIntroAnim({
+    getGameState: () => gameState,
+    setCameraSmoothTarget,
+    disableSmoothCamera,
+    setGamePaused: (p) => { if (p) pauseGame(); else resumeGame(); },
+  });
 
   // Initialize deep link handler (registers Capacitor listener + checks sessionStorage)
   initDeepLinkHandler();
@@ -308,6 +324,12 @@ function initGameScene(canvas: HTMLCanvasElement): void {
   autoSaveTimer = 0;
   lastTime = performance.now();
   requestAnimationFrame(gameLoop);
+
+  // Play intro animation on first level, or level title on subsequent levels
+  if (isFirstLevel) {
+    isFirstLevel = false;
+    playIntro().catch(() => {});
+  }
 }
 
 /** Pause game loop */
@@ -373,6 +395,9 @@ function goToLevel(level: number): void {
   autoSaveTimer = 0;
   lastTime = performance.now();
   requestAnimationFrame(gameLoop);
+
+  // Show level title animation on level transitions
+  playLevelTitle().catch(() => {});
 }
 
 function gameLoop(now: number): void {
@@ -499,4 +524,9 @@ export function stopGame(): void {
 /** Set callback for when game is saved (used to update Continue button) */
 export function setOnGameSaved(cb: () => void): void {
   onGameSaved = cb;
+}
+
+/** Re-play the intro animation (called from menu "Show Guide") */
+export function replayIntro(): void {
+  playIntro().catch(() => {});
 }
