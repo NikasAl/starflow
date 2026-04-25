@@ -519,14 +519,6 @@ function updateHTMLHUD(state: GameState): void {
     </div>`;
   }
 
-  // Active missiles
-  const playerMissiles = state.missiles.filter(m => m.owner === PLAYER).length;
-  if (playerMissiles > 0) {
-    html += `<div style="font-size:11px; color:rgba(255,255,255,0.4);">
-      ${i18n.tp('hud.missiles', playerMissiles)}
-    </div>`;
-  }
-
   // Phase indicator (subtle, overlay handles the big display)
   if (state.phase === 'won') {
     html += `<div style="font-size:14px; font-weight:bold; color:#00ff88; text-align:center; margin-top:8px;">${i18n.t('hud.victory')}</div>`;
