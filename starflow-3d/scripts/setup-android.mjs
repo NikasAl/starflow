@@ -19,7 +19,29 @@ if (!existsSync(androidDir)) {
   process.exit(0);
 }
 
-// 1. Force landscape orientation in AndroidManifest.xml
+// 1. Upgrade Gradle wrapper if needed (supports newer Java versions)
+const wrapperPropsPath = join(androidDir, 'gradle', 'wrapper', 'gradle-wrapper.properties');
+if (existsSync(wrapperPropsPath)) {
+  let props = readFileSync(wrapperPropsPath, 'utf-8');
+  const MIN_GRADLE_VERSION = '8.14';
+  const gradleMatch = props.match(/distributionUrl=.+gradle-(\d+\.\d+(?:\.\d+)?)/);
+  const currentVersion = gradleMatch ? gradleMatch[1] : null;
+
+  if (!currentVersion || currentVersion < MIN_GRADLE_VERSION) {
+    props = props.replace(
+      /distributionUrl=.*/,
+      `distributionUrl=https\\://services.gradle.org/distributions/gradle-${MIN_GRADLE_VERSION}-all.zip`
+    );
+    writeFileSync(wrapperPropsPath, props, 'utf-8');
+    console.log(`[setup-android] Upgraded Gradle wrapper from ${currentVersion || 'unknown'} to ${MIN_GRADLE_VERSION}`);
+  } else {
+    console.log(`[setup-android] Gradle wrapper already at ${currentVersion} (>= ${MIN_GRADLE_VERSION}).`);
+  }
+} else {
+  console.log(`[setup-android] gradle-wrapper.properties not found at ${wrapperPropsPath}`);
+}
+
+// 2. Force landscape orientation in AndroidManifest.xml
 const manifestPath = join(androidDir, 'app', 'src', 'main', 'AndroidManifest.xml');
 if (existsSync(manifestPath)) {
   let manifest = readFileSync(manifestPath, 'utf-8');
@@ -41,7 +63,7 @@ if (existsSync(manifestPath)) {
   console.log(`[setup-android] AndroidManifest.xml not found at ${manifestPath}`);
 }
 
-// 2. Copy icon to Android resource directories
+// 3. Copy icon to Android resource directories
 const iconSource = join(rootDir, 'assets', 'icon.png');
 if (existsSync(iconSource)) {
   const mipmapDirs = ['mipmap-mdpi', 'mipmap-hdpi', 'mipmap-xhdpi', 'mipmap-xxhdpi', 'mipmap-xxxhdpi'];
@@ -84,7 +106,7 @@ if (existsSync(iconSource)) {
   console.log(`[setup-android] Icon not found at ${iconSource}`);
 }
 
-// 3. Set fullscreen + landscape + NoActionBar in styles.xml
+// 4. Set fullscreen + landscape + NoActionBar in styles.xml
 const stylesPath = join(androidDir, 'app', 'src', 'main', 'res', 'values', 'styles.xml');
 if (existsSync(stylesPath)) {
   let styles = readFileSync(stylesPath, 'utf-8');
@@ -123,7 +145,7 @@ if (existsSync(stylesPath)) {
   }
 }
 
-// 4. Inject fullscreen immersive mode into MainActivity.java
+// 5. Inject fullscreen immersive mode into MainActivity.java
 //    Uses modern WindowInsetsControllerCompat (not deprecated SYSTEM_UI_FLAG)
 const mainActivityPath = join(androidDir, 'app', 'src', 'main', 'java', 'com', 'starflow', 'game', 'MainActivity.java');
 if (existsSync(mainActivityPath)) {
@@ -209,7 +231,7 @@ if (existsSync(mainActivityPath)) {
   console.log(`[setup-android] MainActivity.java not found at ${mainActivityPath}`);
 }
 
-// 5. Ensure androidx.core dependency is available for WindowInsetsControllerCompat
+// 6. Ensure androidx.core dependency is available for WindowInsetsControllerCompat
 const variablesPath = join(androidDir, 'variables.gradle');
 if (existsSync(variablesPath)) {
   let vars = readFileSync(variablesPath, 'utf-8');
@@ -233,7 +255,7 @@ if (existsSync(variablesPath)) {
   }
 }
 
-// 6. Ensure deep link intent filter for starflow:// URL scheme
+// 7. Ensure deep link intent filter for starflow:// URL scheme
 //    Capacitor's App plugin should auto-generate this from capacitor.config.ts
 //    urlScheme setting, but we add a safety net in case cap sync misses it.
 if (existsSync(manifestPath)) {
