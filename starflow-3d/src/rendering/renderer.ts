@@ -107,7 +107,7 @@ let smoothTarget: {
   distance: number; theta: number; phi: number;
   active: boolean;
 } = { targetX: 0, targetZ: 0, distance: 55, theta: 0.5, phi: 1.1, active: false };
-const SMOOTH_CAM_LERP = 2.5; // interpolation speed
+const SMOOTH_CAM_LERP = 3.5; // interpolation speed for intro camera movement
 
 // HTML HUD element
 let hudElement: HTMLDivElement;
@@ -1655,6 +1655,16 @@ export function resetScene(): void {
   // Force HUD rebuild on next frame
   lastHudHash = '';
   currentSelectedPlanetId = null;
+
+  // Disable smooth camera (intro) on scene reset
+  smoothTarget.active = false;
+
+  // Reset camera to defaults
+  camState.targetX = 0;
+  camState.targetZ = 0;
+  camState.theta = CAM_DEFAULT_THETA;
+  camState.phi = CAM_DEFAULT_PHI;
+  camState.distance = CAM_DEFAULT_DISTANCE;
 
   // Close shop on reset
   hideEnergyShop();

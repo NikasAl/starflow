@@ -130,6 +130,9 @@ export async function playLevelTitle(): Promise<void> {
   await showLevelTitle(state);
   await wait(2000);
   await hideLevelTitle(800);
+
+  // IMPORTANT: disable smooth camera so user regains control
+  if (disableSmoothCamera) disableSmoothCamera();
 }
 
 /** Cancel any running intro animation */

@@ -404,9 +404,11 @@ function gameLoop(now: number): void {
   if (!running) return;
 
   // When paused, keep rendering but don't update game state
+  // Pass real dt so smooth camera animations (intro) still work while paused
   if (paused) {
-    lastTime = now;  // keep lastTime current to avoid dt jump on resume
-    syncVisuals(gameState, now / 1000, 0);
+    const realDt = Math.min((now - lastTime) / 1000, 0.1);
+    lastTime = now;
+    syncVisuals(gameState, now / 1000, realDt);
     requestAnimationFrame(gameLoop);
     return;
   }
