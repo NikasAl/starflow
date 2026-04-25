@@ -48,6 +48,7 @@ export async function createPayment(amount: number): Promise<PaymentResult> {
   const device_id = getDeviceId();
   const resp = await fetch(`${API_BASE}/billing/create/starflow`, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ device_id, amount, app: 'starflow' }),
   });
   if (!resp.ok) {
