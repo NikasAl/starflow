@@ -273,7 +273,7 @@ function createHTMLHUD(): void {
 function createMenuButton(): void {
   menuButtonElement = document.createElement('button');
   menuButtonElement.id = 'menu-btn';
-  menuButtonElement.innerHTML = '&#8943;';
+  menuButtonElement.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
   menuButtonElement.style.cssText = `
     position: fixed;
     top: 12px;
@@ -341,17 +341,19 @@ function showMenu(): void {
     ? i18n.t('menu.unmuteAll')
     : i18n.t('menu.muteAll');
   const items = [
-    { label: i18n.t('menu.pause'), id: 'menu-pause' },
-    { label: toggleLabel, id: 'menu-toggle-help' },
-    { label: i18n.t('menu.restart'), id: 'menu-restart' },
-    { label: muteLabel, id: 'menu-toggle-mute' },
-    { label: i18n.t('menu.language'), id: 'menu-language' },
+    { label: i18n.t('menu.pause'), id: 'menu-pause', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="6" y="4" width="4" height="16" fill="currentColor" rx="1"/><rect x="14" y="4" width="4" height="16" fill="currentColor" rx="1"/></svg>' },
+    { label: toggleLabel, id: 'menu-toggle-help', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><circle cx="12" cy="17" r="0.5" fill="currentColor"/></svg>' },
+    { label: i18n.t('menu.restart'), id: 'menu-restart', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>' },
+    { label: muteLabel, id: 'menu-toggle-mute', icon: audioManager.isMuted()
+      ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>'
+      : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>' },
+    { label: i18n.t('menu.language'), id: 'menu-language', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg>' },
   ];
 
   for (const item of items) {
     const row = document.createElement('div');
     row.id = item.id;
-    row.textContent = item.label;
+    row.innerHTML = `<span style="display:inline-flex; align-items:center; gap:10px;">${item.icon}<span>${item.label}</span></span>`;
     row.style.cssText = `
       padding: 10px 18px;
       cursor: pointer;
@@ -359,6 +361,8 @@ function showMenu(): void {
       letter-spacing: 0.5px;
       color: rgba(255,255,255,0.85);
       transition: background 0.15s;
+      display: flex;
+      align-items: center;
     `;
     row.addEventListener('mouseenter', () => { row.style.background = 'rgba(255,255,255,0.08)'; });
     row.addEventListener('mouseleave', () => { row.style.background = 'transparent'; });
