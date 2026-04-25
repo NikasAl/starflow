@@ -109,21 +109,25 @@ export function triggerPaymentDeepLink(): void {
  */
 export function initDeepLinkHandler(): void {
   // --- Capacitor native deep link ---
-  try {
-    const { App } = require('@capacitor/app');
-    App.addListener('appUrlOpen', (event: { url: string }) => {
-      if (event.url.startsWith('starflow://payment/success')) {
-        console.log('[YooKassa] Deep link received (no params):', event.url);
-        if (deepLinkCallback) {
-          deepLinkCallback();
+  // NOTE: Must use dynamic import() because project is ESM ("type": "module"),
+  // require() fails silently and the listener never registers.
+  (async () => {
+    try {
+      const { App } = await import('@capacitor/app');
+      App.addListener('appUrlOpen', (event: { url: string }) => {
+        if (event.url.startsWith('starflow://payment/success')) {
+          console.log('[YooKassa] Deep link received (no params):', event.url);
+          if (deepLinkCallback) {
+            deepLinkCallback();
+          }
         }
-      }
-    });
-    console.log('[YooKassa] Capacitor deep link listener registered');
-  } catch {
-    // @capacitor/app not available (web dev mode)
-    console.log('[YooKassa] Capacitor App not available, using URL check');
-  }
+      });
+      console.log('[YooKassa] Capacitor deep link listener registered');
+    } catch {
+      // @capacitor/app not available (web dev mode)
+      console.log('[YooKassa] Capacitor App not available, using URL check');
+    }
+  })();
 
   // --- Browser: check current URL on page load (handles direct navigation) ---
   if (typeof window !== 'undefined' && window.location) {

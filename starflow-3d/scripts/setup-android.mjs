@@ -233,4 +233,36 @@ if (existsSync(variablesPath)) {
   }
 }
 
+// 6. Ensure deep link intent filter for starflow:// URL scheme
+//    Capacitor's App plugin should auto-generate this from capacitor.config.ts
+//    urlScheme setting, but we add a safety net in case cap sync misses it.
+if (existsSync(manifestPath)) {
+  let manifest = readFileSync(manifestPath, 'utf-8');
+
+  if (!manifest.includes('android:scheme="starflow"')) {
+    // Find the closing </intent-filter> of the LAUNCHER intent filter
+    // and insert our deep link intent filter right after it
+    const launcherFilter = '</intent-filter>';
+    const launcherIdx = manifest.indexOf(launcherFilter);
+    if (launcherIdx !== -1) {
+      const deepLinkFilter =
+        '\n' +
+        '            <!-- Deep link: starflow://payment/success (YooKassa return) -->\n' +
+        '            <intent-filter android:autoVerify="false">\n' +
+        '                <action android:name="android.intent.action.VIEW" />\n' +
+        '                <category android:name="android.intent.category.DEFAULT" />\n' +
+        '                <category android:name="android.intent.category.BROWSABLE" />\n' +
+        '                <data android:scheme="starflow" />\n' +
+        '            </intent-filter>';
+      manifest = manifest.replace(launcherFilter, launcherFilter + deepLinkFilter);
+      writeFileSync(manifestPath, manifest, 'utf-8');
+      console.log('[setup-android] Added deep link intent filter for starflow:// URL scheme');
+    } else {
+      console.warn('[setup-android] WARNING: Could not find launcher intent-filter to insert deep link after');
+    }
+  } else {
+    console.log('[setup-android] Deep link intent filter for starflow:// already exists.');
+  }
+}
+
 console.log('[setup-android] Android setup complete!');
