@@ -1024,12 +1024,12 @@ function drawPlanetLabel(ctx: CanvasRenderingContext2D, planet: PlanetData): voi
   ctx.strokeText(`${pw}`, 80, 30);
   ctx.fillText(`${pw}`, 80, 30);
 
-  // Planet size label
+  // Planet name
   ctx.font = '11px Arial';
-  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
   ctx.lineWidth = 2;
-  ctx.strokeText(planet.sizeType.toUpperCase(), 80, 48);
-  ctx.fillText(planet.sizeType.toUpperCase(), 80, 48);
+  ctx.strokeText(planet.name, 80, 48);
+  ctx.fillText(planet.name, 80, 48);
 
   // Max routes indicator
   const maxR = getMaxRoutesFromPlanet(planet.power);
