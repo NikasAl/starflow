@@ -13,13 +13,13 @@ export interface EnergyProduct {
 }
 
 export interface PaymentResult {
-  invoice_id: string;
+  payment_id: string;
   payment_url: string;
   amount: number;
 }
 
 export interface PaymentStatus {
-  invoice_id: string;
+  payment_id: string;
   is_paid: boolean;
 }
 

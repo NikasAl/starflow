@@ -256,17 +256,17 @@ function initGameScene(canvas: HTMLCanvasElement): void {
   setEnergyProductCallback(async (product: { amount: number; energy: number; name: string; type: string }) => {
     try {
       const result = await createPayment(product.amount);
-      pendingInvoiceId = result.invoice_id;
+      pendingInvoiceId = result.payment_id;
       pendingEnergyAmount = product.energy;
 
       // Save pending payment for deep link callback to find energy amount
-      savePendingPayment(result.invoice_id, product.energy);
+      savePendingPayment(result.payment_id, product.energy);
 
       // Open payment URL in system browser
       window.open(result.payment_url, '_system');
 
       // Show pending state in shop dialog (user will check manually)
-      showEnergyShopPending(result.invoice_id, product.energy);
+      showEnergyShopPending(result.payment_id, product.energy);
     } catch (err) {
       console.error('Payment error:', err);
       hideEnergyShop();
