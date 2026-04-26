@@ -230,7 +230,7 @@ function showControlsGuide(): Promise<void> {
       i18n.t('ui.instructions.createRoute'),
       i18n.t('ui.instructions.disconnect'),
       i18n.t('ui.instructions.rotate'),
-      i18n.t('ui.instructions.zoom'),
+      i18n.t('ui.instructions.pinch'),
       i18n.t('ui.instructions.routes1'),
       i18n.t('ui.instructions.routes2'),
     ];
