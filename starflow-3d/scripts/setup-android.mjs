@@ -305,4 +305,250 @@ if (existsSync(manifestPath)) {
   }
 }
 
+// 8. Add Yandex Mobile Ads SDK dependency
+//    Required for rewarded video ads on Android
+import { mkdirSync } from 'fs';
+
+const YANDEX_SDK_VERSION = '7.5.0';
+const YANDEX_MAVEN_REPO = 'https://maven.yandex.ru/repository/mobileads/';
+
+// 8a. Add Yandex Maven repository to project-level build.gradle
+const projectBuildGradle = join(androidDir, 'build.gradle');
+if (existsSync(projectBuildGradle)) {
+  let buildGradle = readFileSync(projectBuildGradle, 'utf-8');
+  if (!buildGradle.includes('maven.yandex.ru')) {
+    buildGradle = buildGradle.replace(
+      /repositories\s*\{/,
+      `repositories {
+        maven { url '${YANDEX_MAVEN_REPO}' }`
+    );
+    writeFileSync(projectBuildGradle, buildGradle, 'utf-8');
+    console.log(`[setup-android] Added Yandex Mobile Ads Maven repo to build.gradle`);
+  } else {
+    console.log('[setup-android] Yandex Maven repo already in build.gradle.');
+  }
+} else {
+  console.log(`[setup-android] build.gradle not found at ${projectBuildGradle}`);
+}
+
+// 8b. Add Yandex Mobile Ads SDK dependency to app/build.gradle
+const appBuildGradle = join(androidDir, 'app', 'build.gradle');
+if (existsSync(appBuildGradle)) {
+  let appGradle = readFileSync(appBuildGradle, 'utf-8');
+  if (!appGradle.includes('com.yandex.android:mobileads')) {
+    appGradle = appGradle.replace(
+      /dependencies\s*\{/,
+      `dependencies {
+        implementation 'com.yandex.android:mobileads:${YANDEX_SDK_VERSION}'`
+    );
+    writeFileSync(appBuildGradle, appGradle, 'utf-8');
+    console.log(`[setup-android] Added Yandex Mobile Ads SDK ${YANDEX_SDK_VERSION} dependency`);
+  } else {
+    console.log('[setup-android] Yandex Mobile Ads SDK dependency already present.');
+  }
+} else {
+  console.log(`[setup-android] app/build.gradle not found at ${appBuildGradle}`);
+}
+
+// 8c. Create YandexAdsPlugin.java — Capacitor plugin wrapping Yandex Mobile Ads SDK
+const pluginDir = join(androidDir, 'app', 'src', 'main', 'java', 'com', 'starflow', 'game');
+const pluginPath = join(pluginDir, 'YandexAdsPlugin.java');
+
+if (!existsSync(pluginPath)) {
+  mkdirSync(pluginDir, { recursive: true });
+
+  const pluginSource = `package com.starflow.game;
+
+import android.app.Activity;
+import android.os.Handler;
+import android.os.Looper;
+
+import com.getcapacitor.JSObject;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+
+import com.yandex.android.mobileads.MobileAds;
+import com.yandex.android.mobileads.RewardedAd;
+import com.yandex.android.mobileads.RewardedAdLoader;
+import com.yandex.android.mobileads.AdRequestConfiguration;
+import com.yandex.android.mobileads.Reward;
+import com.yandex.android.mobileads.ImpressionData;
+import com.yandex.android.mobileads.AdError;
+
+@CapacitorPlugin(
+    name = "YandexAds"
+)
+public class YandexAdsPlugin extends Plugin {
+
+    private RewardedAd rewardedAd = null;
+    private boolean rewardGranted = false;
+    private PluginCall savedCall = null;
+    private Handler mainHandler = new Handler(Looper.getMainLooper());
+
+    @Override
+    public void load() {
+        // Initialize Yandex Mobile Ads SDK on plugin load
+        mainHandler.post(() -> {
+            MobileAds.initialize(getContext());
+        });
+    }
+
+    @PluginMethod
+    public void initialize(final PluginCall call) {
+        mainHandler.post(() -> {
+            try {
+                MobileAds.initialize(getContext());
+                call.resolve(new JSObject());
+            } catch (Exception e) {
+                call.reject("Yandex Ads SDK init failed: " + e.getMessage());
+            }
+        });
+    }
+
+    @PluginMethod
+    public void showRewardedAd(final PluginCall call) {
+        final String adUnitId = call.getString("adUnitId");
+        if (adUnitId == null || adUnitId.isEmpty()) {
+            call.reject("adUnitId is required");
+            return;
+        }
+
+        savedCall = call;
+        rewardGranted = false;
+
+        mainHandler.post(() -> {
+            final Activity activity = getActivity();
+            if (activity == null) {
+                resolveAdResult(false, "Activity is null");
+                return;
+            }
+
+            RewardedAdLoader loader = new RewardedAdLoader.Builder(getContext())
+                .withAdListener(new RewardedAdLoader.RewardedAdLoadListener() {
+                    @Override
+                    public void onAdLoaded(RewardedAd ad) {
+                        rewardedAd = ad;
+                        ad.setAdEventListener(new RewardedAd.RewardedAdEventListener() {
+                            @Override
+                            public void onAdShown() {}
+
+                            @Override
+                            public void onAdFailedToShow(AdError error) {
+                                resolveAdResult(false, error.toString());
+                            }
+
+                            @Override
+                            public void onImpression(ImpressionData data) {}
+
+                            @Override
+                            public void onAdClicked() {}
+
+                            @Override
+                            public void onRewarded(Reward reward) {
+                                rewardGranted = true;
+                            }
+
+                            @Override
+                            public void onAdDismissed() {
+                                resolveAdResult(rewardGranted, null);
+                            }
+                        });
+                        ad.show(activity);
+                    }
+
+                    @Override
+                    public void onAdFailedToLoad(AdError error) {
+                        resolveAdResult(false, error.toString());
+                    }
+                })
+                .build();
+
+            loader.loadAd(new AdRequestConfiguration.Builder(adUnitId).build());
+        });
+    }
+
+    private void resolveAdResult(boolean granted, String error) {
+        if (savedCall == null) return;
+        JSObject result = new JSObject();
+        result.put("granted", granted);
+        if (error != null) {
+            result.put("error", error);
+        }
+        try {
+            savedCall.resolve(result);
+        } catch (Exception ignored) {
+            // PluginCall may already be released
+        }
+        savedCall = null;
+    }
+}
+`;
+  writeFileSync(pluginPath, pluginSource, 'utf-8');
+  console.log('[setup-android] Created YandexAdsPlugin.java');
+} else {
+  console.log('[setup-android] YandexAdsPlugin.java already exists.');
+}
+
+// 8d. Register YandexAdsPlugin in MainActivity.java
+if (existsSync(mainActivityPath)) {
+  let activity = readFileSync(mainActivityPath, 'utf-8');
+
+  if (!activity.includes('YandexAdsPlugin')) {
+    // Add import
+    if (!activity.includes('import com.starflow.game.YandexAdsPlugin;')) {
+      activity = activity.replace(
+        'import com.getcapacitor.BridgeActivity;',
+        'import com.getcapacitor.BridgeActivity;\nimport com.starflow.game.YandexAdsPlugin;'
+      );
+    }
+
+    // Add plugin registration in onCreate — after all other setup
+    if (activity.includes('super.onCreate(savedInstanceState);')) {
+      // Add at the end of onCreate (before the closing brace of onCreate)
+      // We look for the hideSystemBars() call and add after it, or after super.onCreate
+      const registrationCode = '\n        // Register Yandex Ads plugin for rewarded ads\n        registerPlugin(YandexAdsPlugin.class);';
+
+      if (activity.includes('hideSystemBars();')) {
+        activity = activity.replace(
+          'hideSystemBars();',
+          'hideSystemBars();' + registrationCode
+        );
+      } else {
+        activity = activity.replace(
+          'super.onCreate(savedInstanceState);',
+          'super.onCreate(savedInstanceState);' + registrationCode
+        );
+      }
+    }
+
+    writeFileSync(mainActivityPath, activity, 'utf-8');
+    console.log('[setup-android] Registered YandexAdsPlugin in MainActivity.java');
+  } else {
+    console.log('[setup-android] YandexAdsPlugin already registered in MainActivity.java');
+  }
+} else {
+  console.log(`[setup-android] MainActivity.java not found at ${mainActivityPath}`);
+}
+
+// 9. Add ATT (App Tracking Transparency) consent info to AndroidManifest.xml
+//    Not required on Android but good practice to declare
+if (existsSync(manifestPath)) {
+  let manifest = readFileSync(manifestPath, 'utf-8');
+  if (!manifest.includes('com.yandex.android.mobileads.MOBILEADS')) {
+    manifest = manifest.replace(
+      '<application',
+      '<application\n        xmlns:tools="http://schemas.android.com/tools"'
+    );
+    // Add as last metadata inside <application>
+    manifest = manifest.replace(
+      '</application>',
+      '        <uses-library android:name="org.apache.http.legacy" android:required="false" />\n    </application>'
+    );
+    writeFileSync(manifestPath, manifest, 'utf-8');
+    console.log('[setup-android] Added HTTP legacy library to AndroidManifest.xml');
+  }
+}
+
 console.log('[setup-android] Android setup complete!');

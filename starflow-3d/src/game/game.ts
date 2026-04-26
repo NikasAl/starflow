@@ -6,6 +6,7 @@
 import { type GameState } from '../core/types';
 import { type AIState } from '../core/ai';
 import { createGameState, updateGame, handlePlayerAction, createAIStatesForLevel, getRouteCounter, setRouteCounter, ENERGY_START } from '../game/state';
+import { ENERGY_AD_REWARD } from '../core/constants';
 import {
   initRenderer,
   addPlanet,
@@ -41,6 +42,9 @@ import {
   setCameraSmoothTarget,
   disableSmoothCamera,
   setShowGuideCallback,
+  showAdOfferDialog,
+  setAdOfferLoading,
+  hideAdOfferDialog,
 } from '../rendering/renderer';
 import { initIntroAnim, playIntro, playLevelTitle, cancelIntro, isIntroActive } from '../rendering/intro-anim';
 import { saveGame, loadGame, clearSave, type SaveData } from '../core/save';
@@ -110,6 +114,9 @@ export function startGameFromSave(canvas: HTMLCanvasElement, save: SaveData): vo
 
 function initGameScene(canvas: HTMLCanvasElement): void {
   initRenderer(canvas);
+
+  // Initialize ad SDK in background (non-blocking)
+  adManager.init().catch(() => {});
 
   // Wire shop close → resume game
   setShopResumeCallback(resumeGame);
@@ -251,14 +258,25 @@ function initGameScene(canvas: HTMLCanvasElement): void {
     }
   });
 
-  // Wire watch-ad button in HUD
+  // Wire watch-ad button in HUD — pause, show confirmation, then play ad
   setWatchAdCallback(async () => {
+    pauseGame();
+    const agreed = await showAdOfferDialog(ENERGY_AD_REWARD);
+    if (!agreed) {
+      hideAdOfferDialog();
+      resumeGame();
+      return;
+    }
+    // User agreed — show loading state while ad loads
+    setAdOfferLoading();
     const granted = await adManager.showRewardedAd();
+    hideAdOfferDialog();
     if (granted) {
       grantEnergy(gameState);
       audioManager.play(SFX.UI_CLICK);
       invalidateHud(); // force HUD rebuild to show updated energy
     }
+    resumeGame();
   });
 
   // Wire buy-energy button in HUD

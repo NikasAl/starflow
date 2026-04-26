@@ -113,6 +113,13 @@
   "save": {
     "info": "Level {level}: {name} — {time}"
   },
+  "ad": {
+    "offerTitle": "Bonus Energy",
+    "offerDesc": "Watch a short video to get +{amount} energy",
+    "offerAccept": "Watch",
+    "offerDecline": "No thanks",
+    "loading": "Loading ad..."
+  },
   "shop": {
     "title": "Energy Shop",
     "buyEnergy": "Buy Energy",

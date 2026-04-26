@@ -113,6 +113,13 @@
   "save": {
     "info": "Nivel {level}: {name} — {time}"
   },
+  "ad": {
+    "offerTitle": "Energia extra",
+    "offerDesc": "Mira un video corto para obtener +{amount} de energia",
+    "offerAccept": "Ver",
+    "offerDecline": "No, gracias",
+    "loading": "Cargando anuncio..."
+  },
   "shop": {
     "title": "Tienda de energía",
     "buyEnergy": "Comprar energía",

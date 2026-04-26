@@ -1627,6 +1627,134 @@ export function hideEnergyShop(): void {
   }
 }
 
+// ============================================================
+// Ad Offer Dialog — "Watch ad for energy?" confirmation
+// ============================================================
+
+let adOfferElement: HTMLDivElement | null = null;
+
+/**
+ * Show a confirmation dialog offering +energy for watching a rewarded ad.
+ * Returns true if the user agrees to watch, false if they decline.
+ */
+export function showAdOfferDialog(energyAmount: number): Promise<boolean> {
+  return new Promise(resolve => {
+    // Remove any existing dialog
+    hideAdOfferDialog();
+
+    adOfferElement = document.createElement('div');
+    adOfferElement.id = 'ad-offer-overlay';
+    adOfferElement.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      z-index: 250; display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.65);
+      backdrop-filter: blur(4px);
+      font-family: 'Segoe UI', Arial, sans-serif; color: #fff;
+      animation: fadeIn 0.2s ease;
+    `;
+
+    adOfferElement.innerHTML = `
+      <div id="ad-offer-content" style="
+        background: rgba(10,10,30,0.95);
+        border: 1px solid rgba(255,170,0,0.2);
+        border-radius: 16px;
+        padding: 28px 36px;
+        text-align: center;
+        max-width: 340px;
+        box-shadow: 0 0 40px rgba(255,170,0,0.1), 0 8px 32px rgba(0,0,0,0.6);
+      ">
+        <div style="font-size: 42px; margin-bottom: 8px;">&#9889;</div>
+        <div style="font-size: 20px; font-weight: 600; color: #ffcc00; margin-bottom: 6px;
+          text-shadow: 0 0 12px rgba(255,204,0,0.4);">
+          ${i18n.t('ad.offerTitle')}
+        </div>
+        <div style="font-size: 15px; color: rgba(255,255,255,0.7); margin-bottom: 24px; line-height: 1.5;">
+          ${i18n.t('ad.offerDesc', { amount: energyAmount })}
+        </div>
+        <button id="ad-offer-accept" style="
+          display: block; width: 100%;
+          padding: 14px 0; font-size: 16px; font-weight: 600;
+          font-family: 'Segoe UI', Arial, sans-serif;
+          color: #000; background: linear-gradient(135deg, #ffcc00 0%, #ffaa00 100%);
+          border: none; border-radius: 10px; cursor: pointer;
+          letter-spacing: 1px; text-transform: uppercase;
+          box-shadow: 0 0 20px rgba(255,204,0,0.3), 0 4px 12px rgba(0,0,0,0.4);
+          transition: all 0.2s; margin-bottom: 12px;
+        ">${i18n.t('ad.offerAccept')}</button>
+        <button id="ad-offer-decline" style="
+          display: block; width: 100%;
+          padding: 8px 0; font-size: 12px; font-weight: 400;
+          font-family: 'Segoe UI', Arial, sans-serif;
+          color: rgba(255,255,255,0.3); background: transparent;
+          border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; cursor: pointer;
+          transition: all 0.2s;
+        ">${i18n.t('ad.offerDecline')}</button>
+      </div>
+    `;
+
+    document.body.appendChild(adOfferElement);
+
+    // Wire accept button
+    const acceptBtn = adOfferElement.querySelector('#ad-offer-accept')!;
+    acceptBtn.addEventListener('click', () => {
+      audioManager.play(SFX.UI_CLICK);
+      resolve(true);
+    });
+    acceptBtn.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      audioManager.play(SFX.UI_CLICK);
+      resolve(true);
+    });
+
+    // Wire decline button
+    const declineBtn = adOfferElement.querySelector('#ad-offer-decline')!;
+    declineBtn.addEventListener('click', () => {
+      audioManager.play(SFX.UI_CLICK);
+      resolve(false);
+    });
+    declineBtn.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      audioManager.play(SFX.UI_CLICK);
+      resolve(false);
+    });
+
+    // Tap backdrop to decline
+    adOfferElement.addEventListener('click', (e) => {
+      if (e.target === adOfferElement) {
+        resolve(false);
+      }
+    });
+  });
+}
+
+/** Switch ad dialog to loading state (after user accepts) */
+export function setAdOfferLoading(): void {
+  if (!adOfferElement) return;
+  const content = adOfferElement.querySelector('#ad-offer-content');
+  if (!content) return;
+
+  content.innerHTML = `
+    <div style="font-size: 42px; margin-bottom: 16px; animation: pulse 1.5s ease-in-out infinite;">&#9889;</div>
+    <div style="font-size: 16px; color: rgba(255,255,255,0.6);">
+      ${i18n.t('ad.loading')}
+    </div>
+    <style>
+      @keyframes pulse {
+        0%, 100% { opacity: 0.5; transform: scale(1); }
+        50% { opacity: 1; transform: scale(1.1); }
+      }
+    </style>
+  `;
+}
+
+/** Remove the ad offer dialog */
+export function hideAdOfferDialog(): void {
+  if (adOfferElement && adOfferElement.parentNode) {
+    adOfferElement.parentNode.removeChild(adOfferElement);
+  }
+  adOfferElement = null;
+}
+
 export function getCameraState(): CameraState { return { ...camState }; }
 
 /** Set a smooth camera target (used by intro animation). Camera lerps to it each frame. */
