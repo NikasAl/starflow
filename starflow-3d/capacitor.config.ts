@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'ru.kreagenium.starflow',
-  appName: 'Поток — Космическая Стратегия',
+  appName: 'Поток',
   webDir: 'dist',
   plugins: {
     SplashScreen: {
