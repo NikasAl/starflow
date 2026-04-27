@@ -13,11 +13,9 @@ export const AD_CONFIG = {
   },
   /** Yandex Mobile Ads SDK — Android native */
   android: {
-    /** Rewarded ad unit ID from partner.yandex.ru (mobile) */
-    rewardedAdUnitId: 'demo-rewarded-yandex', // TODO: Set your Yandex mobile ad unit ID
-    /** Yandex Mobile Ads SDK version (Maven) */
-    sdkVersion: '7.5.0',
-    /** Maven repository for Yandex Mobile Ads */
-    mavenRepo: 'https://maven.yandex.ru/repository/mobileads/',
+    /** Rewarded ad unit ID from РСЯ partner interface */
+    rewardedAdUnitId: 'R-M-19173175-1',
+    /** Yandex Mobile Ads SDK version (published on Maven Central) */
+    sdkVersion: '7.6.0',
   },
 };
