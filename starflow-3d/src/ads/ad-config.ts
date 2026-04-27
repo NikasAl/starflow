@@ -16,6 +16,6 @@ export const AD_CONFIG = {
     /** Rewarded ad unit ID from РСЯ partner interface */
     rewardedAdUnitId: 'R-M-19173175-1',
     /** Yandex Mobile Ads SDK version (published on Maven Central) */
-    sdkVersion: '7.6.0',
+    sdkVersion: '7.18.5',
   },
 };

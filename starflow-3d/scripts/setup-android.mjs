@@ -308,7 +308,7 @@ if (existsSync(manifestPath)) {
 //    Capacitor's build.gradle already includes mavenCentral() in allprojects.repositories.
 import { mkdirSync } from 'fs';
 
-const YANDEX_SDK_VERSION = '7.6.0';
+const YANDEX_SDK_VERSION = '7.18.5';
 
 // 8a. Yandex Mobile Ads SDK is on Maven Central — no custom repo needed.
 //     Capacitor already configures mavenCentral() in build.gradle / settings.gradle.
@@ -345,7 +345,7 @@ if (existsSync(appBuildGradle)) {
   console.log(`[setup-android] app/build.gradle not found at ${appBuildGradle}`);
 }
 
-// 8c. Create YandexAdsPlugin.java — Capacitor plugin wrapping Yandex Mobile Ads SDK
+// 8c. Create YandexAdsPlugin.java — Capacitor plugin wrapping Yandex Mobile Ads SDK 7.x
 const pluginDir = join(androidDir, 'app', 'src', 'main', 'java', 'ru', 'kreagenium', 'starflow');
 const pluginPath = join(pluginDir, 'YandexAdsPlugin.java');
 
@@ -358,26 +358,36 @@ import android.app.Activity;
 import android.os.Handler;
 import android.os.Looper;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
-import com.yandex.android.mobileads.MobileAds;
-import com.yandex.android.mobileads.RewardedAd;
-import com.yandex.android.mobileads.RewardedAdLoader;
-import com.yandex.android.mobileads.AdRequestConfiguration;
-import com.yandex.android.mobileads.Reward;
-import com.yandex.android.mobileads.ImpressionData;
-import com.yandex.android.mobileads.AdError;
+import com.yandex.mobile.ads.common.AdError;
+import com.yandex.mobile.ads.common.AdRequestConfiguration;
+import com.yandex.mobile.ads.common.AdRequestError;
+import com.yandex.mobile.ads.common.ImpressionData;
+import com.yandex.mobile.ads.common.InitializationListener;
+import com.yandex.mobile.ads.common.MobileAds;
+import com.yandex.mobile.ads.rewarded.Reward;
+import com.yandex.mobile.ads.rewarded.RewardedAd;
+import com.yandex.mobile.ads.rewarded.RewardedAdEventListener;
+import com.yandex.mobile.ads.rewarded.RewardedAdLoadListener;
+import com.yandex.mobile.ads.rewarded.RewardedAdLoader;
 
 @CapacitorPlugin(
     name = "YandexAds"
 )
 public class YandexAdsPlugin extends Plugin {
 
+    @Nullable
     private RewardedAd rewardedAd = null;
+    @Nullable
+    private RewardedAdLoader rewardedAdLoader = null;
     private boolean rewardGranted = false;
     private PluginCall savedCall = null;
     private Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -386,7 +396,12 @@ public class YandexAdsPlugin extends Plugin {
     public void load() {
         // Initialize Yandex Mobile Ads SDK on plugin load
         mainHandler.post(() -> {
-            MobileAds.initialize(getContext());
+            MobileAds.initialize(getContext(), new InitializationListener() {
+                @Override
+                public void onInitializationCompleted() {
+                    // SDK initialized, ready to load ads
+                }
+            });
         });
     }
 
@@ -394,8 +409,12 @@ public class YandexAdsPlugin extends Plugin {
     public void initialize(final PluginCall call) {
         mainHandler.post(() -> {
             try {
-                MobileAds.initialize(getContext());
-                call.resolve(new JSObject());
+                MobileAds.initialize(getContext(), new InitializationListener() {
+                    @Override
+                    public void onInitializationCompleted() {
+                        call.resolve(new JSObject());
+                    }
+                });
             } catch (Exception e) {
                 call.reject("Yandex Ads SDK init failed: " + e.getMessage());
             }
@@ -420,48 +439,62 @@ public class YandexAdsPlugin extends Plugin {
                 return;
             }
 
-            RewardedAdLoader loader = new RewardedAdLoader.Builder(getContext())
-                .withAdListener(new RewardedAdLoader.RewardedAdLoadListener() {
-                    @Override
-                    public void onAdLoaded(RewardedAd ad) {
-                        rewardedAd = ad;
-                        ad.setAdEventListener(new RewardedAd.RewardedAdEventListener() {
-                            @Override
-                            public void onAdShown() {}
+            // Use single RewardedAdLoader instance (recreate if null)
+            if (rewardedAdLoader == null) {
+                rewardedAdLoader = new RewardedAdLoader(getContext());
+            }
 
-                            @Override
-                            public void onAdFailedToShow(AdError error) {
-                                resolveAdResult(false, error.toString());
-                            }
+            rewardedAdLoader.setAdLoadListener(new RewardedAdLoadListener() {
+                @Override
+                public void onAdLoaded(@NonNull final RewardedAd ad) {
+                    rewardedAd = ad;
+                    ad.setAdEventListener(new RewardedAdEventListener() {
+                        @Override
+                        public void onAdShown() {}
 
-                            @Override
-                            public void onImpression(ImpressionData data) {}
+                        @Override
+                        public void onAdFailedToShow(@NonNull AdError error) {
+                            resolveAdResult(false, error.toString());
+                            cleanupRewardedAd();
+                        }
 
-                            @Override
-                            public void onAdClicked() {}
+                        @Override
+                        public void onAdImpression(@Nullable ImpressionData impressionData) {}
 
-                            @Override
-                            public void onRewarded(Reward reward) {
-                                rewardGranted = true;
-                            }
+                        @Override
+                        public void onAdClicked() {}
 
-                            @Override
-                            public void onAdDismissed() {
-                                resolveAdResult(rewardGranted, null);
-                            }
-                        });
-                        ad.show(activity);
-                    }
+                        @Override
+                        public void onRewarded(@NonNull Reward reward) {
+                            rewardGranted = true;
+                        }
 
-                    @Override
-                    public void onAdFailedToLoad(AdError error) {
-                        resolveAdResult(false, error.toString());
-                    }
-                })
-                .build();
+                        @Override
+                        public void onAdDismissed() {
+                            resolveAdResult(rewardGranted, null);
+                            cleanupRewardedAd();
+                        }
+                    });
+                    ad.show(activity);
+                }
 
-            loader.loadAd(new AdRequestConfiguration.Builder(adUnitId).build());
+                @Override
+                public void onAdFailedToLoad(@NonNull AdRequestError adRequestError) {
+                    resolveAdResult(false, adRequestError.toString());
+                }
+            });
+
+            final AdRequestConfiguration adRequestConfiguration =
+                new AdRequestConfiguration.Builder(adUnitId).build();
+            rewardedAdLoader.loadAd(adRequestConfiguration);
         });
+    }
+
+    private void cleanupRewardedAd() {
+        if (rewardedAd != null) {
+            rewardedAd.setAdEventListener(null);
+            rewardedAd = null;
+        }
     }
 
     private void resolveAdResult(boolean granted, String error) {
