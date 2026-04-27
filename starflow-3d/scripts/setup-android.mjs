@@ -64,10 +64,7 @@ const manifestPath = join(androidDir, 'app', 'src', 'main', 'AndroidManifest.xml
 if (existsSync(manifestPath)) {
   let manifest = readFileSync(manifestPath, 'utf-8');
   if (!manifest.includes('screenOrientation="landscape"')) {
-    manifest = manifest.replace(
-      '<application',
-      '<application android:screenOrientation="landscape"'
-    );
+    // Only set on <activity> — screenOrientation is NOT valid on <application>
     manifest = manifest.replace(
       '<activity',
       '<activity android:screenOrientation="landscape"'
@@ -532,22 +529,27 @@ if (existsSync(mainActivityPath)) {
   console.log(`[setup-android] MainActivity.java not found at ${mainActivityPath}`);
 }
 
-// 9. Add ATT (App Tracking Transparency) consent info to AndroidManifest.xml
-//    Not required on Android but good practice to declare
+// 9. Add HTTP legacy library to AndroidManifest.xml
+//    Required by Yandex Mobile Ads SDK for network requests
 if (existsSync(manifestPath)) {
   let manifest = readFileSync(manifestPath, 'utf-8');
-  if (!manifest.includes('com.yandex.android.mobileads.MOBILEADS')) {
-    manifest = manifest.replace(
-      '<application',
-      '<application\n        xmlns:tools="http://schemas.android.com/tools"'
-    );
-    // Add as last metadata inside <application>
+  if (!manifest.includes('org.apache.http.legacy')) {
+    // Add xmlns:tools to <manifest> root element (NOT <application>)
+    if (!manifest.includes('xmlns:tools="http://schemas.android.com/tools"')) {
+      manifest = manifest.replace(
+        '<manifest',
+        '<manifest xmlns:tools="http://schemas.android.com/tools"'
+      );
+    }
+    // Add as last child inside <application>
     manifest = manifest.replace(
       '</application>',
-      '        <uses-library android:name="org.apache.http.legacy" android:required="false" />\n    </application>'
+      '        <uses-library android:name="org.apache.http.legacy" android:required="false" tools:node="replace" />\n    </application>'
     );
     writeFileSync(manifestPath, manifest, 'utf-8');
     console.log('[setup-android] Added HTTP legacy library to AndroidManifest.xml');
+  } else {
+    console.log('[setup-android] HTTP legacy library already in AndroidManifest.xml.');
   }
 }
 
