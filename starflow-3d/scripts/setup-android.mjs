@@ -309,23 +309,57 @@ import { mkdirSync } from 'fs';
 const YANDEX_SDK_VERSION = '7.5.0';
 const YANDEX_MAVEN_REPO = 'https://maven.yandex.ru/repository/mobileads/';
 
-// 8a. Add Yandex Maven repository to project-level build.gradle
+// 8a. Add Yandex Maven repository — try BOTH settings.gradle and build.gradle
+//     Gradle 8+ uses settings.gradle (dependencyResolutionManagement),
+//     older Gradle uses allprojects.repositories in build.gradle.
+
+const settingsGradle = join(androidDir, 'settings.gradle');
+let usesDependencyResolutionManagement = false;
+
+// Try settings.gradle first (preferred for Gradle 8+)
+if (existsSync(settingsGradle)) {
+  let settings = readFileSync(settingsGradle, 'utf-8');
+  usesDependencyResolutionManagement = settings.includes('dependencyResolutionManagement');
+
+  if (!settings.includes('maven.yandex.ru')) {
+    if (usesDependencyResolutionManagement) {
+      // Add inside repositories block of dependencyResolutionManagement
+      settings = settings.replace(
+        /dependencyResolutionManagement\s*\{[^}]*repositories\s*\{/,
+        (match) => match + `\n            maven { url '${YANDEX_MAVEN_REPO}' }`
+      );
+      writeFileSync(settingsGradle, settings, 'utf-8');
+      console.log(`[setup-android] Added Yandex Mobile Ads Maven repo to settings.gradle (dependencyResolutionManagement)`);
+    } else {
+      // No dependencyResolutionManagement — add repo to build.gradle allprojects below
+    }
+  } else {
+    console.log('[setup-android] Yandex Maven repo already in settings.gradle.');
+  }
+} else {
+  console.log(`[setup-android] settings.gradle not found at ${settingsGradle}`);
+}
+
+// Add to build.gradle allprojects block ONLY if settings.gradle doesn't manage repos
+// (If settings.gradle has dependencyResolutionManagement with FAIL_ON_PROJECT_REPOS,
+//  declaring repos in build.gradle will cause a build error)
 const projectBuildGradle = join(androidDir, 'build.gradle');
-if (existsSync(projectBuildGradle)) {
+if (!usesDependencyResolutionManagement && existsSync(projectBuildGradle)) {
   let buildGradle = readFileSync(projectBuildGradle, 'utf-8');
   if (!buildGradle.includes('maven.yandex.ru')) {
-    buildGradle = buildGradle.replace(
-      /repositories\s*\{/,
-      `repositories {
-        maven { url '${YANDEX_MAVEN_REPO}' }`
-    );
-    writeFileSync(projectBuildGradle, buildGradle, 'utf-8');
-    console.log(`[setup-android] Added Yandex Mobile Ads Maven repo to build.gradle`);
+    if (buildGradle.includes('allprojects')) {
+      buildGradle = buildGradle.replace(
+        /allprojects\s*\{[^}]*repositories\s*\{/,
+        (match) => match + `\n            maven { url '${YANDEX_MAVEN_REPO}' }`
+      );
+      writeFileSync(projectBuildGradle, buildGradle, 'utf-8');
+      console.log(`[setup-android] Added Yandex Mobile Ads Maven repo to allprojects.repositories`);
+    } else {
+      console.warn('[setup-android] WARNING: No allprojects block found in build.gradle');
+    }
   } else {
     console.log('[setup-android] Yandex Maven repo already in build.gradle.');
   }
-} else {
-  console.log(`[setup-android] build.gradle not found at ${projectBuildGradle}`);
 }
 
 // 8b. Add Yandex Mobile Ads SDK dependency to app/build.gradle
