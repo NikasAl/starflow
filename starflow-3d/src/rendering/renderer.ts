@@ -1,5 +1,5 @@
 // ============================================================
-// Star Flow Command — 3D Renderer (Three.js) + HTML HUD
+// Поток — 3D Renderer (Three.js) + HTML HUD
 // ============================================================
 
 import * as THREE from 'three';

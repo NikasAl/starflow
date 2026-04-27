@@ -1,5 +1,5 @@
 // ============================================================
-// Star Flow Command — Android Native Ads Bridge
+// Поток — Android Native Ads Bridge
 // Capacitor plugin interface for Yandex Mobile Ads SDK
 // Native implementation injected by scripts/setup-android.mjs
 // ============================================================

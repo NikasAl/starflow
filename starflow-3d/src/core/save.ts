@@ -1,5 +1,5 @@
 // ============================================================
-// Star Flow Command — Save/Load System
+// Поток — Save/Load System
 // Uses localStorage for persistence
 // ============================================================
 

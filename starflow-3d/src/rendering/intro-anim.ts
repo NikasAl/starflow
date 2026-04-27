@@ -1,5 +1,5 @@
 // ============================================================
-// Star Flow Command — Intro Animation System
+// Поток — Intro Animation System
 // Camera fly-to, text overlays, level title reveal
 // ============================================================
 

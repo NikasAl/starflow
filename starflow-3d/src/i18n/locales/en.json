@@ -1,12 +1,12 @@
 {
   "app": {
-    "title": "Star Flow Command",
+    "title": "Flow — Space Strategy",
     "subtitle": "3D Space Strategy"
   },
   "ui": {
     "newGame": "NEW GAME",
     "continue": "CONTINUE",
-    "loading": "Loading Star Flow Command...",
+    "loading": "Loading...",
     "instructions": {
       "select": "Click planet to select",
       "createRoute": "Click target to create route",

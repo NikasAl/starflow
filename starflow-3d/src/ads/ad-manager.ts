@@ -1,5 +1,5 @@
 // ============================================================
-// Star Flow Command — Ad Manager
+// Поток — Ad Manager
 // Platform-aware rewarded ad interface
 // Web: Yandex Advertising Network (РСЯ) HTML5 JS SDK
 // Android: Yandex Mobile Ads SDK via Capacitor native plugin

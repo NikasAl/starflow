@@ -1,5 +1,5 @@
 // ============================================================
-// Star Flow Command — Web Ads (Yandex Advertising Network)
+// Поток — Web Ads (Yandex Advertising Network)
 // Rewarded video ads via Yandex HTML5 JS SDK
 // ============================================================
 

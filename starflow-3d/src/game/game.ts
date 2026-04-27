@@ -1,5 +1,5 @@
 // ============================================================
-// Star Flow Command — Main Game Class
+// Поток — Main Game Class
 // Level management, scene reset, transitions, save/load
 // ============================================================
 
@@ -135,7 +135,7 @@ function initGameScene(canvas: HTMLCanvasElement): void {
   // Initialize deep link handler (registers Capacitor listener + checks sessionStorage)
   initDeepLinkHandler();
 
-  // Handle deep link: user returns from YooKassa payment page via starflow://payment/success
+  // Handle deep link: user returns from YooKassa payment page via potok://payment/success
   // The deep link has NO parameters — app remembers invoice_id from payment creation.
   setPaymentDeepLinkCallback(async () => {
     // Use stored payment ID from memory (set when createPayment was called)
@@ -176,7 +176,7 @@ function initGameScene(canvas: HTMLCanvasElement): void {
   });
 
   // Check if there's a deferred deep link flag from page load (browser mode)
-  // This handles the case where user opens starflow://... directly in browser
+  // This handles the case where user opens potok://... directly in browser
   const hasDeferredDeepLink = consumePendingDeepLink();
   if (hasDeferredDeepLink) {
     setTimeout(() => {

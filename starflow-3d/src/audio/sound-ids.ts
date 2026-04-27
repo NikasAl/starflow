@@ -1,5 +1,5 @@
 // ============================================================
-// Star Flow Command — Sound Effect Identifiers
+// Поток — Sound Effect Identifiers
 // ============================================================
 
 /** Sound effect IDs for short, non-looping game sounds */

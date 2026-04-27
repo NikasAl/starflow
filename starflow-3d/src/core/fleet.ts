@@ -1,5 +1,5 @@
 // ============================================================
-// Star Flow Command — Missile (Fleet) Logic
+// Поток — Missile (Fleet) Logic
 // ============================================================
 
 import { type MissileData, type OwnerId, type PlanetData } from './types';

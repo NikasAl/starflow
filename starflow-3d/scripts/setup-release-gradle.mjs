@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ============================================================
-// Star Flow Command — Android Release Build Configuration
+// Поток — Android Release Build Configuration
 // Patches build.gradle with signing config, ProGuard, and
 // version info from package.json
 // ============================================================
@@ -112,7 +112,7 @@ console.log(`[setup-release-gradle] Configured release build (version ${version}
 const proguardPath = join(androidDir, 'app', 'proguard-rules.pro');
 if (!existsSync(proguardPath)) {
   // Create with Three.js friendly rules
-  writeFileSync(proguardPath, `# Star Flow Command — ProGuard Rules
+  writeFileSync(proguardPath, `# Поток — ProGuard Rules
 
 # Keep Three.js — it's already minified
 -keep class com.unity3d.** { *; }
@@ -122,7 +122,7 @@ if (!existsSync(proguardPath)) {
 -keep class com.getcapacitor.** { *; }
 
 # Keep application class
--keep public class com.starflow.game.MainActivity
+-keep public class ru.kreagenium.starflow.MainActivity
 
 # Remove logging in release
 -assumenosideeffects class android.util.Log {

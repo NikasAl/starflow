@@ -1,5 +1,5 @@
 // ============================================================
-// Star Flow Command — Boost System
+// Поток — Boost System
 // Temporary power-ups activated by spending energy currency
 // ============================================================
 

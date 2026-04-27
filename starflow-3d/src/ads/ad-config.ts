@@ -1,5 +1,5 @@
 // ============================================================
-// Star Flow Command — Ad Unit Configuration
+// Поток — Ad Unit Configuration
 // Different ad unit IDs per platform (Web vs Android)
 // ============================================================
 

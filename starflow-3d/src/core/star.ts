@@ -1,5 +1,5 @@
 // ============================================================
-// Star Flow Command — Star (Sun) Obstacle Generation
+// Поток — Star (Sun) Obstacle Generation
 // ============================================================
 
 import { type StarData, type PlanetData, type LevelConfig } from './types';

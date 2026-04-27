@@ -1,5 +1,5 @@
 // ============================================================
-// Star Flow Command — AI Controller
+// Поток — AI Controller
 // Aggressively expands, attacks, and reinforces
 // ============================================================
 

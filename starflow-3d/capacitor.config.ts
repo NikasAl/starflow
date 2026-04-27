@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.starflow.game',
-  appName: 'Star Flow Command',
+  appId: 'ru.kreagenium.starflow',
+  appName: 'Поток — Космическая Стратегия',
   webDir: 'dist',
   plugins: {
     SplashScreen: {
@@ -10,7 +10,7 @@ const config: CapacitorConfig = {
     },
     App: {
       // Deep link scheme for returning to app after YooKassa payment
-      urlScheme: 'starflow',
+      urlScheme: 'potok',
     },
   },
 };

@@ -1,5 +1,5 @@
 // ============================================================
-// Star Flow Command — Entry Point
+// Поток — Entry Point
 // ============================================================
 
 import { startGame, startGameFromSave, setOnGameSaved } from './game/game';
@@ -117,7 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
       audioManager.stopMusic(0.5);
       audioManager.playMusic(MUSIC.AMBIENT_SPACE, { fadeIn: 1.5 });
 
-      console.log('Star Flow Command — 3D initialized');
+      console.log('Поток — 3D initialized');
 
       // Hide loading overlay
       const loading = document.getElementById('loading');

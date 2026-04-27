@@ -1,5 +1,5 @@
 // ============================================================
-// Star Flow Command — Lightweight i18n System
+// Поток — Lightweight i18n System
 // ============================================================
 
 import { type Locale, type TranslationMap, type PluralForm } from './types';

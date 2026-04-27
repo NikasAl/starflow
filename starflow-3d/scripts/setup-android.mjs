@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ============================================================
-// Star Flow Command — Android Post-Sync Setup
+// Поток — Android Post-Sync Setup
 // Forces landscape orientation, fullscreen immersive mode,
 // hides status bar / navigation bar / camera notch, copies icon
 // ============================================================
@@ -165,7 +165,7 @@ if (existsSync(stylesPath)) {
 
 // 5. Inject fullscreen immersive mode into MainActivity.java
 //    Uses modern WindowInsetsControllerCompat (not deprecated SYSTEM_UI_FLAG)
-const mainActivityPath = join(androidDir, 'app', 'src', 'main', 'java', 'com', 'starflow', 'game', 'MainActivity.java');
+const mainActivityPath = join(androidDir, 'app', 'src', 'main', 'java', 'ru', 'kreagenium', 'starflow', 'MainActivity.java');
 if (existsSync(mainActivityPath)) {
   let activity = readFileSync(mainActivityPath, 'utf-8');
 
@@ -279,7 +279,7 @@ if (existsSync(variablesPath)) {
 if (existsSync(manifestPath)) {
   let manifest = readFileSync(manifestPath, 'utf-8');
 
-  if (!manifest.includes('android:scheme="starflow"')) {
+  if (!manifest.includes('android:scheme="potok"')) {
     // Find the closing </intent-filter> of the LAUNCHER intent filter
     // and insert our deep link intent filter right after it
     const launcherFilter = '</intent-filter>';
@@ -287,21 +287,21 @@ if (existsSync(manifestPath)) {
     if (launcherIdx !== -1) {
       const deepLinkFilter =
         '\n' +
-        '            <!-- Deep link: starflow://payment/success (YooKassa return) -->\n' +
+        '            <!-- Deep link: potok://payment/success (YooKassa return) -->\n' +
         '            <intent-filter android:autoVerify="false">\n' +
         '                <action android:name="android.intent.action.VIEW" />\n' +
         '                <category android:name="android.intent.category.DEFAULT" />\n' +
         '                <category android:name="android.intent.category.BROWSABLE" />\n' +
-        '                <data android:scheme="starflow" />\n' +
+        '                <data android:scheme="potok" />\n' +
         '            </intent-filter>';
       manifest = manifest.replace(launcherFilter, launcherFilter + deepLinkFilter);
       writeFileSync(manifestPath, manifest, 'utf-8');
-      console.log('[setup-android] Added deep link intent filter for starflow:// URL scheme');
+      console.log('[setup-android] Added deep link intent filter for potok:// URL scheme');
     } else {
       console.warn('[setup-android] WARNING: Could not find launcher intent-filter to insert deep link after');
     }
   } else {
-    console.log('[setup-android] Deep link intent filter for starflow:// already exists.');
+    console.log('[setup-android] Deep link intent filter for potok:// already exists.');
   }
 }
 
@@ -351,13 +351,13 @@ if (existsSync(appBuildGradle)) {
 }
 
 // 8c. Create YandexAdsPlugin.java — Capacitor plugin wrapping Yandex Mobile Ads SDK
-const pluginDir = join(androidDir, 'app', 'src', 'main', 'java', 'com', 'starflow', 'game');
+const pluginDir = join(androidDir, 'app', 'src', 'main', 'java', 'ru', 'kreagenium', 'starflow');
 const pluginPath = join(pluginDir, 'YandexAdsPlugin.java');
 
 if (!existsSync(pluginPath)) {
   mkdirSync(pluginDir, { recursive: true });
 
-  const pluginSource = `package com.starflow.game;
+  const pluginSource = `package ru.kreagenium.starflow;
 
 import android.app.Activity;
 import android.os.Handler;
@@ -497,10 +497,10 @@ if (existsSync(mainActivityPath)) {
 
   if (!activity.includes('YandexAdsPlugin')) {
     // Add import
-    if (!activity.includes('import com.starflow.game.YandexAdsPlugin;')) {
+    if (!activity.includes('import ru.kreagenium.starflow.YandexAdsPlugin;')) {
       activity = activity.replace(
         'import com.getcapacitor.BridgeActivity;',
-        'import com.getcapacitor.BridgeActivity;\nimport com.starflow.game.YandexAdsPlugin;'
+        'import com.getcapacitor.BridgeActivity;\nimport ru.kreagenium.starflow.YandexAdsPlugin;'
       );
     }
 

@@ -1,5 +1,5 @@
 // ============================================================
-// Star Flow Command — Audio Manager
+// Поток — Audio Manager
 // Lightweight Web Audio API wrapper with caching, categories,
 // fade support, and Android WebView compatibility.
 // ============================================================

@@ -1,5 +1,5 @@
 // ============================================================
-// Star Flow Command — Sound Definitions & Configuration
+// Поток — Sound Definitions & Configuration
 // ============================================================
 
 import { SFX, MUSIC } from './sound-ids';

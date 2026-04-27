@@ -1,5 +1,5 @@
 // ============================================================
-// Star Flow Command — Procedural Planet Texture Generator
+// Поток — Procedural Planet Texture Generator
 // ============================================================
 
 import * as THREE from 'three';

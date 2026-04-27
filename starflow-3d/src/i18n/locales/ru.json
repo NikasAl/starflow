@@ -1,12 +1,12 @@
 {
   "app": {
-    "title": "Star Flow Command",
+    "title": "Поток — Космическая Стратегия",
     "subtitle": "Космическая стратегия 3D"
   },
   "ui": {
     "newGame": "НОВАЯ ИГРА",
     "continue": "ПРОДОЛЖИТЬ",
-    "loading": "Загрузка Star Flow Command...",
+    "loading": "Загрузка...",
     "instructions": {
       "select": "Нажмите на планету",
       "createRoute": "Нажмите на цель для маршрута",

@@ -1,5 +1,5 @@
 // ============================================================
-// Star Flow Command — Audio Module Public API
+// Поток — Audio Module Public API
 // ============================================================
 
 export { AudioManager, audioManager } from './audio-manager';

@@ -1,5 +1,5 @@
 // ============================================================
-// Star Flow Command — YooKassa Payment Service
+// Поток — YooKassa Payment Service
 // API integration with kreagenium.ru/cm backend
 // ============================================================
 
@@ -82,7 +82,7 @@ export async function checkPayment(paymentId: string): Promise<PaymentStatus> {
 }
 
 // ============================================================
-// Deep Link Handling (starflow://payment/success)
+// Deep Link Handling (potok://payment/success)
 // The server creates a redirect link WITHOUT invoice_id parameter.
 // The app is still running (paused) and remembers the payment_id
 // from when the payment was created. Deep link is just a trigger.
@@ -113,7 +113,7 @@ export function initDeepLinkHandler(): void {
   // --- Capacitor native deep link ---
   try {
     App.addListener('appUrlOpen', (event: { url: string }) => {
-      if (event.url.startsWith('starflow://payment/success')) {
+      if (event.url.startsWith('potok://payment/success')) {
         console.log('[YooKassa] Deep link received (no params):', event.url);
         if (deepLinkCallback) {
           deepLinkCallback();
@@ -129,7 +129,7 @@ export function initDeepLinkHandler(): void {
   // --- Browser: check current URL on page load (handles direct navigation) ---
   if (typeof window !== 'undefined' && window.location) {
     const href = window.location.href;
-    if (href.includes('starflow://payment/success')) {
+    if (href.includes('potok://payment/success')) {
       // Store flag for later pickup (game may not be initialized yet)
       sessionStorage.setItem('starflow_deep_link_received', '1');
       // Clean URL so refresh doesn't re-trigger

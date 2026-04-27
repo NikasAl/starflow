@@ -7,7 +7,7 @@
     "build": "tsc && vite build",
     "build:release": "tsc && vite build --mode production",
     "preview": "vite preview",
-    "cap:init": "npx cap init starflow-3d com.starflow.game --web-dir dist",
+    "cap:init": "npx cap init starflow-3d ru.kreagenium.starflow --web-dir dist",
     "cap:add:android": "npx cap add android",
     "cap:sync": "npx cap sync",
     "cap:sync:release": "npm run build:release && npx cap sync && node scripts/setup-release-gradle.mjs",
