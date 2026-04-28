@@ -160,90 +160,14 @@ if (existsSync(stylesPath)) {
   }
 }
 
-// 5. Inject fullscreen immersive mode into MainActivity.java
-//    Uses modern WindowInsetsControllerCompat (not deprecated SYSTEM_UI_FLAG)
+// 5. (SKIP) Immersive mode + plugin registration — handled by step 8d
+//     which writes the complete MainActivity.java to avoid fragile regex patching.
 const mainActivityPath = join(androidDir, 'app', 'src', 'main', 'java', 'ru', 'kreagenium', 'starflow', 'MainActivity.java');
 if (existsSync(mainActivityPath)) {
-  let activity = readFileSync(mainActivityPath, 'utf-8');
-
-  // Skip if immersive mode is already properly injected
-  if (activity.includes('hideSystemBars')) {
-    console.log('[setup-android] Immersive mode already set in MainActivity.java');
-  } else {
-    // ---- Add required imports ----
-    const requiredImports = [
-      ['import android.os.Build;', 'import android.os.Bundle;'],
-      ['import android.view.View;', 'import android.view.View;'],
-      ['import androidx.core.view.WindowCompat;', 'import androidx.core.view.WindowCompat;'],
-      ['import androidx.core.view.WindowInsetsCompat;', 'import androidx.core.view.WindowInsetsCompat;'],
-      ['import androidx.core.view.WindowInsetsControllerCompat;', 'import androidx.core.view.WindowInsetsControllerCompat;'],
-    ];
-    for (const [imp, anchor] of requiredImports) {
-      if (!activity.includes(imp) && activity.includes(anchor)) {
-        activity = activity.replace(anchor, imp + '\n' + anchor);
-      } else if (!activity.includes(imp) && activity.includes('import com.getcapacitor.BridgeActivity;')) {
-        // If anchor not found, insert before BridgeActivity import
-        activity = activity.replace(
-          'import com.getcapacitor.BridgeActivity;',
-          imp + '\nimport com.getcapacitor.BridgeActivity;'
-        );
-      }
-    }
-
-    // ---- Add immersive mode code after super.onCreate(savedInstanceState); ----
-    const immersiveSetup = `
-        // StarFlow: Edge-to-edge fullscreen immersive mode
-        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
-        getWindow().setStatusBarColor(0xFF000000);
-        getWindow().setNavigationBarColor(0xFF000000);
-        hideSystemBars();
-
-        // Handle display cutout (camera notch / punch-hole)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            getWindow().getAttributes().layoutInDisplayCutoutMode =
-                android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
-        }`;
-
-    if (activity.includes('super.onCreate(savedInstanceState);')) {
-      activity = activity.replace(
-        'super.onCreate(savedInstanceState);',
-        'super.onCreate(savedInstanceState);' + immersiveSetup
-      );
-    }
-
-    // ---- Add hideSystemBars(), onWindowFocusChanged(), onResume() before class closing brace ----
-    const immersiveMethods = `
-    private void hideSystemBars() {
-        WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
-        if (controller != null) {
-            controller.hide(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
-            controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
-        }
-    }
-
-    @Override
-    public void onWindowFocusChanged(boolean hasFocus) {
-        super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) {
-            hideSystemBars();
-        }
-    }
-
-    @Override
-    public void onResume() {
-        super.onResume();
-        // Re-apply immersive mode after returning from background
-        hideSystemBars();
-    }`;
-
-    // Insert before the last closing brace of the file (class closing brace)
-    activity = activity.replace(/(\s*})\s*$/, immersiveMethods + '\n$1');
-
-    writeFileSync(mainActivityPath, activity, 'utf-8');
-    console.log('[setup-android] Added immersive fullscreen mode to MainActivity.java');
-  }
+  // File will be fully rewritten in step 8d
+  console.log('[setup-android] MainActivity.java found, will be rewritten in step 8d');
 } else {
-  console.log(`[setup-android] MainActivity.java not found at ${mainActivityPath}`);
+  console.log('[setup-android] MainActivity.java not yet created by Capacitor, will be created in step 8d');
 }
 
 // 6. Ensure androidx.core dependency is available for WindowInsetsControllerCompat
@@ -536,72 +460,73 @@ public class YandexAdsPlugin extends Plugin {
   console.log('[setup-android] Generated YandexAdsPlugin.java');
 
 
-// 8d. Register YandexAdsPlugin in MainActivity.java
-//     Uses getPluginClasses() override — the official Capacitor way to register
-//     local plugins. registerPlugin() in onCreate() is unreliable because the
-//     bridge has already finished loading plugins by that point.
-if (existsSync(mainActivityPath)) {
-  let activity = readFileSync(mainActivityPath, 'utf-8');
+// 8d. Write complete MainActivity.java with immersive mode + YandexAdsPlugin registration
+//     Instead of fragile regex patching, we rewrite the entire file.
+//     This ensures registerPlugin() is always in the correct place.
+mkdirSync(dirname(mainActivityPath), { recursive: true });
+{
 
-  if (!activity.includes('getPluginClasses')) {
-    // Add required imports for getPluginClasses()
-    if (!activity.includes('import java.util.ArrayList;')) {
-      activity = activity.replace(
-        'import com.getcapacitor.BridgeActivity;',
-        'import java.util.ArrayList;\nimport java.util.Arrays;\nimport java.util.List;\nimport com.getcapacitor.BridgeActivity;'
-      );
-    }
-    if (!activity.includes('import com.getcapacitor.Plugin;')) {
-      activity = activity.replace(
-        'import com.getcapacitor.BridgeActivity;',
-        'import com.getcapacitor.Plugin;\nimport com.getcapacitor.BridgeActivity;'
-      );
-    }
-    // Add YandexAdsPlugin import
-    if (!activity.includes('import ru.kreagenium.starflow.YandexAdsPlugin;')) {
-      activity = activity.replace(
-        'import com.getcapacitor.BridgeActivity;',
-        'import com.getcapacitor.BridgeActivity;\nimport ru.kreagenium.starflow.YandexAdsPlugin;'
-      );
-    }
+  const mainActivitySource = `package ru.kreagenium.starflow;
 
-    // Add getPluginClasses() override before the class closing brace
-    const getPluginClassesMethod = `
+import android.os.Build;
+import android.os.Bundle;
+import android.util.Log;
+
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
+
+import com.getcapacitor.BridgeActivity;
+
+public class MainActivity extends BridgeActivity {
+
     @Override
-    protected List<Class<? extends Plugin>> getPluginClasses() {
-        return new ArrayList<>(Arrays.asList(
-            YandexAdsPlugin.class
-        ));
-    }`;
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
 
-    // Insert before the last closing brace of the file (class closing brace)
-    activity = activity.replace(/(\s*})\s*$/, getPluginClassesMethod + '\n$1');
+        // --- Register local Capacitor plugins ---
+        Log.i("PotokMain", "=== Registering YandexAdsPlugin ===");
+        registerPlugin(YandexAdsPlugin.class);
+        Log.i("PotokMain", "=== YandexAdsPlugin registered ===");
 
-    writeFileSync(mainActivityPath, activity, 'utf-8');
-    console.log('[setup-android] Registered YandexAdsPlugin via getPluginClasses() in MainActivity.java');
-  } else {
-    // Already has getPluginClasses — ensure YandexAdsPlugin is included
-    if (!activity.includes('YandexAdsPlugin.class')) {
-      // Add to the existing Arrays.asList(...) call
-      activity = activity.replace(
-        'Arrays.asList(\n',
-        'Arrays.asList(\n            YandexAdsPlugin.class,\n'
-      );
-      // Also ensure import
-      if (!activity.includes('import ru.kreagenium.starflow.YandexAdsPlugin;')) {
-        activity = activity.replace(
-          'import com.getcapacitor.BridgeActivity;',
-          'import com.getcapacitor.BridgeActivity;\nimport ru.kreagenium.starflow.YandexAdsPlugin;'
-        );
-      }
-      writeFileSync(mainActivityPath, activity, 'utf-8');
-      console.log('[setup-android] Added YandexAdsPlugin to existing getPluginClasses()');
-    } else {
-      console.log('[setup-android] YandexAdsPlugin already registered via getPluginClasses()');
+        // --- Edge-to-edge fullscreen immersive mode ---
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        getWindow().setStatusBarColor(0xFF000000);
+        getWindow().setNavigationBarColor(0xFF000000);
+        hideSystemBars();
+
+        // Handle display cutout (camera notch / punch-hole)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            getWindow().getAttributes().layoutInDisplayCutoutMode =
+                android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+        }
     }
-  }
-} else {
-  console.log(`[setup-android] MainActivity.java not found at ${mainActivityPath}`);
+
+    private void hideSystemBars() {
+        WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        if (controller != null) {
+            controller.hide(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        }
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) {
+            hideSystemBars();
+        }
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        hideSystemBars();
+    }
+}
+`;
+  writeFileSync(mainActivityPath, mainActivitySource, 'utf-8');
+  console.log('[setup-android] Wrote complete MainActivity.java (immersive + YandexAdsPlugin)');
 }
 
 // 9. Add HTTP legacy library to AndroidManifest.xml
