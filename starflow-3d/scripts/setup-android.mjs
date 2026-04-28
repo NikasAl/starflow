@@ -401,13 +401,15 @@ public class YandexAdsPlugin extends Plugin {
 
                             @Override
                             public void onRewarded(@NonNull Reward reward) {
-                                android.util.Log.i("YandexAds", "User rewarded!");
+                                android.util.Log.i("YandexAds", "User rewarded! Resolving immediately.");
                                 rewardGranted = true;
+                                resolveAdResult(true, null);
                             }
 
                             @Override
                             public void onAdDismissed() {
                                 android.util.Log.i("YandexAds", "Ad dismissed, granted=" + rewardGranted);
+                                // Only resolve if not already resolved by onRewarded()
                                 resolveAdResult(rewardGranted, null);
                                 cleanupRewardedAd();
                             }
