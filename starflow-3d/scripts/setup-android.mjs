@@ -482,18 +482,16 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
+        // --- CRITICAL: Register plugins BEFORE super.onCreate() ---
+        // When bridge is null, registerPlugin() stores classes in pendingPluginClasses.
+        // Bridge init() (called by super.onCreate) then processes them properly.
+        // Registering AFTER super.onCreate() causes the plugin to not be found
+        // when JS calls it ("plugin is not implemented on android").
+        Log.i("PotokMain", "=== Registering YandexAdsPlugin ===");
+        registerPlugin(YandexAdsPlugin.class);
+        Log.i("PotokMain", "=== registerPlugin() returned ===");
 
-        // --- Register local Capacitor plugins ---
-        try {
-            Log.i("PotokMain", "=== Creating YandexAdsPlugin instance ===");
-            YandexAdsPlugin yandexAdsPlugin = new YandexAdsPlugin();
-            Log.i("PotokMain", "=== Instance created, calling registerPlugin() ===");
-            registerPlugin(yandexAdsPlugin);
-            Log.i("PotokMain", "=== YandexAdsPlugin registered successfully ===");
-        } catch (Exception e) {
-            Log.e("PotokMain", "=== FAILED to register YandexAdsPlugin ===", e);
-        }
+        super.onCreate(savedInstanceState);
 
         // --- Edge-to-edge fullscreen immersive mode ---
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
