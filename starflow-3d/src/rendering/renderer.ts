@@ -1696,34 +1696,24 @@ export function showAdOfferDialog(energyAmount: number): Promise<boolean> {
 
     // Wire accept button
     const acceptBtn = adOfferElement.querySelector('#ad-offer-accept')!;
-    acceptBtn.addEventListener('click', () => {
-      audioManager.play(SFX.UI_CLICK);
-      resolve(true);
-    });
-    acceptBtn.addEventListener('touchend', (e) => {
-      e.preventDefault();
-      audioManager.play(SFX.UI_CLICK);
-      resolve(true);
-    });
+    const onAccept = () => { resolve(true); };
+    acceptBtn.addEventListener('click', onAccept);
+    acceptBtn.addEventListener('touchend', (e) => { e.preventDefault(); onAccept(); });
 
     // Wire decline button
     const declineBtn = adOfferElement.querySelector('#ad-offer-decline')!;
-    declineBtn.addEventListener('click', () => {
-      audioManager.play(SFX.UI_CLICK);
-      resolve(false);
-    });
-    declineBtn.addEventListener('touchend', (e) => {
-      e.preventDefault();
-      audioManager.play(SFX.UI_CLICK);
-      resolve(false);
-    });
+    const onDecline = () => { resolve(false); };
+    declineBtn.addEventListener('click', onDecline);
+    declineBtn.addEventListener('touchend', (e) => { e.preventDefault(); onDecline(); });
 
-    // Tap backdrop to decline
-    adOfferElement.addEventListener('click', (e) => {
+    // Tap backdrop to decline (both click and touch for mobile)
+    const onBackdrop = (e: Event) => {
       if (e.target === adOfferElement) {
         resolve(false);
       }
-    });
+    };
+    adOfferElement.addEventListener('click', onBackdrop);
+    adOfferElement.addEventListener('touchend', (e) => { e.preventDefault(); onBackdrop(e); });
   });
 }
 

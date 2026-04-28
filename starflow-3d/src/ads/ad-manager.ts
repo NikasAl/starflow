@@ -10,6 +10,26 @@ import { AD_CONFIG } from './ad-config';
 import { loadWebAdSdk, showWebRewardedAd } from './web-ads';
 import { YandexAds } from './android-ads';
 
+/** Maximum time to wait for ad to load/show before timing out (ms) */
+const AD_TIMEOUT_MS = 30_000;
+
+/**
+ * Creates a Promise that rejects after a given timeout.
+ * If the main promise settles first, the timeout is cleared.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      console.warn(`[AdManager] ${label} timed out after ${ms}ms`);
+      reject(new Error(`${label} timed out after ${ms}ms`));
+    }, ms);
+    promise.then(
+      (val) => { clearTimeout(timer); resolve(val); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
+
 class AdManager {
   private sdkReady = false;
 
@@ -20,6 +40,8 @@ class AdManager {
    */
   async init(): Promise<void> {
     if (this.sdkReady) return;
+
+    console.log('[AdManager] init() called, platform=' + (Capacitor.isNativePlatform() ? 'native' : 'web'));
 
     if (Capacitor.isNativePlatform()) {
       try {
@@ -40,8 +62,11 @@ class AdManager {
   /**
    * Show a rewarded ad. Returns true if the user earned the reward.
    * Automatically selects the correct platform implementation.
+   * Includes a safety timeout to prevent infinite hangs.
    */
   async showRewardedAd(): Promise<boolean> {
+    console.log('[AdManager] showRewardedAd() called, sdkReady=' + this.sdkReady);
+
     if (!this.sdkReady) {
       console.warn('[AdManager] SDK not ready, skipping ad');
       return false;
@@ -49,9 +74,15 @@ class AdManager {
 
     if (Capacitor.isNativePlatform()) {
       try {
-        const result = await YandexAds.showRewardedAd({
-          adUnitId: AD_CONFIG.android.rewardedAdUnitId,
-        });
+        console.log('[AdManager] Calling native showRewardedAd with unitId=' + AD_CONFIG.android.rewardedAdUnitId);
+        const result = await withTimeout(
+          YandexAds.showRewardedAd({
+            adUnitId: AD_CONFIG.android.rewardedAdUnitId,
+          }),
+          AD_TIMEOUT_MS,
+          'Native showRewardedAd',
+        );
+        console.log('[AdManager] Native ad result: granted=' + result.granted);
         return result.granted === true;
       } catch (e) {
         console.warn('[AdManager] Native ad error:', e);

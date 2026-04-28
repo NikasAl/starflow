@@ -394,14 +394,17 @@ public class YandexAdsPlugin extends Plugin {
 
     @Override
     public void load() {
-        // Initialize Yandex Mobile Ads SDK on plugin load
         mainHandler.post(() -> {
-            MobileAds.initialize(getContext(), new InitializationListener() {
-                @Override
-                public void onInitializationCompleted() {
-                    // SDK initialized, ready to load ads
-                }
-            });
+            try {
+                MobileAds.initialize(getContext(), new InitializationListener() {
+                    @Override
+                    public void onInitializationCompleted() {
+                        android.util.Log.i("YandexAds", "SDK initialized successfully");
+                    }
+                });
+            } catch (Exception e) {
+                android.util.Log.e("YandexAds", "SDK init error in load(): " + e.getMessage(), e);
+            }
         });
     }
 
@@ -431,62 +434,80 @@ public class YandexAdsPlugin extends Plugin {
 
         savedCall = call;
         rewardGranted = false;
+        android.util.Log.i("YandexAds", "showRewardedAd called with unitId=" + adUnitId);
 
         mainHandler.post(() -> {
-            final Activity activity = getActivity();
-            if (activity == null) {
-                resolveAdResult(false, "Activity is null");
-                return;
-            }
-
-            // Use single RewardedAdLoader instance (recreate if null)
-            if (rewardedAdLoader == null) {
-                rewardedAdLoader = new RewardedAdLoader(getContext());
-            }
-
-            rewardedAdLoader.setAdLoadListener(new RewardedAdLoadListener() {
-                @Override
-                public void onAdLoaded(@NonNull final RewardedAd ad) {
-                    rewardedAd = ad;
-                    ad.setAdEventListener(new RewardedAdEventListener() {
-                        @Override
-                        public void onAdShown() {}
-
-                        @Override
-                        public void onAdFailedToShow(@NonNull AdError error) {
-                            resolveAdResult(false, error.toString());
-                            cleanupRewardedAd();
-                        }
-
-                        @Override
-                        public void onAdImpression(@Nullable ImpressionData impressionData) {}
-
-                        @Override
-                        public void onAdClicked() {}
-
-                        @Override
-                        public void onRewarded(@NonNull Reward reward) {
-                            rewardGranted = true;
-                        }
-
-                        @Override
-                        public void onAdDismissed() {
-                            resolveAdResult(rewardGranted, null);
-                            cleanupRewardedAd();
-                        }
-                    });
-                    ad.show(activity);
+            try {
+                final Activity activity = getActivity();
+                if (activity == null) {
+                    android.util.Log.w("YandexAds", "Activity is null, cannot show ad");
+                    resolveAdResult(false, "Activity is null");
+                    return;
                 }
 
-                @Override
-                public void onAdFailedToLoad(@NonNull AdRequestError adRequestError) {
-                    resolveAdResult(false, adRequestError.toString());
+                // Use single RewardedAdLoader instance (recreate if null)
+                if (rewardedAdLoader == null) {
+                    android.util.Log.i("YandexAds", "Creating RewardedAdLoader");
+                    rewardedAdLoader = new RewardedAdLoader(getContext());
                 }
-            });
 
-            final AdRequestConfiguration adRequestConfiguration =
-                new AdRequestConfiguration.Builder(adUnitId).build();
-            rewardedAdLoader.loadAd(adRequestConfiguration);
+                rewardedAdLoader.setAdLoadListener(new RewardedAdLoadListener() {
+                    @Override
+                    public void onAdLoaded(@NonNull final RewardedAd ad) {
+                        android.util.Log.i("YandexAds", "Ad loaded, showing...");
+                        rewardedAd = ad;
+                        ad.setAdEventListener(new RewardedAdEventListener() {
+                            @Override
+                            public void onAdShown() {
+                                android.util.Log.i("YandexAds", "Ad shown");
+                            }
+
+                            @Override
+                            public void onAdFailedToShow(@NonNull AdError error) {
+                                android.util.Log.e("YandexAds", "Ad failed to show: " + error);
+                                resolveAdResult(false, error.toString());
+                                cleanupRewardedAd();
+                            }
+
+                            @Override
+                            public void onAdImpression(@Nullable ImpressionData impressionData) {
+                                android.util.Log.i("YandexAds", "Ad impression");
+                            }
+
+                            @Override
+                            public void onAdClicked() {}
+
+                            @Override
+                            public void onRewarded(@NonNull Reward reward) {
+                                android.util.Log.i("YandexAds", "User rewarded!");
+                                rewardGranted = true;
+                            }
+
+                            @Override
+                            public void onAdDismissed() {
+                                android.util.Log.i("YandexAds", "Ad dismissed, granted=" + rewardGranted);
+                                resolveAdResult(rewardGranted, null);
+                                cleanupRewardedAd();
+                            }
+                        });
+                        ad.show(activity);
+                    }
+
+                    @Override
+                    public void onAdFailedToLoad(@NonNull AdRequestError adRequestError) {
+                        android.util.Log.e("YandexAds", "Ad failed to load: " + adRequestError);
+                        resolveAdResult(false, adRequestError.toString());
+                    }
+                });
+
+                final AdRequestConfiguration adRequestConfiguration =
+                    new AdRequestConfiguration.Builder(adUnitId).build();
+                android.util.Log.i("YandexAds", "Loading ad with unitId=" + adUnitId);
+                rewardedAdLoader.loadAd(adRequestConfiguration);
+            } catch (Exception e) {
+                android.util.Log.e("YandexAds", "Exception in showRewardedAd: " + e.getMessage(), e);
+                resolveAdResult(false, "Exception: " + e.getMessage());
+            }
         });
     }
 
