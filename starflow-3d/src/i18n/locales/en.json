@@ -34,7 +34,8 @@
   "intro": {
     "ourPlanet": "This is our planet",
     "enemyPlanet": "These are the {enemy} — our rivals",
-    "neutralPlanets": "Claim the planets before they do..."
+    "neutralPlanets": "Claim the planets before they do...",
+    "skip": "Skip"
   },
   "hud": {
     "you": "You",

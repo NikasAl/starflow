@@ -34,7 +34,8 @@
   "intro": {
     "ourPlanet": "Este es nuestro planeta",
     "enemyPlanet": "Estos son los {enemy} — nuestros rivales",
-    "neutralPlanets": "Conquista los planetas antes que ellos..."
+    "neutralPlanets": "Conquista los planetas antes que ellos...",
+    "skip": "Omitir"
   },
   "hud": {
     "you": "Tú",
@@ -118,7 +119,9 @@
     "offerDesc": "Mira un video corto para obtener +{amount} de energia",
     "offerAccept": "Ver",
     "offerDecline": "No, gracias",
-    "loading": "Cargando anuncio..."
+    "loading": "Cargando anuncio...",
+    "rewardGranted": "Bono otorgado!",
+    "offerClose": "Cerrar"
   },
   "shop": {
     "title": "Tienda de energía",

@@ -11,6 +11,7 @@ import { i18n } from '../i18n';
 let introActive = false;
 let introCancelled = false;
 let introElement: HTMLDivElement | null = null;
+let skipButton: HTMLButtonElement | null = null;
 
 // Callbacks — set by game.ts
 let getGameState: (() => GameState) | null = null;
@@ -45,6 +46,7 @@ export async function playIntro(): Promise<void> {
   introActive = true;
   introCancelled = false;
   setGamePaused(true);
+  showSkipButton();
 
   const state = getGameState();
 
@@ -382,9 +384,56 @@ function removeIntroElement(): void {
   introElement = null;
 }
 
+function showSkipButton(): void {
+  removeSkipButton();
+  skipButton = document.createElement('button');
+  skipButton.className = 'intro-skip-btn';
+  skipButton.textContent = i18n.t('intro.skip');
+  skipButton.style.cssText = `
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 210;
+    padding: 10px 24px;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.85);
+    background: rgba(0,0,0,0.55);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 8px;
+    cursor: pointer;
+    pointer-events: auto;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: all 0.25s ease;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  `;
+  const onSkip = () => {
+    introCancelled = true;
+    cleanup();
+  };
+  skipButton.addEventListener('click', onSkip);
+  skipButton.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onSkip();
+  });
+  document.body.appendChild(skipButton);
+}
+
+function removeSkipButton(): void {
+  if (skipButton && skipButton.parentNode) {
+    skipButton.parentNode.removeChild(skipButton);
+  }
+  skipButton = null;
+}
+
 function cleanup(): void {
   introActive = false;
   removeIntroElement();
+  removeSkipButton();
   if (disableSmoothCamera) disableSmoothCamera();
   if (setGamePaused) setGamePaused(false);
 }
