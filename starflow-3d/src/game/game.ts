@@ -44,6 +44,7 @@ import {
   setShowGuideCallback,
   showAdOfferDialog,
   setAdOfferLoading,
+  showAdOfferSuccess,
   hideAdOfferDialog,
 } from '../rendering/renderer';
 import { initIntroAnim, playIntro, playLevelTitle, cancelIntro, isIntroActive } from '../rendering/intro-anim';
@@ -270,11 +271,14 @@ function initGameScene(canvas: HTMLCanvasElement): void {
     // User agreed — show loading state while ad loads
     setAdOfferLoading();
     const granted = await adManager.showRewardedAd();
-    hideAdOfferDialog();
     if (granted) {
       grantEnergy(gameState);
       audioManager.play(SFX.UI_CLICK);
       invalidateHud(); // force HUD rebuild to show updated energy
+      // Show success in dialog — user closes it manually after ad dismisses
+      await showAdOfferSuccess(ENERGY_AD_REWARD);
+    } else {
+      hideAdOfferDialog();
     }
     resumeGame();
   });

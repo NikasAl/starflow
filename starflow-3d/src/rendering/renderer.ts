@@ -1737,6 +1737,44 @@ export function setAdOfferLoading(): void {
   `;
 }
 
+/**
+ * Switch ad dialog to success state — reward granted, user closes manually.
+ * Returns a promise that resolves when the user taps the close button or backdrop.
+ */
+export function showAdOfferSuccess(energyAmount: number): Promise<void> {
+  return new Promise(resolve => {
+    if (!adOfferElement) { resolve(); return; }
+    const content = adOfferElement.querySelector('#ad-offer-content');
+    if (!content) { resolve(); return; }
+
+    content.innerHTML = `
+      <div style="font-size: 48px; margin-bottom: 8px;">&#9989;</div>
+      <div style="font-size: 20px; font-weight: 600; color: #4ade80; margin-bottom: 6px;
+        text-shadow: 0 0 12px rgba(74,222,128,0.4);">
+        +${energyAmount} &#9889;
+      </div>
+      <div style="font-size: 15px; color: rgba(255,255,255,0.7); margin-bottom: 24px; line-height: 1.5;">
+        ${i18n.t('ad.rewardGranted')}
+      </div>
+      <button id="ad-offer-close" style="
+        display: block; width: 100%;
+        padding: 14px 0; font-size: 16px; font-weight: 600;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        color: #fff; background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+        border: none; border-radius: 10px; cursor: pointer;
+        letter-spacing: 1px; text-transform: uppercase;
+        box-shadow: 0 0 20px rgba(74,222,128,0.3), 0 4px 12px rgba(0,0,0,0.4);
+        transition: all 0.2s;
+      ">${i18n.t('ad.offerClose')}</button>
+    `;
+
+    const closeBtn = content.querySelector('#ad-offer-close')!;
+    const onClose = () => resolve();
+    closeBtn.addEventListener('click', onClose);
+    closeBtn.addEventListener('touchend', (e) => { e.preventDefault(); onClose(); });
+  });
+}
+
 /** Remove the ad offer dialog */
 export function hideAdOfferDialog(): void {
   if (adOfferElement && adOfferElement.parentNode) {

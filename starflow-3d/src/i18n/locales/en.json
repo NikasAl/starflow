@@ -118,7 +118,9 @@
     "offerDesc": "Watch a short video to get +{amount} energy",
     "offerAccept": "Watch",
     "offerDecline": "No thanks",
-    "loading": "Loading ad..."
+    "loading": "Loading ad...",
+    "rewardGranted": "Bonus granted!",
+    "offerClose": "Close"
   },
   "shop": {
     "title": "Energy Shop",
