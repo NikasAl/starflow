@@ -42,6 +42,7 @@ import {
   setCameraSmoothTarget,
   disableSmoothCamera,
   setShowGuideCallback,
+  setExitGameCallback,
   showAdOfferDialog,
   setAdOfferLoading,
   showAdOfferSuccess,
@@ -125,6 +126,17 @@ function initGameScene(canvas: HTMLCanvasElement): void {
   // Wire "Show Guide" menu button to replay intro animation
   setShowGuideCallback(() => replayIntro());
 
+  // Wire "Exit" menu button — save and return to start screen
+  setExitGameCallback(() => {
+    saveCurrentGame();
+    stopGame();
+    // Show start screen again
+    const startScreen = document.getElementById('start-screen') as HTMLElement;
+    const gameContainer = document.getElementById('game-container') as HTMLElement;
+    if (startScreen) { startScreen.style.display = ''; startScreen.classList.remove('fade-out'); }
+    if (gameContainer) gameContainer.classList.remove('active');
+  });
+
   // Initialize intro animation system
   initIntroAnim({
     getGameState: () => gameState,
@@ -160,6 +172,7 @@ function initGameScene(canvas: HTMLCanvasElement): void {
           grantEnergy(gameState, energyAmount);
           audioManager.play(SFX.UI_CLICK);
           invalidateHud();
+          saveCurrentGame();
         }
         clearPendingPayment();
         pendingInvoiceId = null;
@@ -275,6 +288,7 @@ function initGameScene(canvas: HTMLCanvasElement): void {
       grantEnergy(gameState);
       audioManager.play(SFX.UI_CLICK);
       invalidateHud(); // force HUD rebuild to show updated energy
+      saveCurrentGame(); // persist energy immediately
       // Show success in dialog — user closes it manually after ad dismisses
       await showAdOfferSuccess(ENERGY_AD_REWARD);
     } else {
@@ -329,6 +343,7 @@ function initGameScene(canvas: HTMLCanvasElement): void {
         grantEnergy(gameState, granted);
         audioManager.play(SFX.UI_CLICK);
         invalidateHud();
+        saveCurrentGame();
         pendingInvoiceId = null;
         pendingEnergyAmount = null;
         clearPendingPayment();
@@ -543,6 +558,14 @@ export function stopGame(): void {
   pendingEnergyAmount = null;
   audioManager.setOnUnmute(null);
   dispose();
+}
+
+/** Save current game state to localStorage. Can be called from anywhere (main.ts on pause, etc.) */
+export function saveCurrentGame(): boolean {
+  if (!gameState || !aiStates) return false;
+  saveGame(gameState, aiStates);
+  if (onGameSaved) onGameSaved();
+  return true;
 }
 
 /** Set callback for when game is saved (used to update Continue button) */

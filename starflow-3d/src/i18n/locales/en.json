@@ -29,7 +29,8 @@
     "muteAll": "Mute All",
     "unmuteAll": "Unmute All",
     "watchAd": "Ad +5 ⚡",
-    "showGuide": "Show Guide"
+    "showGuide": "Show Guide",
+    "exit": "Exit"
   },
   "intro": {
     "ourPlanet": "This is our planet",

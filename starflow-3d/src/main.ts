@@ -2,7 +2,7 @@
 // Поток — Entry Point
 // ============================================================
 
-import { startGame, startGameFromSave, setOnGameSaved } from './game/game';
+import { startGame, startGameFromSave, setOnGameSaved, stopGame, saveCurrentGame } from './game/game';
 import { hasSave, loadGame, getSaveInfo } from './core/save';
 import { i18n } from './i18n';
 import { audioManager, MUSIC } from './audio';
@@ -131,7 +131,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Handle Android app pause / resume (Capacitor)
-  document.addEventListener('pause', () => audioManager.suspend());
+  document.addEventListener('pause', () => {
+    audioManager.suspend();
+    saveCurrentGame(); // persist state when app goes to background
+  });
   document.addEventListener('resume', () => audioManager.resume());
 
   if (startBtn) {

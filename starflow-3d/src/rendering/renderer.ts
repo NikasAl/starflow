@@ -124,6 +124,7 @@ let onBuyEnergy: (() => void) | null = null;
 let onEnergyProduct: ((product: { amount: number; energy: number; name: string; type: string }) => void) | null = null;
 let onPaymentCheck: (() => void) | null = null;
 let onShowGuide: (() => void) | null = null;
+let onExitGame: (() => void) | null = null;
 
 // Energy shop dialog element
 let shopElement: HTMLDivElement | null = null;
@@ -353,6 +354,7 @@ function showMenu(): void {
       ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>'
       : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>' },
     { label: i18n.t('menu.language'), id: 'menu-language', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg>' },
+    { label: i18n.t('menu.exit'), id: 'menu-exit', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>' },
   ];
 
   for (const item of items) {
@@ -401,6 +403,8 @@ function handleMenuItem(itemId: string): void {
     audioManager.toggleMute();
   } else if (itemId === 'menu-language') {
     showLanguageMenu();
+  } else if (itemId === 'menu-exit') {
+    if (onExitGame) onExitGame();
   }
 }
 
@@ -1396,6 +1400,10 @@ export function setPaymentCheckCallback(cb: () => void): void {
 
 export function setShowGuideCallback(cb: () => void): void {
   onShowGuide = cb;
+}
+
+export function setExitGameCallback(cb: () => void): void {
+  onExitGame = cb;
 }
 
 /** Force HUD rebuild on next frame (e.g. after boost activation) */
