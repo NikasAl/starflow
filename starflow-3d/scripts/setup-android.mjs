@@ -485,9 +485,15 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
 
         // --- Register local Capacitor plugins ---
-        Log.i("PotokMain", "=== Registering YandexAdsPlugin ===");
-        registerPlugin(YandexAdsPlugin.class);
-        Log.i("PotokMain", "=== YandexAdsPlugin registered ===");
+        try {
+            Log.i("PotokMain", "=== Creating YandexAdsPlugin instance ===");
+            YandexAdsPlugin yandexAdsPlugin = new YandexAdsPlugin();
+            Log.i("PotokMain", "=== Instance created, calling registerPlugin() ===");
+            registerPlugin(yandexAdsPlugin);
+            Log.i("PotokMain", "=== YandexAdsPlugin registered successfully ===");
+        } catch (Exception e) {
+            Log.e("PotokMain", "=== FAILED to register YandexAdsPlugin ===", e);
+        }
 
         // --- Edge-to-edge fullscreen immersive mode ---
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
