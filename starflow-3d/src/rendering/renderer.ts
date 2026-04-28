@@ -475,8 +475,8 @@ function updateHTMLHUD(state: GameState): void {
 
   // Energy counter + watch ad + buy energy buttons (only during gameplay)
   if (state.phase === 'playing') {
-    html += `<div style="display:flex; align-items:center; gap:6px; margin-bottom:4px; padding:2px 0;">
-      <div style="font-size:14px; font-weight:bold; color:#ffaa00; text-shadow:0 0 8px rgba(255,170,0,0.5); white-space:nowrap;">&#9889; ${state.energy}</div>
+    html += `<div style="display:flex; align-items:center; gap:10px; margin-bottom:4px; padding:0;">
+      <div style="font-size:14px; font-weight:bold; color:#ffaa00; text-shadow:0 0 8px rgba(255,170,0,0.5); white-space:nowrap; line-height:28px;">&#9889; ${state.energy}</div>
       <div data-action="watch-ad" style="font-size:13px; min-width:34px; height:28px; display:flex; align-items:center; justify-content:center; padding:0 8px; border-radius:5px; color:#ffcc44; cursor:pointer; pointer-events:auto; white-space:nowrap; font-weight:700; border:1px solid rgba(255,200,60,0.35); background:rgba(255,200,60,0.08);">+${ENERGY_AD_REWARD}</div>
       <div data-action="buy-energy" style="font-size:14px; min-width:34px; height:28px; display:flex; align-items:center; justify-content:center; padding:0 8px; border-radius:5px; color:#00e070; cursor:pointer; pointer-events:auto; font-weight:700; border:1px solid rgba(0,220,110,0.35); background:rgba(0,220,110,0.08);">+</div>
     </div>`;
