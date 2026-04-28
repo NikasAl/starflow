@@ -393,8 +393,13 @@ public class YandexAdsPlugin extends Plugin {
     private boolean sdkInitialized = false;
     private Handler mainHandler = new Handler(Looper.getMainLooper());
 
+    public YandexAdsPlugin() {
+        android.util.Log.i("YandexAds", "=== YandexAdsPlugin CONSTRUCTOR ===");
+    }
+
     @Override
     public void load() {
+        android.util.Log.i("YandexAds", "=== load() called, initializing SDK ===");
         mainHandler.post(() -> {
             try {
                 MobileAds.initialize(getContext(), new InitializationListener() {
@@ -413,8 +418,7 @@ public class YandexAdsPlugin extends Plugin {
     @PluginMethod
     public void initialize(final PluginCall call) {
         // SDK is already initialized in load(). Resolve immediately.
-        // If load() hasn't finished yet, the SDK will still init in background.
-        android.util.Log.i("YandexAds", "initialize() called, sdkInitialized=" + sdkInitialized);
+        android.util.Log.i("YandexAds", "=== initialize() called, sdkInitialized=" + sdkInitialized);
         call.resolve(new JSObject());
     }
 
@@ -533,11 +537,27 @@ public class YandexAdsPlugin extends Plugin {
 
 
 // 8d. Register YandexAdsPlugin in MainActivity.java
+//     Uses getPluginClasses() override — the official Capacitor way to register
+//     local plugins. registerPlugin() in onCreate() is unreliable because the
+//     bridge has already finished loading plugins by that point.
 if (existsSync(mainActivityPath)) {
   let activity = readFileSync(mainActivityPath, 'utf-8');
 
-  if (!activity.includes('YandexAdsPlugin')) {
-    // Add import
+  if (!activity.includes('getPluginClasses')) {
+    // Add required imports for getPluginClasses()
+    if (!activity.includes('import java.util.ArrayList;')) {
+      activity = activity.replace(
+        'import com.getcapacitor.BridgeActivity;',
+        'import java.util.ArrayList;\nimport java.util.Arrays;\nimport java.util.List;\nimport com.getcapacitor.BridgeActivity;'
+      );
+    }
+    if (!activity.includes('import com.getcapacitor.Plugin;')) {
+      activity = activity.replace(
+        'import com.getcapacitor.BridgeActivity;',
+        'import com.getcapacitor.Plugin;\nimport com.getcapacitor.BridgeActivity;'
+      );
+    }
+    // Add YandexAdsPlugin import
     if (!activity.includes('import ru.kreagenium.starflow.YandexAdsPlugin;')) {
       activity = activity.replace(
         'import com.getcapacitor.BridgeActivity;',
@@ -545,29 +565,40 @@ if (existsSync(mainActivityPath)) {
       );
     }
 
-    // Add plugin registration in onCreate — after all other setup
-    if (activity.includes('super.onCreate(savedInstanceState);')) {
-      // Add at the end of onCreate (before the closing brace of onCreate)
-      // We look for the hideSystemBars() call and add after it, or after super.onCreate
-      const registrationCode = '\n        // Register Yandex Ads plugin for rewarded ads\n        registerPlugin(YandexAdsPlugin.class);';
+    // Add getPluginClasses() override before the class closing brace
+    const getPluginClassesMethod = `
+    @Override
+    protected List<Class<? extends Plugin>> getPluginClasses() {
+        return new ArrayList<>(Arrays.asList(
+            YandexAdsPlugin.class
+        ));
+    }`;
 
-      if (activity.includes('hideSystemBars();')) {
-        activity = activity.replace(
-          'hideSystemBars();',
-          'hideSystemBars();' + registrationCode
-        );
-      } else {
-        activity = activity.replace(
-          'super.onCreate(savedInstanceState);',
-          'super.onCreate(savedInstanceState);' + registrationCode
-        );
-      }
-    }
+    // Insert before the last closing brace of the file (class closing brace)
+    activity = activity.replace(/(\s*})\s*$/, getPluginClassesMethod + '\n$1');
 
     writeFileSync(mainActivityPath, activity, 'utf-8');
-    console.log('[setup-android] Registered YandexAdsPlugin in MainActivity.java');
+    console.log('[setup-android] Registered YandexAdsPlugin via getPluginClasses() in MainActivity.java');
   } else {
-    console.log('[setup-android] YandexAdsPlugin already registered in MainActivity.java');
+    // Already has getPluginClasses — ensure YandexAdsPlugin is included
+    if (!activity.includes('YandexAdsPlugin.class')) {
+      // Add to the existing Arrays.asList(...) call
+      activity = activity.replace(
+        'Arrays.asList(\n',
+        'Arrays.asList(\n            YandexAdsPlugin.class,\n'
+      );
+      // Also ensure import
+      if (!activity.includes('import ru.kreagenium.starflow.YandexAdsPlugin;')) {
+        activity = activity.replace(
+          'import com.getcapacitor.BridgeActivity;',
+          'import com.getcapacitor.BridgeActivity;\nimport ru.kreagenium.starflow.YandexAdsPlugin;'
+        );
+      }
+      writeFileSync(mainActivityPath, activity, 'utf-8');
+      console.log('[setup-android] Added YandexAdsPlugin to existing getPluginClasses()');
+    } else {
+      console.log('[setup-android] YandexAdsPlugin already registered via getPluginClasses()');
+    }
   }
 } else {
   console.log(`[setup-android] MainActivity.java not found at ${mainActivityPath}`);
