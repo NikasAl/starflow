@@ -139,6 +139,37 @@
     #save-info.visible {
       display: block;
     }
+    #exit-btn {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      z-index: 10;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 50%;
+      cursor: pointer;
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 20px;
+      line-height: 1;
+      transition: all 0.2s ease;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #exit-btn:hover {
+      background: rgba(255, 80, 80, 0.15);
+      border-color: rgba(255, 80, 80, 0.4);
+      color: rgba(255, 120, 120, 0.9);
+    }
+    #exit-btn:active {
+      transform: scale(0.9);
+    }
 
     /* ===== GAME ===== */
     #game-container {
@@ -177,6 +208,7 @@
 <body>
   <!-- Start Screen -->
   <div id="start-screen">
+    <button id="exit-btn" title="Exit">&#10005;</button>
     <div class="content">
       <h1 id="title-text">ПОТОК</h1>
       <div class="subtitle" id="subtitle-text">3D Space Strategy</div>

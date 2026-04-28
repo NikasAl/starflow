@@ -33,6 +33,7 @@ function applyDOMTranslations(): void {
 document.addEventListener('DOMContentLoaded', () => {
   const startBtn = document.getElementById('start-btn') as HTMLButtonElement;
   const continueBtn = document.getElementById('continue-btn') as HTMLButtonElement;
+  const exitBtn = document.getElementById('exit-btn') as HTMLButtonElement;
   const saveInfo = document.getElementById('save-info') as HTMLDivElement;
   const startScreen = document.getElementById('start-screen') as HTMLDivElement;
   const gameContainer = document.getElementById('game-container') as HTMLDivElement;
@@ -151,5 +152,21 @@ document.addEventListener('DOMContentLoaded', () => {
       e.preventDefault();
       launchGame(true);
     });
+  }
+
+  // Exit button — close app (Capacitor) or navigate away (browser)
+  if (exitBtn) {
+    const doExit = () => {
+      saveCurrentGame();
+      // On Capacitor/Android — exit the app via native back door
+      if ((window as any).Capacitor) {
+        (window as any).Capacitor.Plugins.App.exitApp();
+      } else {
+        // Browser: try closing tab/window
+        window.close();
+      }
+    };
+    exitBtn.addEventListener('click', doExit);
+    exitBtn.addEventListener('touchend', (e) => { e.preventDefault(); doExit(); });
   }
 });
