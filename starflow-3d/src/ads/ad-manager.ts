@@ -41,15 +41,24 @@ class AdManager {
   async init(): Promise<void> {
     if (this.sdkReady) return;
 
-    console.log('[AdManager] init() called, platform=' + (Capacitor.isNativePlatform() ? 'native' : 'web'));
+    const platform = Capacitor.isNativePlatform() ? 'native' : 'web';
+    console.log(`[AdManager] init() called, platform=${platform}`);
 
     if (Capacitor.isNativePlatform()) {
       try {
-        await YandexAds.initialize();
+        // Native plugin initializes SDK in load(). The initialize() call
+        // just confirms readiness — it always resolves immediately.
+        await Promise.race([
+          YandexAds.initialize(),
+          new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+        ]);
         this.sdkReady = true;
-        console.log('[AdManager] Native Yandex Ads SDK initialized');
+        console.log('[AdManager] Native Yandex Ads SDK ready');
       } catch (e) {
-        console.warn('[AdManager] Native ad init failed:', e);
+        // Even if init fails, SDK may still work (load() already init'd it).
+        // Mark as ready so showRewardedAd at least tries to call native.
+        this.sdkReady = true;
+        console.warn('[AdManager] Native ad init had issues, but proceeding:', e);
       }
     } else {
       await loadWebAdSdk();

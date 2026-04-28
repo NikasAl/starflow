@@ -349,9 +349,9 @@ if (existsSync(appBuildGradle)) {
 const pluginDir = join(androidDir, 'app', 'src', 'main', 'java', 'ru', 'kreagenium', 'starflow');
 const pluginPath = join(pluginDir, 'YandexAdsPlugin.java');
 
-if (!existsSync(pluginPath)) {
-  mkdirSync(pluginDir, { recursive: true });
+mkdirSync(pluginDir, { recursive: true });
 
+  // Always regenerate to pick up template fixes
   const pluginSource = `package ru.kreagenium.starflow;
 
 import android.app.Activity;
@@ -390,6 +390,7 @@ public class YandexAdsPlugin extends Plugin {
     private RewardedAdLoader rewardedAdLoader = null;
     private boolean rewardGranted = false;
     private PluginCall savedCall = null;
+    private boolean sdkInitialized = false;
     private Handler mainHandler = new Handler(Looper.getMainLooper());
 
     @Override
@@ -399,6 +400,7 @@ public class YandexAdsPlugin extends Plugin {
                 MobileAds.initialize(getContext(), new InitializationListener() {
                     @Override
                     public void onInitializationCompleted() {
+                        sdkInitialized = true;
                         android.util.Log.i("YandexAds", "SDK initialized successfully");
                     }
                 });
@@ -410,18 +412,10 @@ public class YandexAdsPlugin extends Plugin {
 
     @PluginMethod
     public void initialize(final PluginCall call) {
-        mainHandler.post(() -> {
-            try {
-                MobileAds.initialize(getContext(), new InitializationListener() {
-                    @Override
-                    public void onInitializationCompleted() {
-                        call.resolve(new JSObject());
-                    }
-                });
-            } catch (Exception e) {
-                call.reject("Yandex Ads SDK init failed: " + e.getMessage());
-            }
-        });
+        // SDK is already initialized in load(). Resolve immediately.
+        // If load() hasn't finished yet, the SDK will still init in background.
+        android.util.Log.i("YandexAds", "initialize() called, sdkInitialized=" + sdkInitialized);
+        call.resolve(new JSObject());
     }
 
     @PluginMethod
@@ -535,10 +529,8 @@ public class YandexAdsPlugin extends Plugin {
 }
 `;
   writeFileSync(pluginPath, pluginSource, 'utf-8');
-  console.log('[setup-android] Created YandexAdsPlugin.java');
-} else {
-  console.log('[setup-android] YandexAdsPlugin.java already exists.');
-}
+  console.log('[setup-android] Generated YandexAdsPlugin.java');
+
 
 // 8d. Register YandexAdsPlugin in MainActivity.java
 if (existsSync(mainActivityPath)) {
