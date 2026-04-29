@@ -18,7 +18,13 @@
     "deploy:fast": "adb install -r android/app/build/outputs/apk/debug/app-debug.apk",
     "android:debug": "cd android && chmod +x gradlew && ./gradlew assembleDebug && cd .. && adb install -r android/app/build/outputs/apk/debug/app-debug.apk",
     "android:release": "npm run cap:sync:release && cd android && chmod +x gradlew && ./gradlew assembleRelease && cd .. && echo 'Release APK: android/app/build/outputs/apk/release/app-release.apk'",
-    "android:log": "adb logcat -s Capacitor chromium System.out"
+    "android:log": "adb logcat -s Capacitor chromium System.out",
+    "capture:screenshot": "node scripts/media-capture.mjs screenshot --resize 2560x1440",
+    "capture:record": "node scripts/media-capture.mjs record --duration 30 --resize 2560x1440",
+    "capture:promo": "node scripts/media-capture.mjs record --duration 15 --name promo --resize 2560x1440",
+    "capture:info": "node scripts/media-capture.mjs info",
+    "capture:resize": "node scripts/media-capture.mjs resize --width 2560 --height 1440",
+    "capture:reset": "node scripts/media-capture.mjs reset-resize"
   },
   "dependencies": {
     "@capacitor/app": "^6.0.3",

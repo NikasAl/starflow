@@ -33,6 +33,7 @@ Three.js + TypeScript + Vite + Capacitor 6 (Android)
 13. [Android сборка](#android-сборка)
 14. [Архитектура](#архитектура)
 15. [Скрипты настройки Android](#скрипты-настройки-android)
+16. [Скриншоты и запись видео](#скриншоты-и-запись-видео)
 
 ---
 
@@ -416,6 +417,32 @@ npm run cap:open:android    # Открыть в Android Studio
 npm run deploy:fast         # Быстрая установка debug APK на устройство
 npm run cap:reset           # Полный сброс android/ директории
 npm run android:log         # Логирование: adb logcat
+```
+
+### Скриншоты и запись видео
+
+Встроенная утилита `scripts/media-capture.mjs` для создания скриншотов и записи видео через ADB. Автоматически устанавливает разрешение 16:9 (2560x1440) для RuStore и возвращает исходное после съёмки. Файлы сохраняются в `./captures/`.
+
+```bash
+npm run capture:info        # Информация об устройстве (разрешение, модель, aspect ratio)
+npm run capture:screenshot  # Скриншот 16:9 (с авто-возвратом разрешения)
+npm run capture:record      # Видео 30 сек в 16:9
+npm run capture:promo       # Промо-видео 15 сек
+npm run capture:resize      # Установить разрешение 2560x1440 постоянно
+npm run capture:reset       # Вернуть физическое разрешение
+```
+
+Расширенное использование через `node scripts/media-capture.mjs`:
+
+```bash
+# Скриншот с именем
+node scripts/media-capture.mjs screenshot --name rustore-1-start --resize 2560x1440
+
+# Запись 10 секунд, 12 Mbps
+node scripts/media-capture.mjs record --duration 10 --bitrate 12000000 --name gameplay
+
+# Произвольное разрешение
+node scripts/media-capture.mjs resize --width 1920 --height 1080
 ```
 
 ---

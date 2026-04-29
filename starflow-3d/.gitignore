@@ -8,3 +8,6 @@ signing.properties
 keystore/
 *.keystore
 *.jks
+
+# Media captures (screenshots, videos)
+captures/
