@@ -10,7 +10,7 @@
     "cap:init": "npx cap init starflow-3d ru.kreagenium.starflow --web-dir dist",
     "cap:add:android": "npx cap add android",
     "cap:sync": "npx cap sync",
-    "cap:sync:release": "npm run build:release && npx cap sync && node scripts/setup-release-gradle.mjs",
+    "cap:sync:release": "npm run build:release && npx cap sync && node scripts/setup-android.mjs && node scripts/setup-release-gradle.mjs",
     "cap:open:android": "npx cap open android",
     "cap:reset": "rm -rf android && npx cap add android && npm run cap:sync",
     "postcap:sync": "node scripts/setup-android.mjs",
