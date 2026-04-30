@@ -148,6 +148,22 @@ function setResolutionWithLandscape(w, h) {
   run('sleep 2');
 }
 
+function checkScrcpy() {
+  try {
+    const ver = runQuiet('scrcpy --version');
+    if (ver) return true;
+  } catch {}
+  return false;
+}
+
+function checkFfmpeg() {
+  try {
+    const ver = runQuiet('ffmpeg -version 2>&1 | head -1');
+    if (ver) return true;
+  } catch {}
+  return false;
+}
+
 // ── Команды ────────────────────────────────────────────────────
 
 function cmdScreenshot(args) {
@@ -193,9 +209,19 @@ function cmdRecord(args) {
   const duration = parseInt(args.duration) || DEFAULTS.videoDuration;
   const bitrate = parseInt(args.bitrate) || DEFAULTS.videoBitrate;
   const resize = args.resize ? parseResolution(args.resize) : null;
+  const withAudio = args.audio === true || args.audio === 'true';
+
+  // Если запрошен звук — используем scrcpy (есть звук) вместо screenrecord
+  if (withAudio) {
+    cmdRecordScrcpy(args);
+    return;
+  }
 
   console.log(`\n🎥 Запись видео (${duration} сек, ${Math.round(bitrate / 1000000)} Mbps)`);
   console.log('─'.repeat(40));
+  console.log('⚠️  screenrecord НЕ записывает звук (ограничение Android).');
+  console.log('   Для записи со звуком: --audio (требуется scrcpy)');
+  console.log();
 
   // Установить разрешение + landscape если нужно
   if (resize) {
@@ -239,7 +265,7 @@ function cmdRecord(args) {
     // Удалить временный файл
     runQuiet(adbCmd(`shell rm ${DEVICE_TMP_VIDEO}`));
 
-    console.log(`\n✅ Сохранено: ${localPath}`);
+    console.log(`\n✅ Сохранено: ${localPath} (без звука)`);
 
     // Вернуть разрешение + ориентацию если меняли
     if (resize) {
@@ -263,6 +289,118 @@ function cmdRecord(args) {
     }
     process.exit(0);
   });
+}
+
+function cmdRecordScrcpy(args) {
+  const name = args.name || `recording_${getTimestamp()}`;
+  const duration = parseInt(args.duration) || DEFAULTS.videoDuration;
+  const resize = args.resize ? parseResolution(args.resize) : null;
+  const maxDuration = Math.min(duration, 180); // scrcpy max 180s
+
+  if (!checkScrcpy()) {
+    console.error('\n❌ scrcpy не найден!');
+    console.error('   Установите: https://github.com/Genymobile/scrcpy/releases');
+    console.error('   Или запишите без --audio (только видео через screenrecord)');
+    process.exit(1);
+  }
+
+  const outDir = resolve(DEFAULTS.outputDir);
+  ensureDir(outDir);
+  const filePath = join(outDir, `${name}.mp4`);
+
+  console.log(`\n🎥 Запись видео со звуком (scrcpy, ${maxDuration} сек)`);
+  console.log('─'.repeat(40));
+
+  // Установить разрешение + landscape если нужно
+  if (resize) {
+    setResolutionWithLandscape(resize.width, resize.height);
+  }
+
+  console.log('[INFO] Начинаем запись (scrcpy --no-display --record)...');
+  console.log(`[INFO] Для остановки нажмите Ctrl+C (или подождите ${maxDuration} сек)`);
+
+  // scrcpy записывает прямо на хост (не на устройство) — без ADB pull
+  const scrcpyArgs = [
+    'scrcpy',
+    '--no-display',
+    '--no-window',
+    '--record', filePath,
+    '--record-format', 'mp4',
+    '--max-size', '0',          // original resolution
+    '--max-fps', '60',
+    '--video-codec', 'h264',
+    '--audio-source', 'output', // internal audio (Android 11+)
+    '--audio-codec', 'aac',
+    '-K',                      // turn screen off during recording
+  ];
+
+  const recordProcess = exec(scrcpyArgs.join(' '), { stdio: 'inherit' });
+
+  recordProcess.on('close', (code) => {
+    console.log();
+    if (existsSync(filePath)) {
+      console.log(`✅ Сохранено: ${filePath} (со звуком)`);
+    } else {
+      console.log('❌ Файл не создан. Возможные причины:');
+      console.log('   - Android < 11 (нужен Android 11+ для записи звука)');
+      console.log('   - scrcpy версия < 2.0');
+      console.log('   - Устройство не поддерживает захват аудио');
+    }
+
+    if (resize) {
+      console.log('[INFO] Возвращаем исходное разрешение и ориентацию...');
+      resetResolution();
+      restoreOrientation();
+    }
+  });
+
+  process.on('SIGINT', () => {
+    console.log('\n[INFO] Останавливаем запись...');
+    recordProcess.kill('SIGINT');
+  });
+
+  process.on('SIGTERM', () => {
+    if (resize) {
+      resetResolution();
+      restoreOrientation();
+    }
+    process.exit(0);
+  });
+}
+
+function cmdMerge(args) {
+  const video = args.video;
+  const audio = args.audio;
+  const output = args.output;
+
+  if (!video || !audio) {
+    console.error('\n❌ Укажите --video и --audio');
+    console.error('   node scripts/media-capture.mjs merge --video video.mp4 --audio sound.ogg --output final.mp4');
+    process.exit(1);
+  }
+
+  if (!checkFfmpeg()) {
+    console.error('\n❌ ffmpeg не найден!');
+    console.error('   Установите: sudo pacman -S ffmpeg / apt install ffmpeg / brew install ffmpeg');
+    process.exit(1);
+  }
+
+  const videoPath = resolve(video);
+  const audioPath = resolve(audio);
+  const outPath = resolve(output || video.replace(/\.mp4$/i, '_with_audio.mp4'));
+
+  if (!existsSync(videoPath)) { console.error(`❌ Видео не найдено: ${videoPath}`); process.exit(1); }
+  if (!existsSync(audioPath)) { console.error(`❌ Аудио не найдено: ${audioPath}`); process.exit(1); }
+
+  console.log(`\n🔀 Объединяем видео + аудио`);
+  console.log('─'.repeat(40));
+  console.log(`  Видео: ${videoPath}`);
+  console.log(`  Аудио: ${audioPath}`);
+  console.log(`  Вывод: ${outPath}`);
+  console.log();
+
+  run(`ffmpeg -y -i "${videoPath}" -i "${audioPath}" -c:v copy -c:a aac -b:a 192k -shortest "${outPath}"`);
+  console.log(`\n✅ Готово: ${outPath}`);
 }
 
 function cmdResize(args) {
@@ -379,6 +517,17 @@ function cmdInfo() {
   // Проверяем screenrecord
   const screenrecord = runQuiet(adbCmd('shell which screenrecord'));
   console.log(`  Screenrecord:  ${screenrecord ? 'доступен' : 'НЕ доступен'}`);
+
+  // Проверяем scrcpy (для записи со звуком)
+  const scrcpy = checkScrcpy();
+  console.log(`  scrcpy:         ${scrcpy ? 'доступен ✅ (запись со звуком)' : 'НЕ найден (video only)'}`);
+  if (!scrcpy) {
+    console.log('    Установите: https://github.com/Genymobile/scrcpy/releases');
+  }
+
+  // Проверяем ffmpeg (для merge)
+  const ffmpeg = checkFfmpeg();
+  console.log(`  ffmpeg:         ${ffmpeg ? 'доступен' : 'НЕ найден (для merge --video + --audio)'}`);
 }
 
 function printHelp() {
@@ -393,7 +542,8 @@ function printHelp() {
 
 Команды:
   screenshot     Сделать скриншот
-  record         Записать видео
+  record         Записать видео (--audio для записи со звуком)
+  merge          Объединить видео + аудио (требуется ffmpeg)
   resize         Установить разрешение устройства
   reset-resize   Вернуть физическое разрешение
   pull           Скопировать временные файлы с устройства
@@ -404,6 +554,10 @@ function printHelp() {
   --resize WxH       Временное разрешение для скриншота/видео
   --duration <сек>   Длительность записи видео (по умолчанию: 30)
   --bitrate <bps>    Битрейт видео (по умолчанию: 8000000 = 8 Mbps)
+  --audio            Записывать со звуком (требуется scrcpy + Android 11+)
+  --video <файл>     Видео файл (для merge)
+  --audio <файл>     Аудио файл (для merge)
+  --output <файл>    Выходной файл (для merge, по умолчанию: video_with_audio.mp4)
   --width <px>       Ширина (для resize)
   --height <px>      Высота (для resize)
   --dir <путь>       Директория для файлов (по умолчанию: ./captures)
@@ -415,8 +569,14 @@ function printHelp() {
   # Скриншот с именем для RuStore
   node scripts/media-capture.mjs screenshot --name rustore-1-start --resize 2560x1440
 
-  # Записать промо-видео 15 секунд
+  # Записать промо-видео 15 секунд (только видео)
   node scripts/media-capture.mjs record --duration 15 --name promo --resize 2560x1440
+
+  # Записать видео со звуком (scrcpy + Android 11+)
+  node scripts/media-capture.mjs record --audio --duration 15 --name promo --resize 2560x1440
+
+  # Объединить видео + аудио файл (ffmpeg)
+  node scripts/media-capture.mjs merge --video captures/gameplay.mp4 --audio sound.ogg
 
   # Установить разрешение 16:9 на телефоне
   node scripts/media-capture.mjs resize --width 2560 --height 1440
@@ -433,7 +593,7 @@ function printHelp() {
 
 function parseArgs(argv) {
   const args = {};
-  const commands = ['screenshot', 'record', 'resize', 'reset-resize', 'pull', 'info', 'help'];
+  const commands = ['screenshot', 'record', 'merge', 'resize', 'reset-resize', 'pull', 'info', 'help'];
 
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
@@ -462,6 +622,7 @@ checkAdb();
 switch (command) {
   case 'screenshot':  cmdScreenshot(args); break;
   case 'record':      cmdRecord(args); break;
+  case 'merge':       cmdMerge(args); break;
   case 'resize':      cmdResize(args); break;
   case 'reset-resize': cmdResetResize(); break;
   case 'pull':        cmdPull(args); break;

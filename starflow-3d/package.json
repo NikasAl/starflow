@@ -22,6 +22,8 @@
     "capture:screenshot": "node scripts/media-capture.mjs screenshot --resize 2560x1440",
     "capture:record": "node scripts/media-capture.mjs record --duration 30 --resize 2560x1440",
     "capture:promo": "node scripts/media-capture.mjs record --duration 15 --name promo --resize 2560x1440",
+    "capture:record-audio": "node scripts/media-capture.mjs record --audio --duration 30 --resize 2560x1440",
+    "capture:promo-audio": "node scripts/media-capture.mjs record --audio --duration 15 --name promo --resize 2560x1440",
     "capture:info": "node scripts/media-capture.mjs info",
     "capture:resize": "node scripts/media-capture.mjs resize --width 2560 --height 1440",
     "capture:reset": "node scripts/media-capture.mjs reset-resize"
