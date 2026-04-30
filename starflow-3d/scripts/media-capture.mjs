@@ -110,6 +110,44 @@ function getPhysicalResolution() {
   return null;
 }
 
+// ── Ориентация ──────────────────────────────────────────────────
+
+// Сохранить текущую ориентацию и принудительно включить landscape
+function forceLandscape() {
+  const currentRotation = runQuiet(adbCmd('shell settings get system user_rotation'));
+  if (currentRotation) {
+    process._savedRotation = currentRotation;
+  }
+  // 0 = portrait, 1 = landscape. Для Cmd: wm orientation, но надёжнее через settings
+  runQuiet(adbCmd('shell settings put system user_rotation 1'));
+  runQuiet(adbCmd('shell settings put global accelerometer_rotation 0'));
+  run('sleep 0.5');
+  console.log('[INFO] Ориентация: landscape (принудительно)');
+}
+
+// Вернуть ориентацию
+function restoreOrientation() {
+  if (process._savedRotation !== undefined) {
+    runQuiet(adbCmd(`shell settings put system user_rotation ${process._savedRotation}`));
+    runQuiet(adbCmd('shell settings put global accelerometer_rotation 1'));
+    console.log('[INFO] Ориентация: восстановлена');
+  } else {
+    // Не знаем исходную — включаем обратно автоповорот
+    runQuiet(adbCmd('shell settings put global accelerometer_rotation 1'));
+    console.log('[INFO] Ориентация: автоповорот включён');
+  }
+}
+
+// Установить разрешение с принудительным landscape
+function setResolutionWithLandscape(w, h) {
+  console.log(`[INFO] Установка разрешения: ${w}x${h} (landscape)`);
+  // Сначала фиксируем ориентацию, потом меняем разрешение
+  forceLandscape();
+  run(adbCmd(`shell wm size ${w}x${h}`));
+  // Ждём пересоздание Surface + перерисовку
+  run('sleep 2');
+}
+
 // ── Команды ────────────────────────────────────────────────────
 
 function cmdScreenshot(args) {
@@ -119,12 +157,9 @@ function cmdScreenshot(args) {
   console.log('\n📸 Скриншот устройства');
   console.log('─'.repeat(40));
 
-  // Установить разрешение если нужно
+  // Установить разрешение + landscape если нужно
   if (resize) {
-    console.log(`[INFO] Установка разрешения: ${resize.width}x${resize.height}`);
-    run(adbCmd(`shell wm size ${resize.width}x${resize.height}`));
-    // Ждём пересоздание Surface
-    run('sleep 1');
+    setResolutionWithLandscape(resize.width, resize.height);
   }
 
   // Снять скриншот
@@ -145,10 +180,11 @@ function cmdScreenshot(args) {
 
   console.log(`\n✅ Сохранено: ${localPath}`);
 
-  // Вернуть разрешение если меняли
+  // Вернуть разрешение + ориентацию если меняли
   if (resize) {
-    console.log('[INFO] Возвращаем исходное разрешение...');
+    console.log('[INFO] Возвращаем исходное разрешение и ориентацию...');
     resetResolution();
+    restoreOrientation();
   }
 }
 
@@ -161,11 +197,9 @@ function cmdRecord(args) {
   console.log(`\n🎥 Запись видео (${duration} сек, ${Math.round(bitrate / 1000000)} Mbps)`);
   console.log('─'.repeat(40));
 
-  // Установить разрешение если нужно
+  // Установить разрешение + landscape если нужно
   if (resize) {
-    console.log(`[INFO] Установка разрешения: ${resize.width}x${resize.height}`);
-    run(adbCmd(`shell wm size ${resize.width}x${resize.height}`));
-    run('sleep 1');
+    setResolutionWithLandscape(resize.width, resize.height);
   }
 
   // Удалить старый файл
@@ -207,10 +241,11 @@ function cmdRecord(args) {
 
     console.log(`\n✅ Сохранено: ${localPath}`);
 
-    // Вернуть разрешение если меняли
+    // Вернуть разрешение + ориентацию если меняли
     if (resize) {
-      console.log('[INFO] Возвращаем исходное разрешение...');
+      console.log('[INFO] Возвращаем исходное разрешение и ориентацию...');
       resetResolution();
+      restoreOrientation();
     }
   });
 
@@ -218,6 +253,15 @@ function cmdRecord(args) {
   process.on('SIGINT', () => {
     console.log('\n[INFO] Останавливаем запись...');
     recordProcess.kill('SIGINT');
+  });
+
+  // Graceful shutdown на SIGTERM (если kill процесса)
+  process.on('SIGTERM', () => {
+    if (resize) {
+      resetResolution();
+      restoreOrientation();
+    }
+    process.exit(0);
   });
 }
 
@@ -240,6 +284,7 @@ function cmdResize(args) {
   }
 
   run(adbCmd(`shell wm size ${width}x${height}`));
+  forceLandscape();
 
   const updated = getDeviceResolution();
   console.log(`[INFO] Установлено: ${updated?.width}x${updated?.height}`);
@@ -259,9 +304,11 @@ function cmdResetResize() {
     run(adbCmd('shell wm size reset'));
   }
 
+  restoreOrientation();
+
   const current = getDeviceResolution();
   console.log(`[INFO] Текущее: ${current?.width}x${current?.height}`);
-  console.log('\n✅ Разрешение сброшено');
+  console.log('\n✅ Разрешение и ориентация сброшены');
 }
 
 function resetResolution() {
