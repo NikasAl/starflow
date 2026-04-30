@@ -4,16 +4,18 @@
  * media-capture.mjs — Утилита для скриншотов и записи видео через ADB
  *
  * Использование:
- *   node scripts/media-capture.mjs screenshot [--name my-screen] [--resize WxH]
- *   node scripts/media-capture.mjs record [--name my-video] [--duration 30] [--resize WxH]
+ *   node scripts/media-capture.mjs screenshot [--name my-screen] [--resize WxH] [--crop 16:9]
+ *   node scripts/media-capture.mjs record [--name my-video] [--duration 30] [--resize WxH] [--audio]
+ *   node scripts/media-capture.mjs merge --video video.mp4 --audio sound.ogg
  *   node scripts/media-capture.mjs resize --width 720 --height 1280
  *   node scripts/media-capture.mjs reset-resize
- *   node scripts/media-capture.mjs pull [--dir ./captures]
+ *   node scripts/media-capture.mjs info
  *
  * Примеры:
- *   node scripts/media-capture.mjs screenshot --resize 2560x1440
- *   node scripts/media-capture.mjs screenshot --name start-screen
+ *   node scripts/media-capture.mjs screenshot --crop 16:9
+ *   node scripts/media-capture.mjs screenshot --name start-screen --crop 2560x1440
  *   node scripts/media-capture.mjs record --duration 15 --name promo
+ *   node scripts/media-capture.mjs record --audio --duration 15 --name promo
  *   node scripts/media-capture.mjs resize --width 2560 --height 1440
  *   node scripts/media-capture.mjs reset-resize
  */
@@ -115,27 +117,38 @@ function getPhysicalResolution() {
 // Сохранить текущую ориентацию и принудительно включить landscape
 function forceLandscape() {
   const currentRotation = runQuiet(adbCmd('shell settings get system user_rotation'));
-  if (currentRotation) {
+  if (currentRotation && currentRotation !== 'null') {
     process._savedRotation = currentRotation;
   }
-  // 0 = portrait, 1 = landscape. Для Cmd: wm orientation, но надёжнее через settings
-  runQuiet(adbCmd('shell settings put system user_rotation 1'));
+
+  // 1. Отключить автоповорот
   runQuiet(adbCmd('shell settings put global accelerometer_rotation 0'));
-  run('sleep 0.5');
-  console.log('[INFO] Ориентация: landscape (принудительно)');
+
+  // 2. Попробовать wm orientation (надёжнее на Android 12+)
+  const wmOrientResult = runQuiet(adbCmd('shell wm orientation 1'));
+
+  // 3. Также через settings (надёжнее на Samsung и др. OEM)
+  runQuiet(adbCmd('shell settings put system user_rotation 1'));
+
+  // 4. Подождать пока система применит
+  run('sleep 1');
+
+  // 5. Проверить результат
+  const check = runQuiet(adbCmd('shell settings get system user_rotation'));
+  if (check === '1') {
+    console.log('[INFO] Ориентация: landscape (принудительно)');
+  } else {
+    console.log('[WARN] Ориентация может не быть landscape (user_rotation=' + check + ')');
+  }
 }
 
 // Вернуть ориентацию
 function restoreOrientation() {
-  if (process._savedRotation !== undefined) {
+  if (process._savedRotation !== undefined && process._savedRotation !== 'null') {
     runQuiet(adbCmd(`shell settings put system user_rotation ${process._savedRotation}`));
-    runQuiet(adbCmd('shell settings put global accelerometer_rotation 1'));
     console.log('[INFO] Ориентация: восстановлена');
-  } else {
-    // Не знаем исходную — включаем обратно автоповорот
-    runQuiet(adbCmd('shell settings put global accelerometer_rotation 1'));
-    console.log('[INFO] Ориентация: автоповорот включён');
   }
+  // НЕ включаем обратно автоповорот — по умолчанию автоповорот выключен
 }
 
 // Установить разрешение с принудительным landscape
@@ -143,9 +156,23 @@ function setResolutionWithLandscape(w, h) {
   console.log(`[INFO] Установка разрешения: ${w}x${h} (landscape)`);
   // Сначала фиксируем ориентацию, потом меняем разрешение
   forceLandscape();
-  run(adbCmd(`shell wm size ${w}x${h}`));
+  runQuiet(adbCmd(`shell wm size ${w}x${h}`));
+  // wm size сбрасывает ориентацию — сразу восстанавливаем
+  runQuiet(adbCmd('shell settings put system user_rotation 1'));
+  try { runQuiet(adbCmd('shell wm orientation 1')); } catch {}
   // Ждём пересоздание Surface + перерисовку
   run('sleep 2');
+  // Финальная проверка
+  const res = getDeviceResolution();
+  if (res && (res.width !== w || res.height !== h)) {
+    const phys = getPhysicalResolution();
+    console.log(`[WARN] Разрешение ${w}x${h} не применилось. Текущее: ${res.width}x${res.height}`);
+    if (phys) {
+      console.log(`[INFO] Физическое разрешение: ${phys.width}x${phys.height}`);
+      console.log('[INFO] Устройство может не поддерживать это разрешение.');
+      console.log('[HINT] Попробуйте разрешение с таким же соотношением сторон.');
+    }
+  }
 }
 
 function checkScrcpy() {
@@ -169,6 +196,7 @@ function checkFfmpeg() {
 function cmdScreenshot(args) {
   const name = args.name || `screenshot_${getTimestamp()}`;
   const resize = args.resize ? parseResolution(args.resize) : null;
+  const crop = args.crop || null; // формат: '16:9' или '2560x1440'
 
   console.log('\n📸 Скриншот устройства');
   console.log('─'.repeat(40));
@@ -185,8 +213,8 @@ function cmdScreenshot(args) {
   const outDir = resolve(DEFAULTS.outputDir);
   ensureDir(outDir);
 
-  const filename = `${name}.png`;
-  const localPath = join(outDir, filename);
+  let filename = `${name}.png`;
+  let localPath = join(outDir, filename);
 
   console.log(`[INFO] Копируем: ${filename}`);
   run(adbCmd(`pull ${DEVICE_TMP_SCREENSHOT} "${localPath}"`));
@@ -194,13 +222,61 @@ function cmdScreenshot(args) {
   // Удалить временный файл с устройства
   runQuiet(adbCmd(`shell rm ${DEVICE_TMP_SCREENSHOT}`));
 
+  // Обрезать до нужного соотношения если --crop
+  if (crop) {
+    const cropPath = localPath.replace(/\.png$/i, '_cropped.png');
+    const cropResult = cropImage(localPath, cropPath, crop);
+    if (cropResult) {
+      localPath = cropPath;
+      filename = `${name}_cropped.png`;
+    }
+  }
+
   console.log(`\n✅ Сохранено: ${localPath}`);
 
   // Вернуть разрешение + ориентацию если меняли
   if (resize) {
     console.log('[INFO] Возвращаем исходное разрешение и ориентацию...');
     resetResolution();
-    restoreOrientation();
+  }
+}
+
+// Обрезать изображение до нужного соотношения сторон (landscape)
+function cropImage(inputPath, outputPath, crop) {
+  if (!checkFfmpeg()) {
+    console.log('[WARN] ffmpeg не найден — обрезка пропущена');
+    return false;
+  }
+
+  // Определяем целевое соотношение
+  let targetW, targetH;
+  if (crop.match(/^\d+:\d+$/)) {
+    const [rw, rh] = crop.split(':').map(Number);
+    targetW = rw;
+    targetH = rh;
+  } else if (crop.match(/^\d+x\d+$/)) {
+    const parsed = parseResolution(crop);
+    targetW = parsed.width;
+    targetH = parsed.height;
+  } else {
+    console.log(`[WARN] Неверный формат --crop: "${crop}". Используйте 16:9 или 2560x1440`);
+    return false;
+  }
+
+  console.log(`[INFO] Обрезка до ${targetW}:${targetH}...`);
+
+  // ffmpeg: scale to fit, then crop center
+  // 1. scale=w*h*targetW/targetH:h — масштабируем так чтобы ширина совпала
+  // 2. crop=targetW/targetH*ih:ih — обрезаем по центру
+  const vf = `scale=trunc(iw*${targetH}/${targetW}/2)*2:trunc(ih/2)*2,crop=trunc(ih*${targetW}/${targetH}/2)*2:ih`;
+
+  try {
+    run(`ffmpeg -y -i "${inputPath}" -vf "${vf}" -q:v 2 "${outputPath}"`);
+    console.log(`[INFO] Обрезано: ${outputPath}`);
+    return true;
+  } catch (e) {
+    console.log(`[WARN] Обрезка не удалась: ${e.message}`);
+    return false;
   }
 }
 
@@ -417,15 +493,41 @@ function cmdResize(args) {
   console.log('─'.repeat(40));
 
   const current = getDeviceResolution();
+  const physical = getPhysicalResolution();
   if (current) {
     console.log(`[INFO] Текущее: ${current.width}x${current.height}`);
   }
+  if (physical) {
+    console.log(`[INFO] Физическое: ${physical.width}x${physical.height}`);
+  }
 
-  run(adbCmd(`shell wm size ${width}x${height}`));
+  // 1. Сначала принудительно устанавливаем landscape
   forceLandscape();
 
+  // 2. Устанавливаем разрешение
+  run(adbCmd(`shell wm size ${width}x${height}`));
+
+  // 3. wm size сбрасывает ориентацию — сразу восстанавливаем
+  runQuiet(adbCmd('shell settings put system user_rotation 1'));
+  try { runQuiet(adbCmd('shell wm orientation 1')); } catch {}
+
+  // 4. Ждём пересоздание
+  run('sleep 2');
+
+  // 5. Проверяем результат
   const updated = getDeviceResolution();
-  console.log(`[INFO] Установлено: ${updated?.width}x${updated?.height}`);
+  if (updated) {
+    if (updated.width === width && updated.height === height) {
+      console.log(`[INFO] Установлено: ${updated.width}x${updated.height}`);
+    } else {
+      console.log(`[WARN] Разрешение ${width}x${height} НЕ применилось!`);
+      console.log(`[INFO] Фактическое: ${updated.width}x${updated.height}`);
+      console.log();
+      console.log('[TIP] Ваше устройство может не поддерживать произвольные разрешения.');
+      console.log('      Попробуйте скриншот с обрезкой до 16:9:');
+      console.log(`      node scripts/media-capture.mjs screenshot --crop 16:9`);
+    }
+  }
   console.log('\n💡 Для возврата: node scripts/media-capture.mjs reset-resize');
 }
 
@@ -436,17 +538,20 @@ function cmdResetResize() {
   const physical = getPhysicalResolution();
   if (physical) {
     console.log(`[INFO] Физическое разрешение: ${physical.width}x${physical.height}`);
-    run(adbCmd(`shell wm size ${physical.width}x${physical.height}`));
+    runQuiet(adbCmd(`shell wm size ${physical.width}x${physical.height}`));
   } else {
     // Fallback — сброс через команду
-    run(adbCmd('shell wm size reset'));
+    runQuiet(adbCmd('shell wm size reset'));
   }
 
-  restoreOrientation();
+  // Восстанавливаем landscape после сброса
+  runQuiet(adbCmd('shell settings put system user_rotation 1'));
+  try { runQuiet(adbCmd('shell wm orientation 1')); } catch {}
+  run('sleep 1');
 
   const current = getDeviceResolution();
   console.log(`[INFO] Текущее: ${current?.width}x${current?.height}`);
-  console.log('\n✅ Разрешение и ориентация сброшены');
+  console.log('\n✅ Разрешение сброшено, ориентация: landscape');
 }
 
 function resetResolution() {
@@ -552,6 +657,7 @@ function printHelp() {
 Опции:
   --name <имя>       Имя файла (по умолчанию: timestamp)
   --resize WxH       Временное разрешение для скриншота/видео
+  --crop W:H         Обрезать до соотношения (16:9, 18:9) или размера (2560x1440)
   --duration <сек>   Длительность записи видео (по умолчанию: 30)
   --bitrate <bps>    Битрейт видео (по умолчанию: 8000000 = 8 Mbps)
   --audio            Записывать со звуком (требуется scrcpy + Android 11+)
@@ -563,11 +669,17 @@ function printHelp() {
   --dir <путь>       Директория для файлов (по умолчанию: ./captures)
 
 Примеры:
-  # Скриншот в 16:9 (временно установит разрешение, потом вернёт)
-  node scripts/media-capture.mjs screenshot --resize 2560x1440
+  # Скриншот с обрезкой до 16:9 (без изменения разрешения устройства)
+  node scripts/media-capture.mjs screenshot --crop 16:9
 
-  # Скриншот с именем для RuStore
-  node scripts/media-capture.mjs screenshot --name rustore-1-start --resize 2560x1440
+  # Скриншот с обрезкой до точного размера 2560x1440
+  node scripts/media-capture.mjs screenshot --crop 2560x1440
+
+  # Скриншот в 16:9 с именем для RuStore
+  node scripts/media-capture.mjs screenshot --name rustore-1-start --crop 16:9
+
+  # Скриншот через смену разрешения (если устройство поддерживает)
+  node scripts/media-capture.mjs screenshot --resize 2560x1440
 
   # Записать промо-видео 15 секунд (только видео)
   node scripts/media-capture.mjs record --duration 15 --name promo --resize 2560x1440
