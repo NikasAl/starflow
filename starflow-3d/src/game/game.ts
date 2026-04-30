@@ -66,7 +66,7 @@ let running = false;
 let paused = false;
 let lastTime = 0;
 let autoSaveTimer = 0;
-let isFirstLevel = true; // Track first level for intro animation
+const INTRO_SHOWN_KEY = 'starflow_intro_shown';
 
 // Pending payment tracking
 let pendingInvoiceId: string | null = null;
@@ -362,9 +362,9 @@ function initGameScene(canvas: HTMLCanvasElement): void {
   lastTime = performance.now();
   requestAnimationFrame(gameLoop);
 
-  // Play intro animation on first level, or level title on subsequent levels
-  if (isFirstLevel) {
-    isFirstLevel = false;
+  // Play intro animation only on the very first launch (persisted in localStorage)
+  if (!localStorage.getItem(INTRO_SHOWN_KEY) && currentLevel === 1) {
+    localStorage.setItem(INTRO_SHOWN_KEY, '1');
     playIntro().catch(() => {});
   }
 }

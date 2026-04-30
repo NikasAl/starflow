@@ -12,6 +12,7 @@ let introActive = false;
 let introCancelled = false;
 let introElement: HTMLDivElement | null = null;
 let skipButton: HTMLButtonElement | null = null;
+const introTimers: ReturnType<typeof setTimeout>[] = []; // track all setTimeout for cleanup
 
 // Callbacks — set by game.ts
 let getGameState: (() => GameState) | null = null;
@@ -45,6 +46,7 @@ export async function playIntro(): Promise<void> {
 
   introActive = true;
   introCancelled = false;
+  introTimers.length = 0; // clear timer tracking
   setGamePaused(true);
   showSkipButton();
 
@@ -221,7 +223,7 @@ function showIntroText(text: string, color: number): Promise<void> {
       });
     });
 
-    setTimeout(resolve, 500);
+    introTimers.push(setTimeout(resolve, 500));
   });
 }
 
@@ -280,29 +282,29 @@ function showControlsGuide(): Promise<void> {
       const item = items[i];
 
       // Highlight: pop bigger + bright gold color
-      setTimeout(() => {
+      introTimers.push(setTimeout(() => {
         if (!introElement) return;
         item.style.opacity = '1';
         item.style.transform = 'scale(1.18)';
         item.style.color = '#ffcc00';
         item.style.textShadow = '0 0 16px rgba(255,204,0,0.7), 0 0 30px rgba(255,204,0,0.3), 0 2px 8px rgba(0,0,0,0.9)';
-      }, delay);
+      }, delay));
 
       // Dim back to normal (unless it's the last item)
       if (i < lines.length - 1) {
-        setTimeout(() => {
+        introTimers.push(setTimeout(() => {
           if (!introElement) return;
           item.style.opacity = '0.6';
           item.style.transform = 'scale(1)';
           item.style.color = 'rgba(255,255,255,0.8)';
           item.style.textShadow = '0 2px 8px rgba(0,0,0,0.8)';
-        }, delay + HIGHLIGHT_MS);
+        }, delay + HIGHLIGHT_MS));
       }
       // Last item stays highlighted until hideIntroText() is called
     }
 
     // Resolve after all items have been highlighted
-    setTimeout(resolve, lines.length * TOTAL_PER_ITEM + 100);
+    introTimers.push(setTimeout(resolve, lines.length * TOTAL_PER_ITEM + 100));
   });
 }
 
@@ -342,7 +344,7 @@ function showLevelTitle(state: GameState): Promise<void> {
       });
     });
 
-    setTimeout(resolve, 600);
+    introTimers.push(setTimeout(resolve, 600));
   });
 }
 
@@ -351,10 +353,10 @@ function hideIntroText(duration: number): Promise<void> {
     if (introElement) {
       introElement.style.transition = `opacity ${duration}ms ease-in`;
       introElement.style.opacity = '0';
-      setTimeout(() => {
+      introTimers.push(setTimeout(() => {
         removeIntroElement();
         resolve();
-      }, duration);
+      }, duration));
     } else {
       resolve();
     }
@@ -367,10 +369,10 @@ function hideLevelTitle(duration: number): Promise<void> {
       introElement.style.transition = `opacity ${duration}ms ease-in, transform ${duration}ms ease-in`;
       introElement.style.opacity = '0';
       introElement.style.transform = 'translate(-50%, -50%) scale(1.15)';
-      setTimeout(() => {
+      introTimers.push(setTimeout(() => {
         removeIntroElement();
         resolve();
-      }, duration);
+      }, duration));
     } else {
       resolve();
     }
@@ -432,8 +434,13 @@ function removeSkipButton(): void {
 
 function cleanup(): void {
   introActive = false;
+  // Cancel all pending timers created by intro
+  for (const t of introTimers) clearTimeout(t);
+  introTimers.length = 0;
   removeIntroElement();
   removeSkipButton();
+  // Safety: remove any orphaned intro overlay elements
+  document.querySelectorAll('.intro-text-overlay').forEach(el => el.remove());
   if (disableSmoothCamera) disableSmoothCamera();
   if (setGamePaused) setGamePaused(false);
 }
@@ -442,6 +449,7 @@ function wait(ms: number): Promise<void> {
   return new Promise(resolve => {
     if (introCancelled) { resolve(); return; }
     const timer = setTimeout(resolve, ms);
+    introTimers.push(timer);
     // Check cancellation periodically
     const check = setInterval(() => {
       if (introCancelled) {
