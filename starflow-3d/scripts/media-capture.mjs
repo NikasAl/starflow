@@ -282,18 +282,15 @@ function cropImage(inputPath, outputPath, crop) {
 
 // Пережать видео в целевое разрешение с letterbox (чёрные полосы по бокам/сверху-снизу)
 function resizeVideo(inputPath, outputPath, targetW, targetH) {
-  // force_original_aspect_ratio=decrease: вписываем видео с сохранением пропорций
-  // pad=targetW:targetH:(ow-iw)/2:(oh-ih)/2:letterbox_color: чёрные полосы по центру
   const vf = `scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2:black`;
   const cmd = `ffmpeg -y -i "${inputPath}" -vf "${vf}" -c:v libx264 -preset fast -crf 23 -c:a copy "${outputPath}"`;
-  try {
-    run(cmd);
+  const result = runQuiet(cmd);
+  if (result !== null) {
     console.log(`[INFO] Конвертация завершена: ${outputPath}`);
     return true;
-  } catch (e) {
-    console.log(`[WARN] Конвертация не удалась: ${e.message}`);
-    return false;
   }
+  console.log('[WARN] Конвертация не удалась (ffmpeg error)');
+  return false;
 }
 
 function cmdRecord(args) {
@@ -326,6 +323,11 @@ function cmdRecord(args) {
     console.log(`[INFO] Запись в нативном разрешении: ${current.width}x${current.height}`);
   }
 
+  // Разбудить экран если выключен (screenrecord не работает с выключенным экраном)
+  runQuiet(adbCmd('shell input keyevent WAKEUP'));
+  runQuiet(adbCmd('shell input keyevent 82'));
+  run('sleep 1');
+
   // Удалить старый файл
   runQuiet(adbCmd(`shell rm ${DEVICE_TMP_VIDEO}`));
 
@@ -343,10 +345,19 @@ function cmdRecord(args) {
       console.log('[INFO] Запись остановлена.');
     }
 
-    // Проверяем что файл существует на устройстве
+    // Проверяем что файл существует и имеет размер
     const check = runQuiet(adbCmd(`shell ls -la ${DEVICE_TMP_VIDEO}`));
     if (!check) {
-      console.log('[INFO] Видео не записалось (возможно остановлено слишком рано).');
+      console.log('[INFO] Видео не записалось.');
+      return;
+    }
+
+    // Проверяем минимальный размер (corrupt файл если запись оборвалась)
+    const sizeMatch = check.match(/\d+/);
+    const fileSize = sizeMatch ? parseInt(sizeMatch[0]) : 0;
+    if (fileSize < 1000) {
+      console.log(`[WARN] Файл слишком маленький (${fileSize} байт), запись скорее всего не удалась.`);
+      runQuiet(adbCmd(`shell rm ${DEVICE_TMP_VIDEO}`));
       return;
     }
 
@@ -427,6 +438,11 @@ function cmdRecordScrcpy(args) {
   if (current) {
     console.log(`[INFO] Запись в нативном разрешении: ${current.width}x${current.height}`);
   }
+
+  // Разбудить экран если выключен
+  runQuiet(adbCmd('shell input keyevent WAKEUP'));
+  runQuiet(adbCmd('shell input keyevent 82'));
+  run('sleep 1');
 
   console.log('[INFO] Начинаем запись (scrcpy --no-display --record)...');
   console.log(`[INFO] Для остановки нажмите Ctrl+C (или подождите ${maxDuration} сек)`);
