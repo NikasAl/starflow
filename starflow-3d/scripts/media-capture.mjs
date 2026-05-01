@@ -280,6 +280,22 @@ function cropImage(inputPath, outputPath, crop) {
   }
 }
 
+// Пережать видео в целевое разрешение с letterbox (чёрные полосы по бокам/сверху-снизу)
+function resizeVideo(inputPath, outputPath, targetW, targetH) {
+  // force_original_aspect_ratio=decrease: вписываем видео с сохранением пропорций
+  // pad=targetW:targetH:(ow-iw)/2:(oh-ih)/2:letterbox_color: чёрные полосы по центру
+  const vf = `scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2:black`;
+  const cmd = `ffmpeg -y -i "${inputPath}" -vf "${vf}" -c:v libx264 -preset fast -crf 23 -c:a copy "${outputPath}"`;
+  try {
+    run(cmd);
+    console.log(`[INFO] Конвертация завершена: ${outputPath}`);
+    return true;
+  } catch (e) {
+    console.log(`[WARN] Конвертация не удалась: ${e.message}`);
+    return false;
+  }
+}
+
 function cmdRecord(args) {
   const name = args.name || `recording_${getTimestamp()}`;
   const duration = parseInt(args.duration) || DEFAULTS.videoDuration;
@@ -293,15 +309,21 @@ function cmdRecord(args) {
     return;
   }
 
-  console.log(`\n🎥 Запись видео (${duration} сек, ${Math.round(bitrate / 1000000)} Mbps)`);
+  if (resize) {
+    console.log(`\n🎥 Запись видео (${duration} сек, ${Math.round(bitrate / 1000000)} Mbps)`);
+    console.log(`   Целевое разрешение: ${resize.width}x${resize.height} (ffmpeg post-process)`);
+  } else {
+    console.log(`\n🎥 Запись видео (${duration} сек, ${Math.round(bitrate / 1000000)} Mbps)`);
+  }
   console.log('─'.repeat(40));
   console.log('⚠️  screenrecord НЕ записывает звук (ограничение Android).');
   console.log('   Для записи со звуком: --audio (требуется scrcpy)');
   console.log();
 
-  // Установить разрешение + landscape если нужно
-  if (resize) {
-    setResolutionWithLandscape(resize.width, resize.height);
+  // Записываем в нативном разрешении устройства (не меняем wm size)
+  const current = getDeviceResolution();
+  if (current) {
+    console.log(`[INFO] Запись в нативном разрешении: ${current.width}x${current.height}`);
   }
 
   // Удалить старый файл
@@ -325,29 +347,41 @@ function cmdRecord(args) {
     const check = runQuiet(adbCmd(`shell ls -la ${DEVICE_TMP_VIDEO}`));
     if (!check) {
       console.log('[INFO] Видео не записалось (возможно остановлено слишком рано).');
-      if (resize) resetResolution();
       return;
     }
 
     const outDir = resolve(DEFAULTS.outputDir);
     ensureDir(outDir);
 
-    const filename = `${name}.mp4`;
-    const localPath = join(outDir, filename);
+    const rawFile = `${name}_raw.mp4`;
+    const rawPath = join(outDir, rawFile);
 
-    console.log(`[INFO] Копируем: ${filename}`);
-    run(adbCmd(`pull ${DEVICE_TMP_VIDEO} "${localPath}"`));
+    console.log(`[INFO] Копируем: ${rawFile}`);
+    run(adbCmd(`pull ${DEVICE_TMP_VIDEO} "${rawPath}"`));
 
-    // Удалить временный файл
+    // Удалить временный файл с устройства
     runQuiet(adbCmd(`shell rm ${DEVICE_TMP_VIDEO}`));
 
-    console.log(`\n✅ Сохранено: ${localPath} (без звука)`);
-
-    // Вернуть разрешение + ориентацию если меняли
+    // Пост-обработка через ffmpeg если задан --resize
     if (resize) {
-      console.log('[INFO] Возвращаем исходное разрешение и ориентацию...');
-      resetResolution();
-      restoreOrientation();
+      if (!checkFfmpeg()) {
+        console.log('[WARN] ffmpeg не найден — сохранено без изменения размера');
+        console.log(`\n✅ Сохранено: ${rawPath} (без звука)`);
+        return;
+      }
+      const finalFile = `${name}.mp4`;
+      const finalPath = join(outDir, finalFile);
+      console.log(`[INFO] Конвертация в ${resize.width}x${resize.height} (letterbox)...`);
+      const ok = resizeVideo(rawPath, finalPath, resize.width, resize.height);
+      if (ok) {
+        // Удаляем исходник
+        try { require('fs').unlinkSync(rawPath); } catch {}
+        console.log(`\n✅ Сохранено: ${finalPath} (${resize.width}x${resize.height}, без звука)`);
+      } else {
+        console.log(`\n✅ Сохранено: ${rawPath} (без обработки, без звука)`);
+      }
+    } else {
+      console.log(`\n✅ Сохранено: ${rawPath} (без звука)`);
     }
   });
 
@@ -357,12 +391,8 @@ function cmdRecord(args) {
     recordProcess.kill('SIGINT');
   });
 
-  // Graceful shutdown на SIGTERM (если kill процесса)
+  // Graceful shutdown на SIGTERM
   process.on('SIGTERM', () => {
-    if (resize) {
-      resetResolution();
-      restoreOrientation();
-    }
     process.exit(0);
   });
 }
@@ -382,14 +412,20 @@ function cmdRecordScrcpy(args) {
 
   const outDir = resolve(DEFAULTS.outputDir);
   ensureDir(outDir);
-  const filePath = join(outDir, `${name}.mp4`);
+  const rawPath = join(outDir, `${name}_raw.mp4`);
 
-  console.log(`\n🎥 Запись видео со звуком (scrcpy, ${maxDuration} сек)`);
+  if (resize) {
+    console.log(`\n🎥 Запись видео со звуком (scrcpy, ${maxDuration} сек)`);
+    console.log(`   Целевое разрешение: ${resize.width}x${resize.height} (ffmpeg post-process)`);
+  } else {
+    console.log(`\n🎥 Запись видео со звуком (scrcpy, ${maxDuration} сек)`);
+  }
   console.log('─'.repeat(40));
 
-  // Установить разрешение + landscape если нужно
-  if (resize) {
-    setResolutionWithLandscape(resize.width, resize.height);
+  // Записываем в нативном разрешении устройства
+  const current = getDeviceResolution();
+  if (current) {
+    console.log(`[INFO] Запись в нативном разрешении: ${current.width}x${current.height}`);
   }
 
   console.log('[INFO] Начинаем запись (scrcpy --no-display --record)...');
@@ -400,7 +436,7 @@ function cmdRecordScrcpy(args) {
     'scrcpy',
     '--no-display',
     '--no-window',
-    '--record', filePath,
+    '--record', rawPath,
     '--record-format', 'mp4',
     '--max-size', '0',          // original resolution
     '--max-fps', '60',
@@ -414,19 +450,38 @@ function cmdRecordScrcpy(args) {
 
   recordProcess.on('close', (code) => {
     console.log();
-    if (existsSync(filePath)) {
-      console.log(`✅ Сохранено: ${filePath} (со звуком)`);
-    } else {
+    if (!existsSync(rawPath)) {
       console.log('❌ Файл не создан. Возможные причины:');
       console.log('   - Android < 11 (нужен Android 11+ для записи звука)');
       console.log('   - scrcpy версия < 2.0');
       console.log('   - Устройство не поддерживает захват аудио');
+      return;
     }
 
+    // Пост-обработка через ffmpeg если задан --resize
     if (resize) {
-      console.log('[INFO] Возвращаем исходное разрешение и ориентацию...');
-      resetResolution();
-      restoreOrientation();
+      if (!checkFfmpeg()) {
+        console.log('[WARN] ffmpeg не найден — сохранено без изменения размера');
+        const finalPath = rawPath.replace(/_raw\.mp4$/i, '.mp4');
+        try { require('fs').renameSync(rawPath, finalPath); } catch {}
+        console.log(`✅ Сохранено: ${finalPath} (со звуком)`);
+        return;
+      }
+      const finalPath = join(outDir, `${name}.mp4`);
+      console.log(`[INFO] Конвертация в ${resize.width}x${resize.height} (letterbox)...`);
+      const ok = resizeVideo(rawPath, finalPath, resize.width, resize.height);
+      if (ok) {
+        try { require('fs').unlinkSync(rawPath); } catch {}
+        console.log(`✅ Сохранено: ${finalPath} (${resize.width}x${resize.height}, со звуком)`);
+      } else {
+        const fallback = rawPath.replace(/_raw\.mp4$/i, '.mp4');
+        try { require('fs').renameSync(rawPath, fallback); } catch {}
+        console.log(`✅ Сохранено: ${fallback} (со звуком, без изменения размера)`);
+      }
+    } else {
+      const finalPath = rawPath.replace(/_raw\.mp4$/i, '.mp4');
+      try { require('fs').renameSync(rawPath, finalPath); } catch {}
+      console.log(`✅ Сохранено: ${finalPath} (со звуком)`);
     }
   });
 
@@ -436,10 +491,6 @@ function cmdRecordScrcpy(args) {
   });
 
   process.on('SIGTERM', () => {
-    if (resize) {
-      resetResolution();
-      restoreOrientation();
-    }
     process.exit(0);
   });
 }
@@ -656,8 +707,9 @@ function printHelp() {
 
 Опции:
   --name <имя>       Имя файла (по умолчанию: timestamp)
-  --resize WxH       Временное разрешение для скриншота/видео
-  --crop W:H         Обрезать до соотношения (16:9, 18:9) или размера (2560x1440)
+  --resize WxH       Целевое разрешение видео (ffmpeg post-process с letterbox)
+                     Для скриншотов: временная смена разрешения устройства
+  --crop W:H         Обрезать скриншот до соотношения (16:9) или размера (2560x1440)
   --duration <сек>   Длительность записи видео (по умолчанию: 30)
   --bitrate <bps>    Битрейт видео (по умолчанию: 8000000 = 8 Mbps)
   --audio            Записывать со звуком (требуется scrcpy + Android 11+)
@@ -682,10 +734,13 @@ function printHelp() {
   node scripts/media-capture.mjs screenshot --resize 2560x1440
 
   # Записать промо-видео 15 секунд (только видео)
-  node scripts/media-capture.mjs record --duration 15 --name promo --resize 2560x1440
+  node scripts/media-capture.mjs record --duration 15 --name promo
+
+  # Записать видео и пережать в 1024x578 (16:9, letterbox через ffmpeg)
+  node scripts/media-capture.mjs record --duration 60 --name promo --resize 1024x578
 
   # Записать видео со звуком (scrcpy + Android 11+)
-  node scripts/media-capture.mjs record --audio --duration 15 --name promo --resize 2560x1440
+  node scripts/media-capture.mjs record --audio --duration 15 --name promo --resize 1024x578
 
   # Объединить видео + аудио файл (ffmpeg)
   node scripts/media-capture.mjs merge --video captures/gameplay.mp4 --audio sound.ogg
