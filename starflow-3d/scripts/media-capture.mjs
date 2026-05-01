@@ -353,8 +353,10 @@ function cmdRecord(args) {
     }
 
     // Проверяем минимальный размер (corrupt файл если запись оборвалась)
-    const sizeMatch = check.match(/\d+/);
-    const fileSize = sizeMatch ? parseInt(sizeMatch[0]) : 0;
+    // ls -la: "-rw-rw---- 1 shell sdcard_rw 1234567 2025-01-01 ..."
+    // размер — 5-е поле (индекс 4), берём через stat для надёжности
+    const fileSizeStr = runQuiet(adbCmd(`shell stat -c %s ${DEVICE_TMP_VIDEO}`));
+    const fileSize = fileSizeStr ? parseInt(fileSizeStr) : 0;
     if (fileSize < 1000) {
       console.log(`[WARN] Файл слишком маленький (${fileSize} байт), запись скорее всего не удалась.`);
       runQuiet(adbCmd(`shell rm ${DEVICE_TMP_VIDEO}`));
