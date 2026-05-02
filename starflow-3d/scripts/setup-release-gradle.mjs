@@ -108,6 +108,46 @@ gradle = gradle.replace(
 writeFileSync(appBuildGradle, gradle, 'utf-8');
 console.log(`[setup-release-gradle] Configured release build (version ${version}, code ${versionCode})`);
 
+// ---- Add productFlavors for different stores ----
+// Default flavor (rustore): applicationId = ru.kreagenium.starflow
+// GPlay flavor:             applicationId = ru.kreagenium.starflow.gp
+// Java source package stays ru.kreagenium.starflow for both.
+const productFlavorsBlock = `
+    flavorDimensions "store"
+    productFlavors {
+        rustore {
+            dimension "store"
+            // Default applicationId from capacitor.config.ts
+        }
+        gplay {
+            dimension "store"
+            applicationIdSuffix ".gp"
+        }
+    }
+`;
+
+if (!gradle.includes('productFlavors')) {
+  // Insert after defaultConfig block
+  if (gradle.includes('defaultConfig {')) {
+    gradle = gradle.replace(
+      /(defaultConfig\s*\{[^}]*\})/,
+      `$1${productFlavorsBlock}`
+    );
+  } else {
+    // Fallback: insert after 'android {'
+    gradle = gradle.replace(
+      /android\s*\{/,
+      `android {\n${productFlavorsBlock}`
+    );
+  }
+  writeFileSync(appBuildGradle, gradle, 'utf-8');
+  console.log('[setup-release-gradle] Added productFlavors: rustore, gplay');
+  console.log('  rustore: ru.kreagenium.starflow (default)');
+  console.log('  gplay:   ru.kreagenium.starflow.gp');
+} else {
+  console.log('[setup-release-gradle] productFlavors already configured.');
+}
+
 // ---- Ensure proguard-rules.pro exists ----
 const proguardPath = join(androidDir, 'app', 'proguard-rules.pro');
 if (!existsSync(proguardPath)) {
@@ -120,9 +160,6 @@ if (!existsSync(proguardPath)) {
 
 # Keep Capacitor bridge
 -keep class com.getcapacitor.** { *; }
-
-# Keep application class
--keep public class ru.kreagenium.starflow.MainActivity
 
 # Remove logging in release
 -assumenosideeffects class android.util.Log {
