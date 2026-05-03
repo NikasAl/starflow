@@ -70,9 +70,14 @@ class AdManager {
   }
 
   /**
-   * Show a rewarded ad. Returns true if the user earned the reward.
+   * Show a rewarded ad. Returns true if the ad was shown to the user.
    * Automatically selects the correct platform implementation.
    * Includes a safety timeout to prevent infinite hangs.
+   *
+   * NOTE: On native, the reward is granted whenever the ad promise resolves
+   * without error, regardless of the `granted` flag from the SDK. Mediation
+   * partners may not report the reward callback, but the user still watched
+   * the ad — so we consider it a successful show.
    */
   async showRewardedAd(): Promise<boolean> {
     console.log('[AdManager] showRewardedAd() called, sdkReady=' + this.sdkReady);
@@ -85,17 +90,21 @@ class AdManager {
     if (Capacitor.isNativePlatform()) {
       try {
         console.log('[AdManager] Calling native showRewardedAd with unitId=' + AD_CONFIG.android.rewardedAdUnitId);
-        const result = await withTimeout(
+        await withTimeout(
           YandexAds.showRewardedAd({
             adUnitId: AD_CONFIG.android.rewardedAdUnitId,
           }),
           AD_TIMEOUT_MS,
           'Native showRewardedAd',
         );
-        console.log('[AdManager] Native ad result: granted=' + result.granted);
-        return result.granted === true;
+        // Ad was shown (promise resolved without error). Grant reward
+        // regardless of the `granted` flag — mediation partners may not
+        // fire the onRewarded callback.
+        console.log('[AdManager] Native ad completed — granting reward');
+        return true;
       } catch (e) {
-        console.warn('[AdManager] Native ad error:', e);
+        // Ad failed to load/show or timed out — no reward.
+        console.warn('[AdManager] Native ad error (no reward):', e);
         return false;
       }
     } else {
