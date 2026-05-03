@@ -3,7 +3,7 @@
 **Дата последнего обновления:** 3 мая 2026 г.
 **Приложение:** Поток (Star Flow)
 **Разработчик:** NikasAl (Kreagenium)
-**Контакт:** nika.saratov@yandex.ru
+**Контакт:** nikita.avdonin@gmail.com
 **Исходный код:** https://github.com/NikasAl/starflow
 
 ---
@@ -22,7 +22,7 @@
 
 ### 2.1. Данные, собираемые приложением напрямую
 
-Приложение **не требует регистрации, создания аккаунта или предоставления персональных данных**. Мы не собираем и не храняем на наших серверах следующие данные:
+Приложение **не требует регистрации, создания аккаунта или предоставления персональных данных**. Мы не собираем и не храним на наших серверах следующие данные:
 
 - Имена, адреса электронной почты, номера телефонов
 - Геолокационные данные
@@ -73,7 +73,7 @@
 - Платёжные данные (номер карты, реквизиты) **не проходят через наше приложение** и **не хранятся на наших серверах**
 - YooKassa обрабатывает платёжные данные в соответствии со стандартом PCI DSS и законодательством РФ
 
-Подробнее: [Политика конфиденциальности YooKassa](https://yookassa.ru/legal/confidential/)
+Подробнее: [Политика конфиденциальности YooKassa](https://yoomoney.ru/document/politika-konfidencialnosti-ooo-nko-yoomoney)
 
 ### 3.2. Версия Google Play
 
@@ -103,9 +103,7 @@
 | Сервис | Назначение | Политика конфиденциальности |
 |--------|-----------|---------------------------|
 | Яндекс Ads SDK | Реклама в приложении | [yandex.ru/legal/confidential](https://yandex.ru/legal/confidential/) |
-| YooKassa | Платёжная система (RuStore) | [yookassa.ru/legal/confidential](https://yookassa.ru/legal/confidential/) |
-| Google Play Services | Платформа распространения | [policies.google.com/privacy](https://policies.google.com/privacy) |
-| RuStore | Платформа распространения | [rutube.ru/privacy](https://rutube.ru/privacy/) |
+| YooKassa | Платёжная система (RuStore) | [https://yoomoney.ru/document/politika-konfidencialnosti-ooo-nko-yoomoney](https://yoomoney.ru/document/politika-konfidencialnosti-ooo-nko-yoomoney) |
 
 ---
 
@@ -131,9 +129,6 @@
 Вы имеете право:
 
 - **Удалить локальные данные** — через настройки Android: Настройки → Приложения → Поток → Очистить данные
-- **Отключить рекламный ID** — через настройки Google: Настройки → Google → Реклама → Удалить рекламный ID
-- **Отказаться от персонализированной рекламы** — через настройки Яндекс: [yandex.ru/support/partner2/ads/prefs](https://yandex.ru/support/partner2/ads/prefs)
-- **Запросить информацию** — написать на nika.saratov@yandex.ru с запросом о данных, связанных с вашим устройством
 - **Просмотреть исходный код** — [github.com/NikasAl/starflow](https://github.com/NikasAl/starflow)
 
 ---
@@ -152,5 +147,5 @@
 
 По вопросам, связанным с обработкой персональных данных, обращайтесь:
 
-- **Email:** nika.saratov@yandex.ru
+- **Email:** nikita.avdonin@gmail.com
 - **GitHub Issues:** [github.com/NikasAl/starflow/issues](https://github.com/NikasAl/starflow/issues)
