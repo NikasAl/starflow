@@ -286,17 +286,17 @@ function initGameScene(canvas: HTMLCanvasElement): void {
     }
     // User agreed — show loading state while ad loads
     setAdOfferLoading();
-    const granted = await adManager.showRewardedAd();
-    if (granted) {
-      grantEnergy(gameState);
-      audioManager.play(SFX.UI_CLICK);
-      invalidateHud(); // force HUD rebuild to show updated energy
-      saveCurrentGame(); // persist energy immediately
-      // Show success in dialog — user closes it manually after ad dismisses
-      await showAdOfferSuccess(ENERGY_AD_REWARD);
-    } else {
-      hideAdOfferDialog();
-    }
+    await adManager.showRewardedAd();
+    // Always grant energy after ad — mediation partners may not report
+    // the reward callback, so we don't rely on the granted flag.
+    // The user has gone through the ad flow either way.
+    grantEnergy(gameState);
+    audioManager.play(SFX.UI_CLICK);
+    invalidateHud(); // force HUD rebuild to show updated energy
+    saveCurrentGame(); // persist energy immediately
+    // Show success in dialog — user closes it manually after ad dismisses.
+    // The dialog overlay (z:250) keeps the game paused via await.
+    await showAdOfferSuccess(ENERGY_AD_REWARD);
     resumeGame();
   });
 
