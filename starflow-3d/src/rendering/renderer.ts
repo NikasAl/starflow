@@ -3,6 +3,11 @@
 // ============================================================
 
 import * as THREE from 'three';
+
+// Build-time flag: VITE_ENABLE_SHOP controls in-app payment shop visibility.
+// .env (default)       → shop enabled  → YooKassa payments (RuStore)
+// .env.gplay           → shop disabled → ad-only monetisation (Google Play)
+const SHOP_ENABLED: boolean = import.meta.env.VITE_ENABLE_SHOP !== 'false';
 import {
   type GameState, type PlanetData, type MissileData,
   type CameraState, type ShipRoute, type OwnerId, type StarData,
@@ -469,8 +474,7 @@ function updateHTMLHUD(state: GameState): void {
   if (state.phase === 'playing') {
     energyHtml = `<div style="display:flex; align-items:center; gap:14px; margin-bottom:6px; padding:0;">
       <div style="font-size:16px; font-weight:bold; color:#ffaa00; text-shadow:0 0 8px rgba(255,170,0,0.5); white-space:nowrap; line-height:34px;">&#9889; ${state.energy}</div>
-      <div data-action="watch-ad" style="font-size:14px; min-width:40px; height:34px; display:flex; align-items:center; justify-content:center; padding:0 10px; border-radius:6px; color:#ffcc44; cursor:pointer; pointer-events:auto; white-space:nowrap; font-weight:700; border:1px solid rgba(255,200,60,0.35); background:rgba(255,200,60,0.08);">+${ENERGY_AD_REWARD}</div>
-      <div data-action="buy-energy" style="font-size:16px; min-width:40px; height:34px; display:flex; align-items:center; justify-content:center; padding:0 10px; border-radius:6px; color:#00e070; cursor:pointer; pointer-events:auto; font-weight:700; border:1px solid rgba(0,220,110,0.35); background:rgba(0,220,110,0.08);">+</div>
+      <div data-action="watch-ad" style="font-size:14px; min-width:40px; height:34px; display:flex; align-items:center; justify-content:center; padding:0 10px; border-radius:6px; color:#ffcc44; cursor:pointer; pointer-events:auto; white-space:nowrap; font-weight:700; border:1px solid rgba(255,200,60,0.35); background:rgba(255,200,60,0.08);">+${ENERGY_AD_REWARD}</div>${SHOP_ENABLED ? `<div data-action="buy-energy" style="font-size:16px; min-width:40px; height:34px; display:flex; align-items:center; justify-content:center; padding:0 10px; border-radius:6px; color:#00e070; cursor:pointer; pointer-events:auto; font-weight:700; border:1px solid rgba(0,220,110,0.35); background:rgba(0,220,110,0.08);">+</div>` : ''}
     </div>`;
   }
 

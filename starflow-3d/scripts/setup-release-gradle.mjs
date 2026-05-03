@@ -108,44 +108,16 @@ gradle = gradle.replace(
 writeFileSync(appBuildGradle, gradle, 'utf-8');
 console.log(`[setup-release-gradle] Configured release build (version ${version}, code ${versionCode})`);
 
-// ---- Add productFlavors for different stores ----
-// Default flavor (rustore): applicationId = ru.kreagenium.starflow
-// GPlay flavor:             applicationId = ru.kreagenium.starflow.gp
-// Java source package stays ru.kreagenium.starflow for both.
-const productFlavorsBlock = `
-    flavorDimensions "store"
-    productFlavors {
-        rustore {
-            dimension "store"
-            // Default applicationId from capacitor.config.ts
-        }
-        gplay {
-            dimension "store"
-            applicationIdSuffix ".gp"
-        }
-    }
-`;
-
-if (!gradle.includes('productFlavors')) {
-  // Insert after defaultConfig block
-  if (gradle.includes('defaultConfig {')) {
-    gradle = gradle.replace(
-      /(defaultConfig\s*\{[^}]*\})/,
-      `$1${productFlavorsBlock}`
-    );
-  } else {
-    // Fallback: insert after 'android {'
-    gradle = gradle.replace(
-      /android\s*\{/,
-      `android {\n${productFlavorsBlock}`
-    );
+// ---- Remove productFlavors (unified package ru.kreagenium.starflow for all stores) ----
+// Previously used separate flavors for RuStore/GPlay. Now the same package is used
+// for both stores; the only build difference is VITE_ENABLE_SHOP via Vite mode.
+if (gradle.includes('productFlavors')) {
+  const flavorsRegex = /\n\s*flavorDimensions\s+"store"[\s\S]*?productFlavors\s*\{[\s\S]*?\n    \}/;
+  if (flavorsRegex.test(gradle)) {
+    gradle = gradle.replace(flavorsRegex, '');
+    writeFileSync(appBuildGradle, gradle, 'utf-8');
+    console.log('[setup-release-gradle] Removed productFlavors — unified package ru.kreagenium.starflow for all stores');
   }
-  writeFileSync(appBuildGradle, gradle, 'utf-8');
-  console.log('[setup-release-gradle] Added productFlavors: rustore, gplay');
-  console.log('  rustore: ru.kreagenium.starflow (default)');
-  console.log('  gplay:   ru.kreagenium.starflow.gp');
-} else {
-  console.log('[setup-release-gradle] productFlavors already configured.');
 }
 
 // ---- Ensure proguard-rules.pro exists ----

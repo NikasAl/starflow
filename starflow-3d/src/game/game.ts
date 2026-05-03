@@ -146,56 +146,59 @@ function initGameScene(canvas: HTMLCanvasElement): void {
   });
 
   // Initialize deep link handler (registers Capacitor listener + checks sessionStorage)
-  initDeepLinkHandler();
+  // Only needed when YooKassa shop is enabled
+  if (import.meta.env.VITE_ENABLE_SHOP !== 'false') {
+    initDeepLinkHandler();
 
-  // Handle deep link: user returns from YooKassa payment page via potok://payment/success
-  // The deep link has NO parameters — app remembers invoice_id from payment creation.
-  setPaymentDeepLinkCallback(async () => {
-    // Use stored payment ID from memory (set when createPayment was called)
-    const paymentId = pendingInvoiceId || loadPendingPayment()?.invoiceId;
-    if (!paymentId) {
-      console.warn('[YooKassa] Deep link received but no pending payment found');
-      return;
-    }
-
-    // If game was not paused (user navigated away without shop open), pause now
-    if (!paused) pauseGame();
-
-    try {
-      showEnergyShopChecking();
-      const status = await checkPayment(paymentId);
-      if (status.is_paid) {
-        // Get energy amount from saved pending payment
-        const pending = loadPendingPayment();
-        const energyAmount = pending?.energyAmount || pendingEnergyAmount || 0;
-        if (energyAmount > 0) {
-          grantEnergy(gameState, energyAmount);
-          audioManager.play(SFX.UI_CLICK);
-          invalidateHud();
-          saveCurrentGame();
-        }
-        clearPendingPayment();
-        pendingInvoiceId = null;
-        pendingEnergyAmount = null;
-        showEnergyShopSuccess(energyAmount);
-      } else {
-        // Still pending — show pending dialog with manual check button
-        showEnergyShopPending(paymentId, pendingEnergyAmount || 0);
+    // Handle deep link: user returns from YooKassa payment page via potok://payment/success
+    // The deep link has NO parameters — app remembers invoice_id from payment creation.
+    setPaymentDeepLinkCallback(async () => {
+      // Use stored payment ID from memory (set when createPayment was called)
+      const paymentId = pendingInvoiceId || loadPendingPayment()?.invoiceId;
+      if (!paymentId) {
+        console.warn('[YooKassa] Deep link received but no pending payment found');
+        return;
       }
-    } catch (err) {
-      console.error('Deep link payment check error:', err);
-      const pending = loadPendingPayment();
-      showEnergyShopPending(paymentId, pending?.energyAmount || pendingEnergyAmount || 0);
-    }
-  });
 
-  // Check if there's a deferred deep link flag from page load (browser mode)
-  // This handles the case where user opens potok://... directly in browser
-  const hasDeferredDeepLink = consumePendingDeepLink();
-  if (hasDeferredDeepLink) {
-    setTimeout(() => {
-      triggerPaymentDeepLink();
-    }, 500);
+      // If game was not paused (user navigated away without shop open), pause now
+      if (!paused) pauseGame();
+
+      try {
+        showEnergyShopChecking();
+        const status = await checkPayment(paymentId);
+        if (status.is_paid) {
+          // Get energy amount from saved pending payment
+          const pending = loadPendingPayment();
+          const energyAmount = pending?.energyAmount || pendingEnergyAmount || 0;
+          if (energyAmount > 0) {
+            grantEnergy(gameState, energyAmount);
+            audioManager.play(SFX.UI_CLICK);
+            invalidateHud();
+            saveCurrentGame();
+          }
+          clearPendingPayment();
+          pendingInvoiceId = null;
+          pendingEnergyAmount = null;
+          showEnergyShopSuccess(energyAmount);
+        } else {
+          // Still pending — show pending dialog with manual check button
+          showEnergyShopPending(paymentId, pendingEnergyAmount || 0);
+        }
+      } catch (err) {
+        console.error('Deep link payment check error:', err);
+        const pending = loadPendingPayment();
+        showEnergyShopPending(paymentId, pending?.energyAmount || pendingEnergyAmount || 0);
+      }
+    });
+
+    // Check if there's a deferred deep link flag from page load (browser mode)
+    // This handles the case where user opens potok://... directly in browser
+    const hasDeferredDeepLink = consumePendingDeepLink();
+    if (hasDeferredDeepLink) {
+      setTimeout(() => {
+        triggerPaymentDeepLink();
+      }, 500);
+    }
   }
 
   for (const star of gameState.stars) {
@@ -297,65 +300,67 @@ function initGameScene(canvas: HTMLCanvasElement): void {
     resumeGame();
   });
 
-  // Wire buy-energy button in HUD
-  setBuyEnergyCallback(() => {
-    audioManager.play(SFX.UI_CLICK);
-    pauseGame();
-    showEnergyShop();
-  });
+  // Wire buy-energy button in HUD (only if shop is enabled via VITE_ENABLE_SHOP)
+  if (import.meta.env.VITE_ENABLE_SHOP !== 'false') {
+    setBuyEnergyCallback(() => {
+      audioManager.play(SFX.UI_CLICK);
+      pauseGame();
+      showEnergyShop();
+    });
 
-  // Wire energy product purchase from shop dialog
-  setEnergyProductCallback(async (product: { amount: number; energy: number; name: string; type: string }) => {
-    try {
-      const result = await createPayment(product.amount);
-      pendingInvoiceId = result.payment_id;
-      pendingEnergyAmount = product.energy;
+    // Wire energy product purchase from shop dialog
+    setEnergyProductCallback(async (product: { amount: number; energy: number; name: string; type: string }) => {
+      try {
+        const result = await createPayment(product.amount);
+        pendingInvoiceId = result.payment_id;
+        pendingEnergyAmount = product.energy;
 
-      // Save pending payment for deep link callback to find energy amount
-      savePendingPayment(result.payment_id, product.energy);
+        // Save pending payment for deep link callback to find energy amount
+        savePendingPayment(result.payment_id, product.energy);
 
-      // Open payment URL in system browser
-      window.open(result.payment_url, '_system');
+        // Open payment URL in system browser
+        window.open(result.payment_url, '_system');
 
-      // Show pending state in shop dialog (user will check manually)
-      showEnergyShopPending(result.payment_id, product.energy);
-    } catch (err) {
-      console.error('Payment error:', err);
-      hideEnergyShop();
-      resumeGame();
-    }
-  });
+        // Show pending state in shop dialog (user will check manually)
+        showEnergyShopPending(result.payment_id, product.energy);
+      } catch (err) {
+        console.error('Payment error:', err);
+        hideEnergyShop();
+        resumeGame();
+      }
+    });
 
-  // Wire manual payment check from shop dialog
-  setPaymentCheckCallback(async () => {
-    // Try memory first, then localStorage fallback
-    const paymentId = pendingInvoiceId || loadPendingPayment()?.invoiceId;
-    const energyAmount = pendingEnergyAmount || loadPendingPayment()?.energyAmount || 0;
-    if (!paymentId || !energyAmount) return;
-    // Restore in-memory values if they were lost (e.g. app backgrounded)
-    pendingInvoiceId = paymentId;
-    pendingEnergyAmount = energyAmount;
-    try {
-      showEnergyShopChecking();
-      const status = await checkPayment(pendingInvoiceId);
-      if (status.is_paid) {
-        const granted = pendingEnergyAmount;
-        grantEnergy(gameState, granted);
-        audioManager.play(SFX.UI_CLICK);
-        invalidateHud();
-        saveCurrentGame();
-        pendingInvoiceId = null;
-        pendingEnergyAmount = null;
-        clearPendingPayment();
-        showEnergyShopSuccess(granted);
-      } else {
+    // Wire manual payment check from shop dialog
+    setPaymentCheckCallback(async () => {
+      // Try memory first, then localStorage fallback
+      const paymentId = pendingInvoiceId || loadPendingPayment()?.invoiceId;
+      const energyAmount = pendingEnergyAmount || loadPendingPayment()?.energyAmount || 0;
+      if (!paymentId || !energyAmount) return;
+      // Restore in-memory values if they were lost (e.g. app backgrounded)
+      pendingInvoiceId = paymentId;
+      pendingEnergyAmount = energyAmount;
+      try {
+        showEnergyShopChecking();
+        const status = await checkPayment(pendingInvoiceId);
+        if (status.is_paid) {
+          const granted = pendingEnergyAmount;
+          grantEnergy(gameState, granted);
+          audioManager.play(SFX.UI_CLICK);
+          invalidateHud();
+          saveCurrentGame();
+          pendingInvoiceId = null;
+          pendingEnergyAmount = null;
+          clearPendingPayment();
+          showEnergyShopSuccess(granted);
+        } else {
+          showEnergyShopPending(pendingInvoiceId!, pendingEnergyAmount!);
+        }
+      } catch (err) {
+        console.error('Payment check error:', err);
         showEnergyShopPending(pendingInvoiceId!, pendingEnergyAmount!);
       }
-    } catch (err) {
-      console.error('Payment check error:', err);
-      showEnergyShopPending(pendingInvoiceId!, pendingEnergyAmount!);
-    }
-  });
+    });
+  }
 
   running = true;
   autoSaveTimer = 0;
