@@ -64,6 +64,7 @@ let aiStates: AIState[];
 let currentLevel = 1;
 let running = false;
 let paused = false;
+let adInProgress = false; // guard: prevents pause/resume while ad is showing
 let lastTime = 0;
 let autoSaveTimer = 0;
 const INTRO_SHOWN_KEY = 'starflow_intro_shown';
@@ -284,9 +285,16 @@ function initGameScene(canvas: HTMLCanvasElement): void {
       resumeGame();
       return;
     }
+    // Set guard — prevents any external event from resuming the game
+    // while the ad SDK controls the screen (mediation partners may trigger
+    // lifecycle events that indirectly call resumeGame).
+    adInProgress = true;
     // User agreed — show loading state while ad loads
     setAdOfferLoading();
     const adShown = await adManager.showRewardedAd();
+    // Always grant energy after ad completes (resolves without error).
+    // The native plugin resolves only on onAdDismissed, so the user has
+    // gone through the full ad flow. If it failed/timed out, adShown=false.
     if (adShown) {
       grantEnergy(gameState);
       audioManager.play(SFX.UI_CLICK);
@@ -297,7 +305,10 @@ function initGameScene(canvas: HTMLCanvasElement): void {
     } else {
       hideAdOfferDialog();
     }
-    resumeGame();
+    // Clear guard before resuming
+    adInProgress = false;
+    paused = false; // resume directly, bypassing the guard
+    lastTime = performance.now();
   });
 
   // Wire buy-energy button in HUD (only if shop is enabled via VITE_ENABLE_SHOP)
@@ -374,13 +385,15 @@ function initGameScene(canvas: HTMLCanvasElement): void {
   }
 }
 
-/** Pause game loop */
+/** Pause game loop (no-op if ad is in progress) */
 export function pauseGame(): void {
+  if (adInProgress) return;
   paused = true;
 }
 
-/** Resume game loop */
+/** Resume game loop (no-op if ad is in progress) */
 export function resumeGame(): void {
+  if (adInProgress) return;
   paused = false;
   lastTime = performance.now();  // reset to avoid huge dt jump
 }
@@ -559,6 +572,7 @@ function gameLoop(now: number): void {
 export function stopGame(): void {
   running = false;
   paused = false;
+  adInProgress = false;
   pendingInvoiceId = null;
   pendingEnergyAmount = null;
   audioManager.setOnUnmute(null);
