@@ -70,14 +70,15 @@ class AdManager {
   }
 
   /**
-   * Show a rewarded ad. Returns true if the ad was shown to the user.
+   * Show a rewarded ad. Returns true if the ad was shown and dismissed.
    * Automatically selects the correct platform implementation.
    * Includes a safety timeout to prevent infinite hangs.
    *
-   * NOTE: On native, the reward is granted whenever the ad promise resolves
-   * without error, regardless of the `granted` flag from the SDK. Mediation
-   * partners may not report the reward callback, but the user still watched
-   * the ad — so we consider it a successful show.
+   * The native plugin now resolves ONLY on onAdDismissed (not on onRewarded),
+   * so the promise stays pending while the ad is visible. This fixes mediation
+   * partners (e.g. Mintegral) that fire onRewarded before the user closes the ad.
+   * The granted flag is ignored — if the ad was shown and dismissed, reward is granted.
+   * Errors (failed to load, failed to show, timeout) reject the promise → no reward.
    */
   async showRewardedAd(): Promise<boolean> {
     console.log('[AdManager] showRewardedAd() called, sdkReady=' + this.sdkReady);

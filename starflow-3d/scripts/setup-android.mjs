@@ -387,7 +387,7 @@ public class YandexAdsPlugin extends Plugin {
                             @Override
                             public void onAdFailedToShow(@NonNull AdError error) {
                                 android.util.Log.e("YandexAds", "Ad failed to show: " + error);
-                                resolveAdResult(false, error.toString());
+                                rejectAdResult("Ad failed to show: " + error);
                                 cleanupRewardedAd();
                             }
 
@@ -401,15 +401,17 @@ public class YandexAdsPlugin extends Plugin {
 
                             @Override
                             public void onRewarded(@NonNull Reward reward) {
-                                android.util.Log.i("YandexAds", "User rewarded! Resolving immediately.");
+                                android.util.Log.i("YandexAds", "User rewarded (flag only, resolving on dismiss)");
                                 rewardGranted = true;
-                                resolveAdResult(true, null);
+                                // Do NOT resolve here — wait for onAdDismissed so the
+                                // promise stays pending while the ad is still visible.
+                                // Mediation partners may fire onRewarded before the user
+                                // actually closes the ad overlay.
                             }
 
                             @Override
                             public void onAdDismissed() {
-                                android.util.Log.i("YandexAds", "Ad dismissed, granted=" + rewardGranted);
-                                // Only resolve if not already resolved by onRewarded()
+                                android.util.Log.i("YandexAds", "Ad dismissed, resolving now, granted=" + rewardGranted);
                                 resolveAdResult(rewardGranted, null);
                                 cleanupRewardedAd();
                             }
@@ -420,7 +422,7 @@ public class YandexAdsPlugin extends Plugin {
                     @Override
                     public void onAdFailedToLoad(@NonNull AdRequestError adRequestError) {
                         android.util.Log.e("YandexAds", "Ad failed to load: " + adRequestError);
-                        resolveAdResult(false, adRequestError.toString());
+                        rejectAdResult("Ad failed to load: " + adRequestError);
                     }
                 });
 
@@ -453,6 +455,15 @@ public class YandexAdsPlugin extends Plugin {
             savedCall.resolve(result);
         } catch (Exception ignored) {
             // PluginCall may already be released
+        }
+        savedCall = null;
+    }
+
+    private void rejectAdResult(String message) {
+        if (savedCall == null) return;
+        try {
+            savedCall.reject(message);
+        } catch (Exception ignored) {
         }
         savedCall = null;
     }
