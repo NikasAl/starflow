@@ -278,6 +278,7 @@ function initGameScene(canvas: HTMLCanvasElement): void {
 
   // Wire watch-ad button in HUD — pause, show confirmation, then play ad
   setWatchAdCallback(async () => {
+    console.log('[Game] Watch-ad: pausing game...');
     pauseGame();
     const agreed = await showAdOfferDialog(ENERGY_AD_REWARD);
     if (!agreed) {
@@ -289,9 +290,11 @@ function initGameScene(canvas: HTMLCanvasElement): void {
     // while the ad SDK controls the screen (mediation partners may trigger
     // lifecycle events that indirectly call resumeGame).
     adInProgress = true;
+    console.log('[Game] Watch-ad: adInProgress=true, calling showRewardedAd...');
     // User agreed — show loading state while ad loads
     setAdOfferLoading();
     const adShown = await adManager.showRewardedAd();
+    console.log('[Game] Watch-ad: showRewardedAd returned, adShown=' + adShown);
     // Always grant energy after ad completes (resolves without error).
     // The native plugin resolves only on onAdDismissed, so the user has
     // gone through the full ad flow. If it failed/timed out, adShown=false.
@@ -301,12 +304,15 @@ function initGameScene(canvas: HTMLCanvasElement): void {
       invalidateHud(); // force HUD rebuild to show updated energy
       saveCurrentGame(); // persist energy immediately
       // Show success in dialog — user closes it manually after ad dismisses
+      console.log('[Game] Watch-ad: showing reward dialog');
       await showAdOfferSuccess(ENERGY_AD_REWARD);
     } else {
+      console.warn('[Game] Watch-ad: ad not shown, hiding dialog');
       hideAdOfferDialog();
     }
     // Clear guard before resuming
     adInProgress = false;
+    console.log('[Game] Watch-ad: resuming game (paused=false)');
     paused = false; // resume directly, bypassing the guard
     lastTime = performance.now();
   });
@@ -387,13 +393,21 @@ function initGameScene(canvas: HTMLCanvasElement): void {
 
 /** Pause game loop (no-op if ad is in progress) */
 export function pauseGame(): void {
-  if (adInProgress) return;
+  if (adInProgress) {
+    console.warn('[Game] pauseGame() blocked — adInProgress=true');
+    return;
+  }
+  console.log('[Game] pauseGame() → paused=true');
   paused = true;
 }
 
 /** Resume game loop (no-op if ad is in progress) */
 export function resumeGame(): void {
-  if (adInProgress) return;
+  if (adInProgress) {
+    console.warn('[Game] resumeGame() blocked — adInProgress=true');
+    return;
+  }
+  console.log('[Game] resumeGame() → paused=false');
   paused = false;
   lastTime = performance.now();  // reset to avoid huge dt jump
 }

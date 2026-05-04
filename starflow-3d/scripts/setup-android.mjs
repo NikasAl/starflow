@@ -386,9 +386,13 @@ public class YandexAdsPlugin extends Plugin {
 
                             @Override
                             public void onAdFailedToShow(@NonNull AdError error) {
-                                android.util.Log.e("YandexAds", "Ad failed to show: " + error);
-                                rejectAdResult("Ad failed to show: " + error);
-                                cleanupRewardedAd();
+                                // Do NOT reject here — mediation partners (e.g. Mintegral)
+                                // may fire onAdFailedToShow AFTER the ad is already visible
+                                // (e.g. tracking pixel failure). Rejecting here would null out
+                                // savedCall, preventing onAdDismissed from resolving the promise
+                                // and causing the game to resume mid-ad with no reward.
+                                // Just log and wait for onAdDismissed to handle completion.
+                                android.util.Log.w("YandexAds", "onAdFailedToShow (ignoring, ad may still be visible): " + error);
                             }
 
                             @Override
@@ -411,7 +415,7 @@ public class YandexAdsPlugin extends Plugin {
 
                             @Override
                             public void onAdDismissed() {
-                                android.util.Log.i("YandexAds", "Ad dismissed, resolving now, granted=" + rewardGranted);
+                                android.util.Log.i("YandexAds", "onAdDismissed: resolving promise, granted=" + rewardGranted);
                                 resolveAdResult(rewardGranted, null);
                                 cleanupRewardedAd();
                             }
