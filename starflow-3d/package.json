@@ -21,6 +21,7 @@
     "android:debug": "cd android && chmod +x gradlew && ./gradlew assembleDebug && cd .. && adb install -r android/app/build/outputs/apk/debug/app-debug.apk",
     "android:release": "npm run cap:sync:release && cd android && chmod +x gradlew && ./gradlew assembleRelease && cd .. && echo 'Release APK: android/app/build/outputs/apk/release/app-release.apk'",
     "android:gplay:release": "npm run cap:sync:gplay && cd android && chmod +x gradlew && ./gradlew assembleRelease && cd .. && echo 'GPlay APK: android/app/build/outputs/apk/release/app-release.apk'",
+    "android:gplay:aab": "npm run cap:sync:gplay && cd android && chmod +x gradlew && ./gradlew bundleRelease && cd .. && echo 'GPlay AAB: android/app/build/outputs/bundle/release/app-release.aab'",
     "android:gplay:debug": "npm run cap:sync:gplay && cd android && chmod +x gradlew && ./gradlew assembleDebug && cd .. && adb install -r android/app/build/outputs/apk/debug/app-debug.apk",
     "android:log": "adb logcat -s Capacitor chromium System.out",
     "capture:screenshot": "node scripts/media-capture.mjs screenshot --resize 2560x1440",
