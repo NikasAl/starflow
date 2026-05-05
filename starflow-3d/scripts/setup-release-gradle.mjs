@@ -20,6 +20,28 @@ if (!existsSync(appBuildGradle)) {
   process.exit(0);
 }
 
+// ---- Require signing.properties for release builds ----
+const signingPropsPath = join(rootDir, 'signing.properties');
+if (!existsSync(signingPropsPath)) {
+  console.error('[setup-release-gradle] ERROR: signing.properties not found!');
+  console.error('[setup-release-gradle] Release builds MUST be signed with your keystore.');
+  console.error('[setup-release-gradle] Copy signing.properties.example to signing.properties and fill in your values.');
+  console.error('[setup-release-gradle] Generate a keystore: keytool -genkey -v -keystore keystore/release.keystore -alias starflow -keyalg RSA -keysize 2048 -validity 10000');
+  process.exit(1);
+}
+
+// Validate that signing.properties has non-placeholder values
+const signingPropsContent = readFileSync(signingPropsPath, 'utf-8');
+const requiredKeys = ['storeFile', 'storePassword', 'keyAlias', 'keyPassword'];
+for (const key of requiredKeys) {
+  const match = signingPropsContent.match(new RegExp(`^${key}=.+`, 'm'));
+  if (!match || match[0].includes('CHANGE_ME')) {
+    console.error(`[setup-release-gradle] ERROR: signing.properties has placeholder value for "${key}"`);
+    console.error('[setup-release-gradle] Fill in all values before building a release.');
+    process.exit(1);
+  }
+}
+
 let gradle = readFileSync(appBuildGradle, 'utf-8');
 
 // ---- Read version from package.json ----
@@ -38,21 +60,23 @@ try {
 // ---- Add signing config ----
 const signingConfig = `
 def signingPropertiesFile = rootProject.file("../signing.properties")
-def releaseSigningConfig
-if (signingPropertiesFile.exists()) {
-    def props = new Properties()
-    props.load(new FileInputStream(signingPropertiesFile))
-    releaseSigningConfig = signingConfigs.create("release") {
-        storeFile file(props['storeFile'])
-        storePassword props['storePassword']
-        keyAlias props['keyAlias']
-        keyPassword props['keyPassword']
-    }
-    println "[starflow] Release signing configured from signing.properties"
-} else {
-    println "[starflow] WARNING: signing.properties not found. Release builds will NOT be signed."
-    println "[starflow] Create signing.properties with: storeFile, storePassword, keyAlias, keyPassword"
+if (!signingPropertiesFile.exists()) {
+    throw new GradleException("signing.properties not found! Release builds require signing. See signing.properties.example")
 }
+def props = new Properties()
+props.load(new FileInputStream(signingPropertiesFile))
+['storeFile','storePassword','keyAlias','keyPassword'].each { key ->
+    if (!props[key] || props[key] == 'CHANGE_ME') {
+        throw new GradleException("signing.properties: \${key} is missing or has placeholder value")
+    }
+}
+releaseSigningConfig = signingConfigs.create("release") {
+    storeFile file(props['storeFile'])
+    storePassword props['storePassword']
+    keyAlias props['keyAlias']
+    keyPassword props['keyPassword']
+}
+println "[starflow] Release signing configured from signing.properties"
 `;
 
 if (!gradle.includes('signing.properties')) {
@@ -68,9 +92,7 @@ const releaseBuildType = `
         release {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            if (releaseSigningConfig) {
-                signingConfig releaseSigningConfig
-            }
+            signingConfig releaseSigningConfig
         }
 `;
 
