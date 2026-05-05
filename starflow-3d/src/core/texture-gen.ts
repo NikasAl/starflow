@@ -1,12 +1,69 @@
 // ============================================================
-// Поток — Procedural Planet Texture Generator
+// Поток — Planet Texture Generator
+// Uses AI-generated base textures with procedural variation:
+// owner color tint, noise spots, seed-based offsets, normal maps
+// Falls back to fully procedural generation if base textures
+// fail to load.
 // ============================================================
 
 import * as THREE from 'three';
 import { type PlanetVisualType, type PlanetSizeType } from './types';
 
-const TEX_W = 512;
-const TEX_H = 256;
+const TEX_W = 1024;
+const TEX_H = 512;
+
+// ---- Base texture cache ----
+
+const baseImages = new Map<PlanetVisualType, HTMLImageElement>();
+let basesLoaded = false;
+let basesFailed = false;
+
+const BASE_PATHS: Record<PlanetVisualType, string> = {
+  rocky:    '/textures/planets/rocky.png',
+  terran:   '/textures/planets/terran.png',
+  gas:      '/textures/planets/gas.png',
+  ice:      '/textures/planets/ice.png',
+  volcanic: '/textures/planets/volcanic.png',
+  desert:   '/textures/planets/desert.png',
+  ocean:    '/textures/planets/ocean.png',
+  crystal:  '/textures/planets/crystal.png',
+};
+
+/**
+ * Pre-load all 8 base texture images. Call at startup.
+ * Non-blocking — if loading fails, falls back to procedural.
+ */
+export async function preloadBaseTextures(): Promise<void> {
+  if (basesLoaded || basesFailed) return;
+
+  const types: PlanetVisualType[] =
+    ['rocky', 'terran', 'gas', 'ice', 'volcanic', 'desert', 'ocean', 'crystal'];
+
+  const results = await Promise.allSettled(
+    types.map(async (type) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = BASE_PATHS[type];
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = reject;
+      });
+      baseImages.set(type, img);
+    }),
+  );
+
+  const failed = results.filter(r => r.status === 'rejected').length;
+  if (failed === 8) {
+    console.warn('[TextureGen] All base textures failed to load — using procedural fallback');
+    basesFailed = true;
+  } else if (failed > 0) {
+    console.warn(`[TextureGen] ${failed}/8 base textures failed — partial fallback`);
+    basesFailed = true; // mark as failed so we use consistent fallback
+  } else {
+    console.log('[TextureGen] All 8 base textures loaded');
+    basesLoaded = true;
+  }
+}
 
 // ---- Seeded PRNG ----
 
@@ -64,26 +121,16 @@ function warpedNoise(x: number, y: number, octaves: number, seed: number): numbe
 
 // ---- Color helpers ----
 
-function rgb(r: number, g: number, b: number): number {
-  return ((Math.floor(r * 255) & 0xff) << 16) |
-         ((Math.floor(g * 255) & 0xff) << 8) |
-         (Math.floor(b * 255) & 0xff);
-}
-
 function ownerTint(ownerColor: number, base: number[]): number[] {
   const or = ((ownerColor >> 16) & 0xff) / 255;
   const og = ((ownerColor >> 8) & 0xff) / 255;
   const ob = (ownerColor & 0xff) / 255;
-  const t = 0.4;  // Stronger owner color tint
+  const t = 0.4;
   return [lerp(base[0], or, t), lerp(base[1], og, t), lerp(base[2], ob, t)];
 }
 
-function computeNormal(h: number, d: number, s: number): [number, number, number] {
-  return [
-    Math.max(0, Math.min(255, 128 + (d - 0.5) * s * 200)),
-    Math.max(0, Math.min(255, 128 + (h - 0.5) * s * 200)),
-    255,
-  ];
+function clamp(v: number): number {
+  return Math.max(0, Math.min(255, v));
 }
 
 // ---- Texture generation ----
@@ -110,6 +157,209 @@ function toTex(canvas: HTMLCanvasElement): THREE.CanvasTexture {
 }
 
 export function generatePlanetTextures(
+  type: PlanetVisualType,
+  seed: number,
+  ownerColor: number,
+): TextureSet {
+  const baseImg = baseImages.get(type);
+
+  if (baseImg && basesLoaded) {
+    return generateFromBase(type, seed, ownerColor, baseImg);
+  }
+  // Fallback: fully procedural
+  return generateProcedural(type, seed, ownerColor);
+}
+
+// ---- AI base + procedural variation ----
+
+function generateFromBase(
+  type: PlanetVisualType,
+  seed: number,
+  ownerColor: number,
+  baseImg: HTMLImageElement,
+): TextureSet {
+  const dC = makeCanvas(), nC = makeCanvas(), eC = makeCanvas();
+  const dCtx = dC.getContext('2d')!;
+  const nCtx = nC.getContext('2d')!;
+  const eCtx = eC.getContext('2d')!;
+
+  // 1. Draw base texture scaled to our resolution
+  //    Use a random horizontal offset per seed for variation
+  const rand = mulberry32(seed);
+  const hOffset = rand(); // 0..1 — shifts which part of the texture is "front"
+  const scaledW = baseImg.width * (TEX_H / baseImg.height); // preserve aspect ratio of height
+
+  // Draw base image — can be wider than canvas (wrapping effect)
+  dCtx.drawImage(baseImg, 0, 0, baseImg.width, baseImg.height, 0, 0, TEX_W, TEX_H);
+
+  // 2. Read pixel data for normal map generation + variation
+  const baseData = dCtx.getImageData(0, 0, TEX_W, TEX_H);
+
+  // 3. Apply owner tint + procedural spots
+  const or = ((ownerColor >> 16) & 0xff) / 255;
+  const og = ((ownerColor >> 8) & 0xff) / 255;
+  const ob = (ownerColor & 0xff) / 255;
+  const tintStrength = 0.25; // subtle tint — don't overpower the AI art
+
+  // Generate noise for spots (3-7 random spots per planet)
+  const spotCount = 3 + Math.floor(rand() * 5);
+  const spots: Array<{ x: number; y: number; r: number; intensity: number }> = [];
+  for (let i = 0; i < spotCount; i++) {
+    spots.push({
+      x: rand() * TEX_W,
+      y: rand() * TEX_H,
+      r: 20 + rand() * 60,
+      intensity: 0.1 + rand() * 0.25,
+    });
+  }
+
+  for (let y = 0; y < TEX_H; y++) {
+    for (let x = 0; x < TEX_W; x++) {
+      const i = (y * TEX_W + x) * 4;
+
+      // Base pixels from AI texture
+      let r = baseData.data[i] / 255;
+      let g = baseData.data[i + 1] / 255;
+      let b = baseData.data[i + 2] / 255;
+
+      // Owner color tint (multiply blend)
+      r = r * (1 - tintStrength) + r * or * tintStrength;
+      g = g * (1 - tintStrength) + g * og * tintStrength;
+      b = b * (1 - tintStrength) + b * ob * tintStrength;
+
+      // Procedural noise variation (subtle)
+      const nx = x / TEX_W * 6, ny = y / TEX_H * 3;
+      const noise = fbm(nx, ny, 3, seed);
+      const nv = (noise - 0.5) * 0.08; // very subtle brightness variation
+      r = Math.max(0, Math.min(1, r + nv));
+      g = Math.max(0, Math.min(1, g + nv));
+      b = Math.max(0, Math.min(1, b + nv));
+
+      // Random spots (slight darkening/lightening)
+      for (const spot of spots) {
+        const dx = x - spot.x, dy = y - spot.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < spot.r) {
+          const fade = 1 - (dist / spot.r);
+          const spotEffect = fade * fade * spot.intensity;
+          r = Math.max(0, Math.min(1, r - spotEffect * 0.15));
+          g = Math.max(0, Math.min(1, g - spotEffect * 0.1));
+          b = Math.max(0, Math.min(1, b - spotEffect * 0.05));
+        }
+      }
+
+      baseData.data[i] = clamp(r * 255);
+      baseData.data[i + 1] = clamp(g * 255);
+      baseData.data[i + 2] = clamp(b * 255);
+    }
+  }
+
+  dCtx.putImageData(baseData, 0, 0);
+
+  // 4. Generate normal map from the tinted diffuse using Sobel filter
+  generateNormalMap(baseData, nCtx);
+
+  // 5. Generate emissive map (volcanic/crystal only — procedural)
+  const hasEmissive = type === 'volcanic' || type === 'crystal';
+  if (hasEmissive) {
+    generateEmissiveMap(type, seed, eCtx);
+  }
+
+  return {
+    diffuse: toTex(dC),
+    normal: toTex(nC),
+    emissive: hasEmissive ? toTex(eC) : null,
+  };
+}
+
+// ---- Normal map from diffuse (Sobel filter) ----
+
+function generateNormalMap(diffuseData: ImageData, nCtx: CanvasRenderingContext2D): void {
+  const w = TEX_W, h = TEX_H;
+  const nImg = nCtx.createImageData(w, h);
+  const src = diffuseData.data;
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      // Sample 3x3 neighborhood for Sobel
+      const getLum = (px: number, py: number): number => {
+        const sx = ((px % w) + w) % w;
+        const sy = ((py % h) + h) % h;
+        const idx = (sy * w + sx) * 4;
+        return (src[idx] * 0.3 + src[idx + 1] * 0.59 + src[idx + 2] * 0.11) / 255;
+      };
+
+      // Sobel operator
+      const tl = getLum(x - 1, y - 1), tc = getLum(x, y - 1), tr = getLum(x + 1, y - 1);
+      const ml = getLum(x - 1, y),                             mr = getLum(x + 1, y);
+      const bl = getLum(x - 1, y + 1), bc = getLum(x, y + 1), br = getLum(x + 1, y + 1);
+
+      const gx = -tl - 2 * ml - bl + tr + 2 * mr + br;
+      const gy = -tl - 2 * tc - tr + bl + 2 * bc + br;
+
+      const strength = 1.5; // normal intensity
+      const idx = (y * w + x) * 4;
+      nImg.data[idx] = clamp(128 + gx * strength * 200);     // R = left-right
+      nImg.data[idx + 1] = clamp(128 - gy * strength * 200); // G = up-down (inverted)
+      nImg.data[idx + 2] = 255;                               // B = flat (Z-up)
+      nImg.data[idx + 3] = 255;
+    }
+  }
+
+  nCtx.putImageData(nImg, 0, 0);
+}
+
+// ---- Emissive map (procedural, for volcanic & crystal) ----
+
+function generateEmissiveMap(
+  type: PlanetVisualType,
+  seed: number,
+  eCtx: CanvasRenderingContext2D,
+): void {
+  const w = TEX_W, h = TEX_H;
+  const eImg = eCtx.createImageData(w, h);
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const u = x / w, v = y / h;
+      const nx = u * 8, ny = v * 4;
+      const n1 = fbm(nx, ny, 4, seed);
+      const n2 = warpedNoise(nx, ny, 3, seed + 42);
+      const n3 = fbm(nx * 2, ny * 2, 3, seed + 137);
+
+      let er = 0, eg = 0, eb = 0;
+
+      if (type === 'volcanic') {
+        // Glowing lava veins
+        const vein = 1 - smoothstep(0, 0.06, Math.abs(Math.sin(n3 * 25 + n2 * 10)));
+        const la = [1.0, 0.3, 0.0], hl = [1.0, 0.7, 0.1];
+        const lc = n2 > 0.6 ? hl : la;
+        er = vein * lc[0] * 255;
+        eg = vein * lc[1] * 255;
+        eb = vein * lc[2] * 255;
+      } else if (type === 'crystal') {
+        // Glowing energy veins
+        const vein = 1 - smoothstep(0, 0.1, Math.abs(Math.sin(n3 * 30)));
+        const glow = [0.3, 0.6, 0.9];
+        er = vein * glow[0] * 80;
+        eg = vein * glow[1] * 80;
+        eb = vein * glow[2] * 80;
+      }
+
+      eImg.data[i] = clamp(er);
+      eImg.data[i + 1] = clamp(eg);
+      eImg.data[i + 2] = clamp(eb);
+      eImg.data[i + 3] = 255;
+    }
+  }
+
+  eCtx.putImageData(eImg, 0, 0);
+}
+
+// ---- Fully procedural fallback ----
+
+function generateProcedural(
   type: PlanetVisualType,
   seed: number,
   ownerColor: number,
@@ -156,8 +406,12 @@ export function generatePlanetTextures(
   };
 }
 
-function clamp(v: number): number {
-  return Math.max(0, Math.min(255, v));
+function computeNormal(h: number, d: number, s: number): [number, number, number] {
+  return [
+    Math.max(0, Math.min(255, 128 + (d - 0.5) * s * 200)),
+    Math.max(0, Math.min(255, 128 + (h - 0.5) * s * 200)),
+    255,
+  ];
 }
 
 interface PixelResult {
@@ -171,7 +425,6 @@ function genPixel(
   u: number, v: number, oc: number,
 ): PixelResult {
   const N = (s: number) => computeNormal(n1, n2, s);
-  const E = [0, 0, 0];
 
   switch (type) {
     case 'rocky': {
@@ -311,7 +564,6 @@ function genPixel(
 }
 
 export function planetTypeForIndex(index: number, sizeType: PlanetSizeType): PlanetVisualType {
-  // Size-appropriate visual types (physically motivated)
   const typeMap: Record<PlanetSizeType, PlanetVisualType[]> = {
     dwarf:      ['rocky', 'volcanic', 'desert'],
     small:      ['rocky', 'desert', 'ice', 'volcanic'],
