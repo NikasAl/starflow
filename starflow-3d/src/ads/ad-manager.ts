@@ -10,26 +10,6 @@ import { AD_CONFIG } from './ad-config';
 import { loadWebAdSdk, showWebRewardedAd } from './web-ads';
 import { YandexAds } from './android-ads';
 
-/** Maximum time to wait for ad to load/show before timing out (ms) */
-const AD_TIMEOUT_MS = 30_000;
-
-/**
- * Creates a Promise that rejects after a given timeout.
- * If the main promise settles first, the timeout is cleared.
- */
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      console.warn(`[AdManager] ${label} timed out after ${ms}ms`);
-      reject(new Error(`${label} timed out after ${ms}ms`));
-    }, ms);
-    promise.then(
-      (val) => { clearTimeout(timer); resolve(val); },
-      (err) => { clearTimeout(timer); reject(err); },
-    );
-  });
-}
-
 class AdManager {
   private sdkReady = false;
 
@@ -91,20 +71,18 @@ class AdManager {
     if (Capacitor.isNativePlatform()) {
       try {
         console.log('[AdManager] Calling native showRewardedAd with unitId=' + AD_CONFIG.android.rewardedAdUnitId);
-        await withTimeout(
-          YandexAds.showRewardedAd({
-            adUnitId: AD_CONFIG.android.rewardedAdUnitId,
-          }),
-          AD_TIMEOUT_MS,
-          'Native showRewardedAd',
-        );
+        // No JS-side timeout — mediated ads (e.g. Mintegral) can run 60+ seconds.
+        // The native SDK handles its own timeouts via onAdFailedToLoad/onAdFailedToShow.
+        await YandexAds.showRewardedAd({
+          adUnitId: AD_CONFIG.android.rewardedAdUnitId,
+        });
         // Ad was shown (promise resolved without error). Grant reward
         // regardless of the `granted` flag — mediation partners may not
         // fire the onRewarded callback.
         console.log('[AdManager] Native ad completed — granting reward');
         return true;
       } catch (e) {
-        // Ad failed to load/show or timed out — no reward.
+        // Ad failed to load/show — no reward.
         console.warn('[AdManager] Native ad error (no reward):', e);
         return false;
       }
