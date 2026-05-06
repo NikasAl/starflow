@@ -53,7 +53,6 @@ import { saveGame, loadGame, clearSave, type SaveData } from '../core/save';
 import { audioManager, SFX, MUSIC } from '../audio';
 import { activateBoost, grantEnergy } from '../core/boosts';
 import { adManager } from '../ads/ad-manager';
-import { preloadBaseTextures } from '../core/texture-gen';
 import { createPayment, checkPayment, initDeepLinkHandler, consumePendingDeepLink, setPaymentDeepLinkCallback, triggerPaymentDeepLink, savePendingPayment, loadPendingPayment, clearPendingPayment, type EnergyProduct } from '../services/yookassa';
 import { i18n } from '../i18n';
 
@@ -118,9 +117,6 @@ export function startGameFromSave(canvas: HTMLCanvasElement, save: SaveData): vo
 
 function initGameScene(canvas: HTMLCanvasElement): void {
   initRenderer(canvas);
-
-  // Pre-load AI planet textures in background (non-blocking)
-  preloadBaseTextures().catch(() => {});
 
   // Initialize ad SDK in background (non-blocking)
   adManager.init().catch(() => {});

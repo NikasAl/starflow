@@ -4,6 +4,7 @@
 
 import { startGame, startGameFromSave, setOnGameSaved, stopGame, saveCurrentGame } from './game/game';
 import { hasSave, loadGame, getSaveInfo } from './core/save';
+import { preloadBaseTextures } from './core/texture-gen';
 import { i18n } from './i18n';
 import { audioManager, MUSIC } from './audio';
 
@@ -31,6 +32,10 @@ function applyDOMTranslations(): void {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Pre-load planet textures in background — they'll be ready by the time
+  // the user clicks Start (loads from local /public/ so very fast)
+  preloadBaseTextures().catch(() => {});
+
   const startBtn = document.getElementById('start-btn') as HTMLButtonElement;
   const continueBtn = document.getElementById('continue-btn') as HTMLButtonElement;
   const exitBtn = document.getElementById('exit-btn') as HTMLButtonElement;

@@ -14,7 +14,7 @@ const TEX_H = 512;
 
 // ---- Base texture cache ----
 
-const baseImages = new Map<PlanetVisualType, HTMLImageElement>();
+const baseImages = new Map<PlanetVisualType, HTMLCanvasElement>();
 let basesLoaded = false;
 let basesFailed = false;
 
@@ -30,8 +30,9 @@ const BASE_PATHS: Record<PlanetVisualType, string> = {
 };
 
 /**
- * Pre-load all 8 base texture images. Call at startup.
- * Non-blocking — if loading fails, falls back to procedural.
+ * Pre-load all 8 base texture images and convert them to
+ * equirectangular projection. Call at startup BEFORE creating planets.
+ * If loading fails, falls back to procedural generation.
  */
 export async function preloadBaseTextures(): Promise<void> {
   if (basesLoaded || basesFailed) return;
@@ -41,14 +42,9 @@ export async function preloadBaseTextures(): Promise<void> {
 
   const results = await Promise.allSettled(
     types.map(async (type) => {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.src = BASE_PATHS[type];
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = reject;
-      });
-      baseImages.set(type, img);
+      const img = await loadAndConvertTexture(BASE_PATHS[type]);
+      if (img) baseImages.set(type, img);
+      else throw new Error(`Failed: ${type}`);
     }),
   );
 
@@ -57,12 +53,185 @@ export async function preloadBaseTextures(): Promise<void> {
     console.warn('[TextureGen] All base textures failed to load — using procedural fallback');
     basesFailed = true;
   } else if (failed > 0) {
-    console.warn(`[TextureGen] ${failed}/8 base textures failed — partial fallback`);
-    basesFailed = true; // mark as failed so we use consistent fallback
+    console.warn(`[TextureGen] ${failed}/8 base textures failed — using procedural for all`);
+    basesFailed = true;
   } else {
-    console.log('[TextureGen] All 8 base textures loaded');
+    console.log('[TextureGen] All 8 base textures loaded and converted to equirectangular');
     basesLoaded = true;
   }
+}
+
+// ---- Load PNG + convert orthographic → equirectangular ----
+
+/**
+ * Loads a PNG image and converts it from orthographic (circular) projection
+ * to equirectangular (rectangular 2:1) projection suitable for sphere mapping.
+ *
+ * Orthographic: planet shown as a circle, dark edges beyond the limb.
+ * Equirectangular: full sphere surface as a rectangle, longitude×latitude.
+ *
+ * Algorithm:
+ * 1. Detect the bright circle in the image (non-dark pixels)
+ * 2. For each output equirectangular pixel, compute the 3D sphere point
+ * 3. Project it to the orthographic view to find the source pixel
+ * 4. Front hemisphere: sample directly; back hemisphere: mirror
+ */
+async function loadAndConvertTexture(path: string): Promise<HTMLCanvasElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const converted = orthoToEquirectangular(img);
+        resolve(converted);
+      } catch (e) {
+        console.warn(`[TextureGen] Conversion failed for ${path}:`, e);
+        resolve(null);
+      }
+    };
+    img.onerror = () => {
+      console.warn(`[TextureGen] Failed to load ${path}`);
+      resolve(null);
+    };
+    img.src = path;
+  });
+}
+
+function orthoToEquirectangular(srcImg: HTMLImageElement): HTMLCanvasElement {
+  const sw = srcImg.width, sh = srcImg.height;
+
+  // Read source pixels
+  const srcCvs = document.createElement('canvas');
+  srcCvs.width = sw; srcCvs.height = sh;
+  const srcCtx = srcCvs.getContext('2d')!;
+  srcCtx.drawImage(srcImg, 0, 0);
+  const srcData = srcCtx.getImageData(0, 0, sw, sh);
+  const srcPx = srcData.data;
+
+  // Detect circle: find bounding box of non-dark pixels
+  const getLum = (x: number, y: number): number => {
+    const idx = (y * sw + x) * 4;
+    return (srcPx[idx] + srcPx[idx+1] + srcPx[idx+2]) / 3;
+  };
+
+  const cx = sw / 2, cy = sh / 2;
+  // Find the radius by scanning from center outward
+  let radius = Math.min(cx, cy) * 0.9; // default
+  for (let r = Math.min(cx, cy); r > 10; r -= 2) {
+    let brightPixels = 0;
+    const samples = 16;
+    for (let a = 0; a < samples; a++) {
+      const angle = (a / samples) * Math.PI * 2;
+      const px = Math.round(cx + Math.cos(angle) * r);
+      const py = Math.round(cy + Math.sin(angle) * r);
+      if (px >= 0 && px < sw && py >= 0 && py < sh && getLum(px, py) > 15) {
+        brightPixels++;
+      }
+    }
+    // If more than half the samples at this radius are bright, we found the edge
+    if (brightPixels < samples * 0.4) {
+      radius = r + 4;
+      break;
+    }
+  }
+
+  // Check if image is actually circular (has dark corners)
+  // Sample 4 corners — if dark, it's circular projection
+  const cornerLum = (getLum(5, 5) + getLum(sw-6, 5) + getLum(5, sh-6) + getLum(sw-6, sh-6)) / 4;
+  const centerLum = getLum(Math.round(cx), Math.round(cy));
+  const isCircular = cornerLum < centerLum * 0.3;
+
+  // Output equirectangular: 2:1 ratio
+  const outW = TEX_W; // 1024
+  const outH = TEX_H; // 512
+  const outCvs = document.createElement('canvas');
+  outCvs.width = outW; outCvs.height = outH;
+  const outCtx = outCvs.getContext('2d')!;
+  const outImg = outCtx.createImageData(outW, outH);
+  const outPx = outImg.data;
+
+  // Bilinear sampling helper
+  const sample = (px: number, py: number): [number, number, number] => {
+    // Wrap horizontally, clamp vertically
+    const wx = ((px % sw) + sw) % sw;
+    const wy = Math.max(0, Math.min(sh - 1, py));
+    const x0 = Math.floor(wx), y0 = Math.floor(wy);
+    const x1 = (x0 + 1) % sw, y1 = Math.min(sh - 1, y0 + 1);
+    const fx = wx - x0, fy = wy - y0;
+    const i00 = (y0 * sw + x0) * 4;
+    const i10 = (y0 * sw + x1) * 4;
+    const i01 = (y1 * sw + x0) * 4;
+    const i11 = (y1 * sw + x1) * 4;
+    const r = lerp(lerp(srcPx[i00], srcPx[i10], fx), lerp(srcPx[i01], srcPx[i11], fx), fy);
+    const g = lerp(lerp(srcPx[i00+1], srcPx[i10+1], fx), lerp(srcPx[i01+1], srcPx[i11+1], fx), fy);
+    const b = lerp(lerp(srcPx[i00+2], srcPx[i10+2], fx), lerp(srcPx[i01+2], srcPx[i11+2], fx), fy);
+    return [r, g, b];
+  };
+
+  for (let oy = 0; oy < outH; oy++) {
+    for (let ox = 0; ox < outW; ox++) {
+      const oi = (oy * outW + ox) * 4;
+
+      // Equirectangular → sphere coords
+      // longitude: -π to π, latitude: -π/2 to π/2
+      const lon = (ox / outW) * 2 * Math.PI - Math.PI;
+      const lat = (0.5 - oy / outH) * Math.PI; // top=north pole
+
+      // Sphere → 3D Cartesian
+      const cosLat = Math.cos(lat);
+      const X = cosLat * Math.sin(lon);
+      const Y = Math.sin(lat);
+      const Z = cosLat * Math.cos(lon);
+
+      if (!isCircular) {
+        // Not circular — just stretch to fill
+        const sx = (ox / outW) * sw;
+        const sy = (oy / outH) * sh;
+        const [r, g, b] = sample(sx, sy);
+        outPx[oi] = r; outPx[oi+1] = g; outPx[oi+2] = b; outPx[oi+3] = 255;
+        continue;
+      }
+
+      // Orthographic projection: screen_x = X, screen_y = -Y
+      const screenX = cx + X * radius;
+      const screenY = cy - Y * radius;
+
+      if (Z >= 0) {
+        // Front hemisphere — sample directly from source
+        const [r, g, b] = sample(screenX, screenY);
+        // Fade edges slightly to avoid harsh limb
+        const edgeFade = smoothstep(0.0, 0.15, Z);
+        outPx[oi] = Math.round(r * edgeFade);
+        outPx[oi+1] = Math.round(g * edgeFade);
+        outPx[oi+2] = Math.round(b * edgeFade);
+      } else {
+        // Back hemisphere — mirror the front view (rotate 180°)
+        // This gives a plausible but synthetic back side
+        const mirrorX = cx - X * radius; // flip X
+        const mirrorY = cy - Y * radius;  // flip Y
+        const [r, g, b] = sample(mirrorX, mirrorY);
+        // Darken back hemisphere slightly for natural look
+        const backFade = smoothstep(0.0, 0.3, -Z);
+        const darken = 1.0 - backFade * 0.3;
+        outPx[oi] = Math.round(r * darken);
+        outPx[oi+1] = Math.round(g * darken);
+        outPx[oi+2] = Math.round(b * darken);
+      }
+      outPx[oi+3] = 255;
+    }
+  }
+
+  outCtx.putImageData(outImg, 0, 0);
+
+  // Convert canvas to HTMLImageElement for consistent API
+  const resultImg = new Image();
+  resultImg.width = outW;
+  resultImg.height = outH;
+  // We'll store the canvas directly as a makeshift image
+  // Actually, let's draw to a new canvas and return a "converted" image
+  // The generateFromBase function uses drawImage, so we need an image-like source
+  // Store the converted canvas in a wrapper
+  return outCvs;
 }
 
 // ---- Seeded PRNG ----
@@ -176,7 +345,7 @@ function generateFromBase(
   type: PlanetVisualType,
   seed: number,
   ownerColor: number,
-  baseImg: HTMLImageElement,
+  baseCanvas: HTMLCanvasElement,
 ): TextureSet {
   const dC = makeCanvas(), nC = makeCanvas(), eC = makeCanvas();
   const dCtx = dC.getContext('2d')!;
@@ -186,11 +355,7 @@ function generateFromBase(
   // 1. Draw base texture scaled to our resolution
   //    Use a random horizontal offset per seed for variation
   const rand = mulberry32(seed);
-  const hOffset = rand(); // 0..1 — shifts which part of the texture is "front"
-  const scaledW = baseImg.width * (TEX_H / baseImg.height); // preserve aspect ratio of height
-
-  // Draw base image — can be wider than canvas (wrapping effect)
-  dCtx.drawImage(baseImg, 0, 0, baseImg.width, baseImg.height, 0, 0, TEX_W, TEX_H);
+  dCtx.drawImage(baseCanvas, 0, 0, baseCanvas.width, baseCanvas.height, 0, 0, TEX_W, TEX_H);
 
   // 2. Read pixel data for normal map generation + variation
   const baseData = dCtx.getImageData(0, 0, TEX_W, TEX_H);
