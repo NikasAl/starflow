@@ -15,6 +15,7 @@ import {
   NEUTRAL, PLAYER, AI_1, AI_2, AI_3,
 } from '../core/types';
 import { i18n, SUPPORTED_LOCALES, LOCALE_NAMES } from '../i18n';
+import { adManager } from '../ads/ad-manager';
 import {
   SELECTION_RING_COLOR, SELECTION_RING_RADIUS_MULTIPLIER,
   BACKGROUND_COLOR, STAR_COUNT, AMBIENT_LIGHT, DIRECTIONAL_LIGHT,
@@ -640,8 +641,15 @@ function showOverlay(state: GameState): void {
   const retryBtn = overlayElement.querySelector('#btn-retry');
 
   if (nextBtn) {
-    nextBtn.addEventListener('click', () => { if (onLevelComplete) onLevelComplete(); });
-    nextBtn.addEventListener('touchend', (e) => { e.preventDefault(); if (onLevelComplete) onLevelComplete(); });
+    const goNext = async () => {
+      // Disable button immediately to prevent double-tap
+      (nextBtn as HTMLElement).style.pointerEvents = 'none';
+      // Show interstitial ad before transitioning to next level (non-blocking)
+      await adManager.showInterstitialAd();
+      if (onLevelComplete) onLevelComplete();
+    };
+    nextBtn.addEventListener('click', goNext);
+    nextBtn.addEventListener('touchend', (e) => { e.preventDefault(); goNext(); });
   }
   if (retryBtn) {
     retryBtn.addEventListener('click', () => { if (onGameOver) onGameOver(); });

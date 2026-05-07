@@ -91,6 +91,39 @@ class AdManager {
     }
   }
 
+  /**
+   * Show an interstitial ad (full-screen between levels).
+   * Returns true if the ad was shown. If unavailable, returns false silently.
+   * No reward — purely for monetization.
+   */
+  async showInterstitialAd(): Promise<boolean> {
+    console.log('[AdManager] showInterstitialAd() called, sdkReady=' + this.sdkReady);
+
+    if (!this.sdkReady) {
+      console.warn('[AdManager] SDK not ready, skipping interstitial');
+      return false;
+    }
+
+    if (Capacitor.isNativePlatform()) {
+      try {
+        console.log('[AdManager] Calling native showInterstitialAd with unitId=' + AD_CONFIG.android.interstitialAdUnitId);
+        await YandexAds.showInterstitialAd({
+          adUnitId: AD_CONFIG.android.interstitialAdUnitId,
+        });
+        console.log('[AdManager] Interstitial ad completed');
+        return true;
+      } catch (e) {
+        // Ad failed to load/show — continue to next level silently
+        console.warn('[AdManager] Interstitial ad error (continuing):', e);
+        return false;
+      }
+    } else {
+      // Web: interstitial not supported via JS SDK in this context
+      console.warn('[AdManager] Interstitial ads not supported on web');
+      return false;
+    }
+  }
+
   /** Check if the ad SDK is loaded and ready */
   isReady(): boolean {
     return this.sdkReady;

@@ -15,6 +15,8 @@ export const AD_CONFIG = {
   android: {
     /** Rewarded ad unit ID from РСЯ partner interface */
     rewardedAdUnitId: 'R-M-19173175-1',
+    /** Interstitial ad unit ID — shown between game levels */
+    interstitialAdUnitId: 'R-M-19173175-2',
     /** Yandex Mobile Ads SDK version (published on Maven Central) */
     sdkVersion: '7.18.5',
   },

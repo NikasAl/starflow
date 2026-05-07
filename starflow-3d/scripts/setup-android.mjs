@@ -297,6 +297,10 @@ import com.yandex.mobile.ads.common.AdRequestError;
 import com.yandex.mobile.ads.common.ImpressionData;
 import com.yandex.mobile.ads.common.InitializationListener;
 import com.yandex.mobile.ads.common.MobileAds;
+import com.yandex.mobile.ads.interstitial.InterstitialAd;
+import com.yandex.mobile.ads.interstitial.InterstitialAdEventListener;
+import com.yandex.mobile.ads.interstitial.InterstitialAdLoadListener;
+import com.yandex.mobile.ads.interstitial.InterstitialAdLoader;
 import com.yandex.mobile.ads.rewarded.Reward;
 import com.yandex.mobile.ads.rewarded.RewardedAd;
 import com.yandex.mobile.ads.rewarded.RewardedAdEventListener;
@@ -312,8 +316,13 @@ public class YandexAdsPlugin extends Plugin {
     private RewardedAd rewardedAd = null;
     @Nullable
     private RewardedAdLoader rewardedAdLoader = null;
+    @Nullable
+    private InterstitialAd interstitialAd = null;
+    @Nullable
+    private InterstitialAdLoader interstitialAdLoader = null;
     private boolean rewardGranted = false;
     private PluginCall savedCall = null;
+    private boolean interstitialCallSaved = false;
     private boolean sdkInitialized = false;
     private Handler mainHandler = new Handler(Looper.getMainLooper());
 
@@ -448,8 +457,108 @@ public class YandexAdsPlugin extends Plugin {
         }
     }
 
+    @PluginMethod
+    public void showInterstitialAd(final PluginCall call) {
+        final String adUnitId = call.getString("adUnitId");
+        if (adUnitId == null || adUnitId.isEmpty()) {
+            call.reject("adUnitId is required");
+            return;
+        }
+
+        savedCall = call;
+        interstitialCallSaved = true;
+        android.util.Log.i("YandexAds", "showInterstitialAd called with unitId=" + adUnitId);
+
+        mainHandler.post(() -> {
+            try {
+                final Activity activity = getActivity();
+                if (activity == null) {
+                    android.util.Log.w("YandexAds", "Activity is null, cannot show interstitial");
+                    resolveInterstitialResult(false, "Activity is null");
+                    return;
+                }
+
+                if (interstitialAdLoader == null) {
+                    android.util.Log.i("YandexAds", "Creating InterstitialAdLoader");
+                    interstitialAdLoader = new InterstitialAdLoader(getContext());
+                }
+
+                interstitialAdLoader.setAdLoadListener(new InterstitialAdLoadListener() {
+                    @Override
+                    public void onAdLoaded(@NonNull final InterstitialAd ad) {
+                        android.util.Log.i("YandexAds", "Interstitial ad loaded, showing...");
+                        interstitialAd = ad;
+                        ad.setAdEventListener(new InterstitialAdEventListener() {
+                            @Override
+                            public void onAdShown() {
+                                android.util.Log.i("YandexAds", "Interstitial ad shown");
+                            }
+
+                            @Override
+                            public void onAdFailedToShow(@NonNull AdError error) {
+                                android.util.Log.w("YandexAds", "Interstitial onAdFailedToShow: " + error);
+                            }
+
+                            @Override
+                            public void onAdImpression(@Nullable ImpressionData impressionData) {
+                                android.util.Log.i("YandexAds", "Interstitial ad impression");
+                            }
+
+                            @Override
+                            public void onAdClicked() {}
+
+                            @Override
+                            public void onAdDismissed() {
+                                android.util.Log.i("YandexAds", "Interstitial onAdDismissed");
+                                resolveInterstitialResult(true, null);
+                                cleanupInterstitialAd();
+                            }
+                        });
+                        ad.show(activity);
+                    }
+
+                    @Override
+                    public void onAdFailedToLoad(@NonNull AdRequestError adRequestError) {
+                        android.util.Log.e("YandexAds", "Interstitial failed to load: " + adRequestError);
+                        resolveInterstitialResult(false, "Failed to load: " + adRequestError);
+                    }
+                });
+
+                final AdRequestConfiguration adRequestConfiguration =
+                    new AdRequestConfiguration.Builder(adUnitId).build();
+                android.util.Log.i("YandexAds", "Loading interstitial ad with unitId=" + adUnitId);
+                interstitialAdLoader.loadAd(adRequestConfiguration);
+            } catch (Exception e) {
+                android.util.Log.e("YandexAds", "Exception in showInterstitialAd: " + e.getMessage(), e);
+                resolveInterstitialResult(false, "Exception: " + e.getMessage());
+            }
+        });
+    }
+
+    private void cleanupInterstitialAd() {
+        if (interstitialAd != null) {
+            interstitialAd.setAdEventListener(null);
+            interstitialAd = null;
+        }
+    }
+
+    private void resolveInterstitialResult(boolean shown, String error) {
+        if (savedCall == null || !interstitialCallSaved) return;
+        interstitialCallSaved = false;
+        JSObject result = new JSObject();
+        result.put("shown", shown);
+        if (error != null) {
+            result.put("error", error);
+        }
+        try {
+            savedCall.resolve(result);
+        } catch (Exception ignored) {
+        }
+        savedCall = null;
+    }
+
     private void resolveAdResult(boolean granted, String error) {
-        if (savedCall == null) return;
+        if (savedCall == null || interstitialCallSaved) return;
         JSObject result = new JSObject();
         result.put("granted", granted);
         if (error != null) {
@@ -464,7 +573,7 @@ public class YandexAdsPlugin extends Plugin {
     }
 
     private void rejectAdResult(String message) {
-        if (savedCall == null) return;
+        if (savedCall == null || interstitialCallSaved) return;
         try {
             savedCall.reject(message);
         } catch (Exception ignored) {
