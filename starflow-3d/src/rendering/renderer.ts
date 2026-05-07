@@ -12,7 +12,7 @@ import {
   type GameState, type PlanetData, type MissileData,
   type CameraState, type ShipRoute, type OwnerId, type StarData,
   OWNER_COLORS, OWNER_NAMES, OWNER_NAME_KEYS,
-  NEUTRAL, PLAYER,
+  NEUTRAL, PLAYER, AI_1, AI_2, AI_3,
 } from '../core/types';
 import { i18n, SUPPORTED_LOCALES, LOCALE_NAMES } from '../i18n';
 import {
