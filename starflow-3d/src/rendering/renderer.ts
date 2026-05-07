@@ -12,7 +12,7 @@ import {
   type GameState, type PlanetData, type MissileData,
   type CameraState, type ShipRoute, type OwnerId, type StarData,
   OWNER_COLORS, OWNER_NAMES, OWNER_NAME_KEYS,
-  PLAYER,
+  NEUTRAL, PLAYER,
 } from '../core/types';
 import { i18n, SUPPORTED_LOCALES, LOCALE_NAMES } from '../i18n';
 import {
@@ -976,15 +976,25 @@ function drawPlanetLabel(ctx: CanvasRenderingContext2D, planet: PlanetData): voi
   ctx.clearRect(0, 0, 160, 64);
 
   const pw = Math.floor(planet.power);
-  const colorHex = '#' + OWNER_COLORS[planet.owner].toString(16).padStart(6, '0');
 
-  // Power number — prominent
-  ctx.font = 'bold 30px Arial';
+  // Label colors — more vivid than OWNER_COLORS for instant readability
+  // Player: bright blue, Neutral: white, Enemies: vivid team colors
+  const LABEL_COLORS: Record<number, string> = {
+    [NEUTRAL]: '#ffffff',
+    [PLAYER]:  '#55aaff',
+    [AI_1]:    '#ff5555',
+    [AI_2]:    '#55dd55',
+    [AI_3]:    '#ffbb22',
+  };
+  const colorHex = LABEL_COLORS[planet.owner] ?? '#ffffff';
+
+  // Power number — prominent with thicker outline for contrast
+  ctx.font = 'bold 32px Arial';
   ctx.textAlign = 'center';
-  ctx.fillStyle = colorHex;
   ctx.strokeStyle = '#000';
-  ctx.lineWidth = 3;
+  ctx.lineWidth = 4;
   ctx.strokeText(`${pw}`, 80, 30);
+  ctx.fillStyle = colorHex;
   ctx.fillText(`${pw}`, 80, 30);
 
   // Planet name
