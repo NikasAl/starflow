@@ -174,12 +174,31 @@ if (existsSync(mainActivityPath)) {
 const variablesPath = join(androidDir, 'variables.gradle');
 if (existsSync(variablesPath)) {
   let vars = readFileSync(variablesPath, 'utf-8');
+
+  // Upgrade compileSdkVersion and targetSdkVersion to 35 (GPlay requirement)
+  let sdkUpdated = false;
+  vars = vars.replace(
+    /compileSdkVersion\s*=\s*\d+/,
+    () => { sdkUpdated = true; return 'compileSdkVersion = 35'; }
+  );
+  vars = vars.replace(
+    /targetSdkVersion\s*=\s*\d+/,
+    () => { sdkUpdated = true; return 'targetSdkVersion = 35'; }
+  );
+  if (sdkUpdated) {
+    writeFileSync(variablesPath, vars, 'utf-8');
+    console.log('[setup-android] Upgraded compileSdkVersion/targetSdkVersion to 35.');
+  } else {
+    console.log('[setup-android] compileSdkVersion/targetSdkVersion already at 35+.');
+  }
+
+  // Ensure androidxCoreVersion is at least 1.12.0
   if (!vars.includes('androidxCoreVersion')) {
     vars = vars.replace(
       'ext {',
       'ext {\n    androidxCoreVersion = "1.12.0"'
     );
-    writeFileSync(variablesPath, 'utf-8');
+    writeFileSync(variablesPath, vars, 'utf-8');
     console.log('[setup-android] Added androidxCoreVersion to variables.gradle');
   } else if (vars.includes('androidxCoreVersion = "1.6.0"') || vars.includes('androidxCoreVersion = "1.9.0"') || vars.includes('androidxCoreVersion = "1.10.0"')) {
     // Upgrade to minimum version required for WindowInsetsControllerCompat
