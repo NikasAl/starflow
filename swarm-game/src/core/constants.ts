@@ -5,20 +5,20 @@
 // --- Mutable tuning (modified by debug panel at runtime) ---
 export const tuning = {
   // Boid behavior
-  separationRadius: 3.5,
+  separationRadius: 2.0,
   separationWeight: 4.0,
-  perceptionRadius: 8.0,
-  alignmentWeight: 0.8,
+  perceptionRadius: 10.0,
+  alignmentWeight: 1.7,
   cohesionWeight: 0.6,
   maxForce: 0.2,
 
   // Leader following
   leaderFollowRadius: 20.0,
-  leaderWeight: 2.5,
+  leaderWeight: 1.8,
   leaderTrailDist: 5.0,
 
   // Visual
-  boidScale: 1.0,
+  boidScale: 0.7,
 };
 
 // --- Static constants ---

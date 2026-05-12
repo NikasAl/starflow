@@ -223,6 +223,12 @@ function createBoidMesh(): void {
   boidMesh = new THREE.InstancedMesh(geometry, material, BOID_COUNT);
   boidMesh.count = BOID_COUNT;
   boidMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  // CRITICAL: disable frustum culling!
+  // InstancedMesh uses base geometry bounding sphere (radius ~0.2) for culling.
+  // Instances are spread across the entire world — the tiny bounding sphere
+  // causes the ENTIRE mesh to be clipped when camera frustum doesn't contain
+  // the origin area. This made the whole swarm vanish at certain angles.
+  boidMesh.frustumCulled = false;
   scene.add(boidMesh);
 }
 
