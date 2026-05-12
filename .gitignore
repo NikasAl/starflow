@@ -23,3 +23,9 @@ desktop.ini
 
 # Download (editor)
 download/
+
+# Node.js / Swarm game
+node_modules/
+dist/
+swarm-game/node_modules/
+swarm-game/dist/

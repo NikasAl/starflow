@@ -6,17 +6,18 @@
 
 import type { BoidData, LeaderData, Waypoint, PlatformData } from './types.ts';
 import {
-  BOID_COUNT, BOID_MIN_SPEED, BOID_MAX_SPEED, BOID_MAX_FORCE,
-  SEPARATION_RADIUS, SEPARATION_WEIGHT,
-  PERCEPTION_RADIUS, ALIGNMENT_WEIGHT, COHESION_WEIGHT,
-  LEADER_FOLLOW_RADIUS, LEADER_WEIGHT, LEADER_TRAIL_DIST,
+  tuning,
+  BOID_COUNT, BOID_MIN_SPEED, BOID_MAX_SPEED,
   LEADER_SPEED, LEADER_MAX_TURN_RATE, LEADER_MAX_PITCH,
   WORLD_HALF_SIZE,
-  WAYPOINT_REACH_DIST, SMOOTH_TURN_FACTOR,
+  WAYPOINT_REACH_DIST, SMOOTH_TURN_FACTOR, WAYPOINT_HEIGHT_OFFSET,
   PLATFORM_COUNT, PLATFORM_RADIUS_MIN, PLATFORM_RADIUS_MAX, RING_RADIUS,
   PLATFORM_HEIGHT_MIN, PLATFORM_HEIGHT_MAX, PLATFORM_SPREAD,
   SPATIAL_CELL_SIZE,
 } from './constants.ts';
+
+// Re-export tuning for debug panel access
+export { tuning };
 
 // ============================================================
 // Spatial Hash — O(n) neighbor queries
@@ -173,33 +174,35 @@ function quatGetRight(
 }
 
 // ============================================================
-// Generate flight path — figure-8 / circuit through platforms
+// Generate flight path — through platforms with height offset
 // ============================================================
 
 export function generateWaypoints(platforms: PlatformData[]): Waypoint[] {
-  // Build a scenic route that visits each platform in order
-  // Use a smooth path: approach each platform, fly through, then curve to next
   const waypoints: Waypoint[] = [];
 
   for (let i = 0; i < platforms.length; i++) {
     const p = platforms[i];
     const next = platforms[(i + 1) % platforms.length];
 
-    // Waypoint AT the platform (fly through the ring)
-    waypoints.push({ x: p.x, y: p.y, z: p.z });
+    // Waypoint ABOVE the platform (fly over the ring)
+    waypoints.push({
+      x: p.x,
+      y: p.y + WAYPOINT_HEIGHT_OFFSET,
+      z: p.z,
+    });
 
-    // Midpoint between platforms — for smooth curves
-    // Offset perpendicular to the line between them
+    // Midpoint between platforms — smooth curve
     const mx = (p.x + next.x) * 0.5;
-    const my = (p.y + next.y) * 0.5 + (Math.random() - 0.5) * 4;
+    const my = ((p.y + WAYPOINT_HEIGHT_OFFSET) + (next.y + WAYPOINT_HEIGHT_OFFSET)) * 0.5
+      + (Math.random() - 0.5) * 3;
     const mz = (p.z + next.z) * 0.5;
 
-    // Perpendicular offset for more interesting curves
-    const dx = next.x - p.x;
-    const dz = next.z - p.z;
-    const len = Math.sqrt(dx * dx + dz * dz) || 1;
-    const perpX = -dz / len;
-    const perpZ = dx / len;
+    // Perpendicular offset for interesting curves
+    const ddx = next.x - p.x;
+    const ddz = next.z - p.z;
+    const len = Math.sqrt(ddx * ddx + ddz * ddz) || 1;
+    const perpX = -ddz / len;
+    const perpZ = ddx / len;
     const curveStrength = 8 + Math.random() * 10;
 
     waypoints.push({
@@ -218,15 +221,9 @@ export function generateWaypoints(platforms: PlatformData[]): Waypoint[] {
 
 export function generatePlatforms(): PlatformData[] {
   const platforms: PlatformData[] = [];
-
-  // Create platforms in a spread pattern — not random, more structured
-  // Arrange in a loose spiral / figure-8 for interesting flight path
   const count = PLATFORM_COUNT;
 
   for (let i = 0; i < count; i++) {
-    const t = (i / count) * Math.PI * 2;
-
-    // Spiral-ish layout with some variation
     const layer = Math.floor(i / 6);
     const angleInLayer = (i % 6) / 6 * Math.PI * 2 + layer * 0.8;
 
@@ -236,9 +233,7 @@ export function generatePlatforms(): PlatformData[] {
     const y = PLATFORM_HEIGHT_MIN + Math.random() * (PLATFORM_HEIGHT_MAX - PLATFORM_HEIGHT_MIN);
 
     platforms.push({
-      x,
-      y,
-      z,
+      x, y, z,
       radius: PLATFORM_RADIUS_MIN + Math.random() * (PLATFORM_RADIUS_MAX - PLATFORM_RADIUS_MIN),
       ringRadius: RING_RADIUS,
       passed: false,
@@ -287,47 +282,36 @@ export function updateLeader(
 
   if (waypoints.length === 0) return;
 
-  // Current waypoint
   const wp = waypoints[leader.waypointIndex];
 
-  // Direction to waypoint
   const dx = wp.x - leader.x;
   const dy = wp.y - leader.y;
   const dz = wp.z - leader.z;
   const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-  // Check if reached
   if (dist < WAYPOINT_REACH_DIST) {
     leader.waypointIndex = (leader.waypointIndex + 1) % waypoints.length;
   }
 
-  // Get desired direction (normalized)
   const [ddx, ddy, ddz] = normalize(dx, dy, dz);
 
-  // Smoothly steer toward waypoint using quaternion
-  // Extract current forward from quaternion
   const [fx, fy, fz] = quatGetForward(leader.qx, leader.qy, leader.qz, leader.qw);
 
-  // Angle between current forward and desired direction
   const dotForward = fx * ddx + fy * ddy + fz * ddz;
   const turnAmount = Math.acos(Math.max(-1, Math.min(1, dotForward)));
 
   if (turnAmount > 0.01) {
-    // Rotation axis = cross(current forward, desired direction)
     const [rx, ry, rz] = cross(fx, fy, fz, ddx, ddy, ddz);
     const rLen = Math.sqrt(rx * rx + ry * ry + rz * rz);
 
     if (rLen > 0.001) {
-      // Normalize rotation axis
       const nrx = rx / rLen;
       const nry = ry / rLen;
       const nrz = rz / rLen;
 
-      // Clamp turn rate
       const maxTurn = LEADER_MAX_TURN_RATE * dt;
       const clampedTurn = Math.min(turnAmount, maxTurn);
 
-      // Apply rotation
       const qTurn = quatFromAxisAngle(nrx, nry, nrz, clampedTurn);
       const lq = [leader.qx, leader.qy, leader.qz, leader.qw];
       const r = quatMultiply(qTurn, lq);
@@ -335,7 +319,7 @@ export function updateLeader(
     }
   }
 
-  // Enforce pitch limit — extract pitch and clamp
+  // Enforce pitch limit
   const [newFx, newFy, newFz] = quatGetForward(leader.qx, leader.qy, leader.qz, leader.qw);
   let currentPitch = Math.asin(Math.max(-1, Math.min(1, newFy)));
 
@@ -362,10 +346,8 @@ export function updateLeader(
     leader.qz /= qLen; leader.qw /= qLen;
   }
 
-  // Forward direction from quaternion
   const [finalFx, finalFy, finalFz] = quatGetForward(leader.qx, leader.qy, leader.qz, leader.qw);
 
-  // Smooth velocity
   const velLerp = Math.min(SMOOTH_TURN_FACTOR * dt, 1.0);
   const targetVx = finalFx * LEADER_SPEED;
   const targetVy = finalFy * LEADER_SPEED;
@@ -401,11 +383,22 @@ export function updateBoids(
 ): void {
   const forces = new Float32Array(boids.length * 3);
 
+  // Read tuning values once per frame
+  const sepRad = tuning.separationRadius;
+  const sepW = tuning.separationWeight;
+  const percRad = tuning.perceptionRadius;
+  const aliW = tuning.alignmentWeight;
+  const cohW = tuning.cohesionWeight;
+  const maxF = tuning.maxForce;
+  const followRad = tuning.leaderFollowRadius;
+  const leaderW = tuning.leaderWeight;
+  const trailDist = tuning.leaderTrailDist;
+
   for (let i = 0; i < boids.length; i++) {
     const boid = boids[i];
     if (!boid.alive) continue;
 
-    const neighborIndices = hash.query(boid.x, boid.y, boid.z, PERCEPTION_RADIUS);
+    const neighborIndices = hash.query(boid.x, boid.y, boid.z, percRad);
 
     let sepX = 0, sepY = 0, sepZ = 0, sepCount = 0;
     let aliX = 0, aliY = 0, aliZ = 0, aliCount = 0;
@@ -422,14 +415,14 @@ export function updateBoids(
       const ddz = other.z - boid.z;
       const dist = Math.sqrt(ddx * ddx + ddy * ddy + ddz * ddz);
 
-      if (dist < SEPARATION_RADIUS && dist > 0.001) {
+      if (dist < sepRad && dist > 0.001) {
         sepX -= ddx / dist;
         sepY -= ddy / dist;
         sepZ -= ddz / dist;
         sepCount++;
       }
 
-      if (dist < PERCEPTION_RADIUS) {
+      if (dist < percRad) {
         aliX += other.vx;
         aliY += other.vy;
         aliZ += other.vz;
@@ -451,22 +444,22 @@ export function updateBoids(
       sepX /= sepCount; sepY /= sepCount; sepZ /= sepCount;
       const [sfx, sfy, sfz] = steer(
         boid.vx, boid.vy, boid.vz, sepX, sepY, sepZ,
-        BOID_MAX_SPEED, BOID_MAX_FORCE,
+        BOID_MAX_SPEED, maxF,
       );
-      fx += sfx * SEPARATION_WEIGHT;
-      fy += sfy * SEPARATION_WEIGHT;
-      fz += sfz * SEPARATION_WEIGHT;
+      fx += sfx * sepW;
+      fy += sfy * sepW;
+      fz += sfz * sepW;
     }
 
     if (aliCount > 0) {
       aliX /= aliCount; aliY /= aliCount; aliZ /= aliCount;
       const [afx, afy, afz] = steer(
         boid.vx, boid.vy, boid.vz, aliX, aliY, aliZ,
-        BOID_MAX_SPEED, BOID_MAX_FORCE,
+        BOID_MAX_SPEED, maxF,
       );
-      fx += afx * ALIGNMENT_WEIGHT;
-      fy += afy * ALIGNMENT_WEIGHT;
-      fz += afz * ALIGNMENT_WEIGHT;
+      fx += afx * aliW;
+      fy += afy * aliW;
+      fz += afz * aliW;
     }
 
     if (cohCount > 0) {
@@ -475,46 +468,46 @@ export function updateBoids(
       cohZ = cohZ / cohCount - boid.z;
       const [cfx, cfy, cfz] = steer(
         boid.vx, boid.vy, boid.vz, cohX, cohY, cohZ,
-        BOID_MAX_SPEED, BOID_MAX_FORCE,
+        BOID_MAX_SPEED, maxF,
       );
-      fx += cfx * COHESION_WEIGHT;
-      fy += cfy * COHESION_WEIGHT;
-      fz += cfz * COHESION_WEIGHT;
+      fx += cfx * cohW;
+      fy += cfy * cohW;
+      fz += cfz * cohW;
     }
 
     // Follow trail point behind leader
     const [lvx, lvy, lvz] = normalize(leader.vx, leader.vy, leader.vz);
-    const trailX = leader.x - lvx * LEADER_TRAIL_DIST;
-    const trailY = leader.y - lvy * LEADER_TRAIL_DIST;
-    const trailZ = leader.z - lvz * LEADER_TRAIL_DIST;
+    const trailX = leader.x - lvx * trailDist;
+    const trailY = leader.y - lvy * trailDist;
+    const trailZ = leader.z - lvz * trailDist;
 
     const ldx = trailX - boid.x;
     const ldy = trailY - boid.y;
     const ldz = trailZ - boid.z;
     const ldist = Math.sqrt(ldx * ldx + ldy * ldy + ldz * ldz);
 
-    if (ldist < LEADER_FOLLOW_RADIUS && ldist > 0.001) {
+    if (ldist < followRad && ldist > 0.001) {
       const [lfx, lfy, lfz] = steer(
         boid.vx, boid.vy, boid.vz, ldx, ldy, ldz,
-        BOID_MAX_SPEED, BOID_MAX_FORCE * 1.5,
+        BOID_MAX_SPEED, maxF * 1.5,
       );
-      fx += lfx * LEADER_WEIGHT;
-      fy += lfy * LEADER_WEIGHT;
-      fz += lfz * LEADER_WEIGHT;
-    } else if (ldist >= LEADER_FOLLOW_RADIUS) {
+      fx += lfx * leaderW;
+      fy += lfy * leaderW;
+      fz += lfz * leaderW;
+    } else if (ldist >= followRad) {
       const [lfx, lfy, lfz] = steer(
         boid.vx, boid.vy, boid.vz, ldx, ldy, ldz,
-        BOID_MAX_SPEED, BOID_MAX_FORCE * 3,
+        BOID_MAX_SPEED, maxF * 3,
       );
-      fx += lfx * LEADER_WEIGHT * 2;
-      fy += lfy * LEADER_WEIGHT * 2;
-      fz += lfz * LEADER_WEIGHT * 2;
+      fx += lfx * leaderW * 2;
+      fy += lfy * leaderW * 2;
+      fz += lfz * leaderW * 2;
     }
 
     // Align with leader direction
     const [lafx, lafy, lafz] = steer(
       boid.vx, boid.vy, boid.vz, lvx, lvy, lvz,
-      BOID_MAX_SPEED, BOID_MAX_FORCE,
+      BOID_MAX_SPEED, maxF,
     );
     fx += lafx * 0.5;
     fy += lafy * 0.5;
@@ -547,7 +540,6 @@ export function updateBoids(
     boid.y += boid.vy * dt;
     boid.z += boid.vz * dt;
 
-    // Hard clamp to world bounds
     const limit = WORLD_HALF_SIZE - 1;
     boid.x = Math.max(-limit, Math.min(limit, boid.x));
     boid.y = Math.max(-limit, Math.min(limit, boid.y));
