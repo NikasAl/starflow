@@ -9,15 +9,16 @@ export const BOID_MAX_SPEED = 5.0;
 export const BOID_MAX_FORCE = 0.12;
 export const BOID_MIN_FORCE = 0.02;
 
-export const SEPARATION_RADIUS = 2.5;
-export const SEPARATION_WEIGHT = 2.0;
+export const SEPARATION_RADIUS = 3.0;
+export const SEPARATION_WEIGHT = 2.5;
 
 export const PERCEPTION_RADIUS = 6.0;
 export const ALIGNMENT_WEIGHT = 1.0;
 export const COHESION_WEIGHT = 1.2;
 
-export const LEADER_FOLLOW_RADIUS = 20.0;
-export const LEADER_WEIGHT = 2.5;
+export const LEADER_FOLLOW_RADIUS = 25.0;
+export const LEADER_WEIGHT = 1.8;
+export const LEADER_TRAIL_DIST = 6.0; // Boids target this distance behind leader
 
 // --- Leader ---
 export const LEADER_SPEED = 4.5;

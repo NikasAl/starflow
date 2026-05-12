@@ -8,7 +8,7 @@ import {
   BOID_COUNT, BOID_MIN_SPEED, BOID_MAX_SPEED, BOID_MAX_FORCE, BOID_MIN_FORCE,
   SEPARATION_RADIUS, SEPARATION_WEIGHT,
   PERCEPTION_RADIUS, ALIGNMENT_WEIGHT, COHESION_WEIGHT,
-  LEADER_FOLLOW_RADIUS, LEADER_WEIGHT,
+  LEADER_FOLLOW_RADIUS, LEADER_WEIGHT, LEADER_TRAIL_DIST,
   LEADER_SPEED, LEADER_BOOST_SPEED, LEADER_MAX_TURN_RATE,
   WORLD_HALF_SIZE, BOUNDARY_MARGIN, BOUNDARY_STRENGTH,
   SPATIAL_CELL_SIZE,
@@ -359,11 +359,19 @@ export function updateBoids(
       fz += cfz * COHESION_WEIGHT;
     }
 
-    // Leader follow force
-    const ldx = leader.x - boid.x;
-    const ldy = leader.y - boid.y;
-    const ldz = leader.z - boid.z;
+    // Leader follow — attract to a point BEHIND the leader (trail)
+    // This creates a natural wedge/V formation instead of collapsing to a point
+    const [lvx, lvy, lvz] = normalize(leader.vx, leader.vy, leader.vz);
+    // Trail point: behind the leader by LEADER_TRAIL_DIST
+    const trailX = leader.x - lvx * LEADER_TRAIL_DIST;
+    const trailY = leader.y - lvy * LEADER_TRAIL_DIST;
+    const trailZ = leader.z - lvz * LEADER_TRAIL_DIST;
+
+    const ldx = trailX - boid.x;
+    const ldy = trailY - boid.y;
+    const ldz = trailZ - boid.z;
     const ldist = Math.sqrt(ldx * ldx + ldy * ldy + ldz * ldz);
+
     if (ldist < LEADER_FOLLOW_RADIUS && ldist > 0.001) {
       const [lfx, lfy, lfz] = steer(
         boid.vx, boid.vy, boid.vz,
@@ -374,7 +382,7 @@ export function updateBoids(
       fy += lfy * LEADER_WEIGHT;
       fz += lfz * LEADER_WEIGHT;
     }
-    // If far from leader, strong attraction to come back
+    // If far from trail point, strong attraction to come back
     else if (ldist >= LEADER_FOLLOW_RADIUS) {
       const [lfx, lfy, lfz] = steer(
         boid.vx, boid.vy, boid.vz,
@@ -385,6 +393,16 @@ export function updateBoids(
       fy += lfy * LEADER_WEIGHT * 2;
       fz += lfz * LEADER_WEIGHT * 2;
     }
+
+    // Also align with leader's direction (head the same way)
+    const [lafx, lafy, lafz] = steer(
+      boid.vx, boid.vy, boid.vz,
+      lvx, lvy, lvz,
+      BOID_MAX_SPEED, BOID_MAX_FORCE,
+    );
+    fx += lafx * 0.5;
+    fy += lafy * 0.5;
+    fz += lafz * 0.5;
 
     // Boundary repulsion
     const [bfx, bfy, bfz] = boundaryForce(boid.x, boid.y, boid.z);
