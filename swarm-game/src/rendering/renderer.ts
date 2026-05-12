@@ -32,7 +32,8 @@ let boidMesh: THREE.InstancedMesh;
 let leaderMesh: THREE.Mesh;
 let leaderLight: THREE.PointLight;
 
-let platformObjects: THREE.Group[] = [];
+let platformDiscMesh: THREE.InstancedMesh | null = null;
+let platformRingMesh: THREE.InstancedMesh | null = null;
 
 // HUD
 let hudDiv: HTMLDivElement;
@@ -214,37 +215,57 @@ function createLeaderMesh(): void {
 // ============================================================
 
 export function createPlatforms(platforms: PlatformData[]): void {
-  for (const obj of platformObjects) scene.remove(obj);
-  platformObjects = [];
+  // Remove old platform meshes
+  if (platformDiscMesh) { scene.remove(platformDiscMesh); platformDiscMesh.geometry.dispose(); }
+  if (platformRingMesh) { scene.remove(platformRingMesh); platformRingMesh.geometry.dispose(); }
 
-  for (const p of platforms) {
-    const group = new THREE.Group();
+  if (platforms.length === 0) return;
 
-    const discGeo = new THREE.CylinderGeometry(p.radius, p.radius, 0.3, 16);
-    const discMat = new THREE.MeshStandardMaterial({
-      color: 0x1a2a44, emissive: 0x0a1525, emissiveIntensity: 0.3,
-      transparent: true, opacity: 0.7, metalness: 0.5, roughness: 0.5,
-    });
-    group.add(new THREE.Mesh(discGeo, discMat));
+  // --- Disc InstancedMesh (1 draw call for all platforms) ---
+  const discGeo = new THREE.CylinderGeometry(1, 1, 0.3, 16); // unit radius, scaled per instance
+  const discMat = new THREE.MeshStandardMaterial({
+    color: 0x1a2a44, emissive: 0x0a1525, emissiveIntensity: 0.3,
+    transparent: true, opacity: 0.7, metalness: 0.5, roughness: 0.5,
+  });
+  platformDiscMesh = new THREE.InstancedMesh(discGeo, discMat, platforms.length);
+  platformDiscMesh.frustumCulled = false;
 
-    const ringGeo = new THREE.TorusGeometry(p.ringRadius, 0.15, 8, 24);
-    const ringMat = new THREE.MeshStandardMaterial({
-      color: 0x44aaff, emissive: 0x2266dd, emissiveIntensity: 1.2,
-      transparent: true, opacity: 0.8,
-    });
-    const ring = new THREE.Mesh(ringGeo, ringMat);
-    ring.rotation.x = Math.PI * 0.5;
-    ring.position.y = 0.3;
-    group.add(ring);
+  // --- Ring InstancedMesh (1 draw call for all rings) ---
+  const ringGeo = new THREE.TorusGeometry(1, 0.15, 8, 24); // unit radius, scaled per instance
+  const ringMat = new THREE.MeshStandardMaterial({
+    color: 0x44aaff, emissive: 0x2266dd, emissiveIntensity: 1.2,
+    transparent: true, opacity: 0.8,
+  });
+  platformRingMesh = new THREE.InstancedMesh(ringGeo, ringMat, platforms.length);
+  platformRingMesh.frustumCulled = false;
 
-    const ringLight = new THREE.PointLight(0x4488ff, 2, 15);
-    ringLight.position.y = 1;
-    group.add(ringLight);
+  const mat4 = new THREE.Matrix4();
+  const pos = new THREE.Vector3();
+  const quat = new THREE.Quaternion();
+  const scl = new THREE.Vector3();
 
-    group.position.set(p.x, p.y, p.z);
-    scene.add(group);
-    platformObjects.push(group);
+  for (let i = 0; i < platforms.length; i++) {
+    const p = platforms[i];
+
+    // Disc: at platform position, scaled by radius
+    pos.set(p.x, p.y, p.z);
+    quat.identity();
+    scl.set(p.radius, 1, p.radius);
+    mat4.compose(pos, quat, scl);
+    platformDiscMesh.setMatrixAt(i, mat4);
+
+    // Ring: above disc, rotated 90° on X, scaled by ringRadius
+    pos.set(p.x, p.y + 0.3, p.z);
+    quat.setFromEuler(new THREE.Euler(Math.PI * 0.5, 0, 0));
+    scl.set(p.ringRadius, p.ringRadius, p.ringRadius);
+    mat4.compose(pos, quat, scl);
+    platformRingMesh.setMatrixAt(i, mat4);
   }
+
+  platformDiscMesh.instanceMatrix.needsUpdate = true;
+  platformRingMesh.instanceMatrix.needsUpdate = true;
+  scene.add(platformDiscMesh);
+  scene.add(platformRingMesh);
 }
 
 // ============================================================

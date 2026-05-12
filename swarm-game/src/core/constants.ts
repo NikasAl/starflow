@@ -37,7 +37,7 @@ export const LEADER_MAX_PITCH = 60;
 
 // --- Flight path (spline) ---
 export const PATH_SAMPLES = 400;        // dense sampling of the curve
-export const PLATFORM_SPACING = 3;      // how many path points between platforms
+export const PLATFORM_SPACING = 22;     // path points between platforms (400/22 ≈ 18 platforms)
 export const PATH_LOOK_AHEAD = 8;       // leader looks this many points ahead
 
 // --- World ---
