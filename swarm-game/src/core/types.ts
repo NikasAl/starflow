@@ -26,18 +26,10 @@ export interface LeaderData {
   qy: number;
   qz: number;
   qw: number;
-  // Demo autopilot state
-  waypointIndex: number;
+  pathIndex: number;  // current index on the dense flight path
 }
 
-/** A waypoint on the flight path */
-export interface Waypoint {
-  x: number;
-  y: number;
-  z: number;
-}
-
-/** A platform with a ring to fly through */
+/** A platform with a ring */
 export interface PlatformData {
   x: number;
   y: number;
@@ -51,7 +43,7 @@ export interface PlatformData {
 export interface GameState {
   boids: BoidData[];
   leader: LeaderData;
-  waypoints: Waypoint[];
+  path: [number, number, number][];
   platforms: PlatformData[];
   aliveCount: number;
   totalCount: number;

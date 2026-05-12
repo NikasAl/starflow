@@ -4,11 +4,11 @@
 // ============================================================
 
 import type { GameState } from './core/types.ts';
-import { BOID_COUNT, SPATIAL_CELL_SIZE } from './core/constants.ts';
+import { SPATIAL_CELL_SIZE } from './core/constants.ts';
+import { tuning } from './core/constants.ts';
 import {
   createBoids,
-  generatePlatforms,
-  generateWaypoints,
+  generateFlightPath,
   updateLeader,
   updateBoids,
   SpatialHash,
@@ -19,49 +19,58 @@ import {
   renderFrame,
   updateFPS,
   createPlatforms,
-  createWaypointPath,
+  createPathVisualization,
+  setRestartCallback,
 } from './rendering/renderer.ts';
 
 // ============================================================
-// Game state initialization
+// Game state
 // ============================================================
 
-function createGameState(): GameState {
-  // Generate platforms first (they determine the flight path)
-  const platforms = generatePlatforms();
+let state: GameState;
+let spatialHash: SpatialHash;
+let lastTime = 0;
+let running = false;
 
-  // Leader starts at first platform, facing +Z
+function createGameState(): GameState {
+  const { path, platforms } = generateFlightPath();
+
+  // Leader starts at path[0], facing along path direction
   const halfPi = Math.PI * 0.5;
   const cos = Math.cos(halfPi * 0.5);
   const sin = Math.sin(halfPi * 0.5);
 
-  const startX = platforms[0].x;
-  const startY = platforms[0].y;
-  const startZ = platforms[0].z - 15;
+  // Initial forward direction: from path[0] to path[1]
+  const [fx, fy, fz] = (() => {
+    if (path.length < 2) return [0, 0, 1];
+    const dx = path[1][0] - path[0][0];
+    const dy = path[1][1] - path[0][1];
+    const dz = path[1][2] - path[0][2];
+    const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+    return [dx / len, dy / len, dz / len];
+  })();
 
   const leader = {
-    x: startX,
-    y: startY,
-    z: startZ,
-    vx: 0,
-    vy: 0,
-    vz: 5.0,
+    x: path[0][0],
+    y: path[0][1],
+    z: path[0][2],
+    vx: fx * 5.0,
+    vy: fy * 5.0,
+    vz: fz * 5.0,
+    // Initial quaternion: rotate (0,1,0) to face along path direction
     qx: sin,
     qy: 0,
     qz: 0,
     qw: cos,
-    waypointIndex: 0,
+    pathIndex: 0,
   };
 
-  // Generate flight path through platforms
-  const waypoints = generateWaypoints(platforms);
-
-  const boids = createBoids(leader);
+  const boids = createBoids(leader, tuning.boidCount);
 
   return {
     boids,
     leader,
-    waypoints,
+    path,
     platforms,
     aliveCount: boids.length,
     totalCount: boids.length,
@@ -74,72 +83,62 @@ function createGameState(): GameState {
 // Game loop
 // ============================================================
 
-let state: GameState;
-let spatialHash: SpatialHash;
-let lastTime = 0;
-let running = false;
-
 function gameLoop(timestamp: number): void {
   if (!running) return;
-
   requestAnimationFrame(gameLoop);
 
   const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
   lastTime = timestamp;
-
   if (dt <= 0) return;
 
   state.time += dt;
 
-  // --- Update leader (autopilot) ---
-  updateLeader(state.leader, state.waypoints, dt);
+  // Update leader (follows smooth path)
+  updateLeader(state.leader, state.path, dt);
 
-  // --- Rebuild spatial hash ---
+  // Rebuild spatial hash
   spatialHash.clear();
   for (let i = 0; i < state.boids.length; i++) {
     const b = state.boids[i];
-    if (b.alive) {
-      spatialHash.insert(i, b.x, b.y, b.z);
-    }
+    if (b.alive) spatialHash.insert(i, b.x, b.y, b.z);
   }
 
-  // --- Update boids ---
+  // Update boids
   updateBoids(state.boids, state.leader, dt, spatialHash);
 
-  // --- Count alive ---
+  // Count alive
   let alive = 0;
   for (let i = 0; i < state.boids.length; i++) {
     if (state.boids[i].alive) alive++;
   }
   state.aliveCount = alive;
 
-  // --- Sync visuals ---
+  // Sync + render
   syncVisuals(state, dt);
-
-  // --- Render ---
   renderFrame();
-
-  // --- FPS ---
   state.fps = updateFPS(dt * 1000);
 }
 
 // ============================================================
-// Start
+// Start / restart
 // ============================================================
 
 function startGame(): void {
   state = createGameState();
   spatialHash = new SpatialHash(SPATIAL_CELL_SIZE);
 
-  // Create 3D platform objects
   createPlatforms(state.platforms);
+  createPathVisualization(state.path);
 
-  // Create waypoint path visualization
-  createWaypointPath(state.waypoints);
+  if (!running) {
+    running = true;
+    lastTime = performance.now();
+    requestAnimationFrame(gameLoop);
+  } else {
+    lastTime = performance.now();
+  }
 
-  running = true;
-  lastTime = performance.now();
-  requestAnimationFrame(gameLoop);
+  console.log(`[Swarm] Game started — ${tuning.boidCount} boids, ${state.path.length} path points, ${state.platforms.length} platforms`);
 }
 
 // ============================================================
@@ -154,7 +153,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   initRenderer(canvas);
+  setRestartCallback(startGame);
   startGame();
-
-  console.log('[Swarm] Demo mode started — autopilot flight through platforms');
 });

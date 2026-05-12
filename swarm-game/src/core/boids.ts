@@ -1,18 +1,18 @@
 // ============================================================
 // Рой (Swarm) — Demo Mode
-// Autopilot flight path, Boids algorithm, spatial hash
+// Smooth spline flight path, Boids algorithm, spatial hash
 // Pure math, no Three.js / DOM dependencies
 // ============================================================
 
-import type { BoidData, LeaderData, Waypoint, PlatformData } from './types.ts';
+import type { BoidData, LeaderData, PlatformData } from './types.ts';
 import {
   tuning,
-  BOID_COUNT, BOID_MIN_SPEED, BOID_MAX_SPEED,
+  BOID_MIN_SPEED, BOID_MAX_SPEED,
   LEADER_SPEED, LEADER_MAX_TURN_RATE, LEADER_MAX_PITCH,
   WORLD_HALF_SIZE,
-  WAYPOINT_REACH_DIST, SMOOTH_TURN_FACTOR, WAYPOINT_HEIGHT_OFFSET,
-  PLATFORM_COUNT, PLATFORM_RADIUS_MIN, PLATFORM_RADIUS_MAX, RING_RADIUS,
-  PLATFORM_HEIGHT_MIN, PLATFORM_HEIGHT_MAX, PLATFORM_SPREAD,
+  PATH_SAMPLES, PLATFORM_SPACING, PATH_LOOK_AHEAD,
+  PLATFORM_RADIUS_MIN, PLATFORM_RADIUS_MAX, RING_RADIUS,
+  CURVE_RADIUS_MAIN, CURVE_RADIUS_MOD, CURVE_HEIGHT_AMP,
   SPATIAL_CELL_SIZE,
 } from './constants.ts';
 
@@ -160,7 +160,6 @@ function quatRotateDir(
   ];
 }
 
-/** Forward direction = where (0,1,0) points after quaternion rotation */
 function quatGetForward(
   qx: number, qy: number, qz: number, qw: number,
 ): [number, number, number] {
@@ -174,63 +173,48 @@ function quatGetRight(
 }
 
 // ============================================================
-// Generate flight path — through platforms with height offset
+// Parametric 3D curve — smooth figure-8 with height waves
+// C∞ smooth, no sharp corners possible
 // ============================================================
 
-export function generateWaypoints(platforms: PlatformData[]): Waypoint[] {
-  const waypoints: Waypoint[] = [];
+function curvePoint(t: number): [number, number, number] {
+  const R = CURVE_RADIUS_MAIN;
+  const r = CURVE_RADIUS_MOD;
+  const H = CURVE_HEIGHT_AMP;
 
-  for (let i = 0; i < platforms.length; i++) {
-    const p = platforms[i];
-    const next = platforms[(i + 1) % platforms.length];
+  const x = R * Math.sin(t) + r * Math.sin(3 * t);
+  const z = R * Math.cos(t) + r * Math.cos(2 * t);
+  const y = H * Math.sin(2 * t) + 3 * Math.sin(5 * t);
 
-    // Waypoint ABOVE the platform (fly over the ring)
-    waypoints.push({
-      x: p.x,
-      y: p.y + WAYPOINT_HEIGHT_OFFSET,
-      z: p.z,
-    });
-
-    // Midpoint between platforms — smooth curve
-    const mx = (p.x + next.x) * 0.5;
-    const my = ((p.y + WAYPOINT_HEIGHT_OFFSET) + (next.y + WAYPOINT_HEIGHT_OFFSET)) * 0.5
-      + (Math.random() - 0.5) * 3;
-    const mz = (p.z + next.z) * 0.5;
-
-    // Perpendicular offset for interesting curves
-    const ddx = next.x - p.x;
-    const ddz = next.z - p.z;
-    const len = Math.sqrt(ddx * ddx + ddz * ddz) || 1;
-    const perpX = -ddz / len;
-    const perpZ = ddx / len;
-    const curveStrength = 8 + Math.random() * 10;
-
-    waypoints.push({
-      x: mx + perpX * curveStrength * (i % 2 === 0 ? 1 : -1),
-      y: my,
-      z: mz + perpZ * curveStrength * (i % 2 === 0 ? 1 : -1),
-    });
-  }
-
-  return waypoints;
+  return [x, y, z];
 }
 
 // ============================================================
-// Generate platforms with rings
+// Generate smooth flight path and platform positions
+// Returns { path: dense array of [x,y,z], platforms: PlatformData[] }
 // ============================================================
 
-export function generatePlatforms(): PlatformData[] {
+export function generateFlightPath(): {
+  path: [number, number, number][];
+  platforms: PlatformData[];
+} {
+  const path: [number, number, number][] = [];
+
+  // Dense sampling of the parametric curve
+  for (let i = 0; i < PATH_SAMPLES; i++) {
+    const t = (i / PATH_SAMPLES) * Math.PI * 2;
+    path.push(curvePoint(t));
+  }
+
+  // Place platforms at equal intervals along the path
   const platforms: PlatformData[] = [];
-  const count = PLATFORM_COUNT;
+  const interval = Math.floor(PATH_SAMPLES / (PATH_SAMPLES / PLATFORM_SPACING));
 
-  for (let i = 0; i < count; i++) {
-    const layer = Math.floor(i / 6);
-    const angleInLayer = (i % 6) / 6 * Math.PI * 2 + layer * 0.8;
-
-    const spread = PLATFORM_SPREAD * 0.5 + layer * 8;
-    const x = Math.cos(angleInLayer) * spread + (Math.random() - 0.5) * 10;
-    const z = Math.sin(angleInLayer) * spread + (Math.random() - 0.5) * 10;
-    const y = PLATFORM_HEIGHT_MIN + Math.random() * (PLATFORM_HEIGHT_MAX - PLATFORM_HEIGHT_MIN);
+  // Spread platforms evenly: total ≈ 18 platforms
+  const platformCount = Math.floor(PATH_SAMPLES / PLATFORM_SPACING);
+  for (let i = 0; i < platformCount; i++) {
+    const idx = i * PLATFORM_SPACING;
+    const [x, y, z] = path[idx];
 
     platforms.push({
       x, y, z,
@@ -240,16 +224,16 @@ export function generatePlatforms(): PlatformData[] {
     });
   }
 
-  return platforms;
+  return { path, platforms };
 }
 
 // ============================================================
 // Create initial boid swarm around the leader
 // ============================================================
 
-export function createBoids(leader: LeaderData): BoidData[] {
+export function createBoids(leader: LeaderData, count: number): BoidData[] {
   const boids: BoidData[] = [];
-  for (let i = 0; i < BOID_COUNT; i++) {
+  for (let i = 0; i < count; i++) {
     const ox = (Math.random() - 0.5) * 12;
     const oy = (Math.random() - 0.5) * 6;
     const oz = (Math.random() - 0.5) * 12;
@@ -270,31 +254,34 @@ export function createBoids(leader: LeaderData): BoidData[] {
 }
 
 // ============================================================
-// Update leader — autopilot follows waypoints
+// Update leader — follows dense path smoothly
 // ============================================================
 
 export function updateLeader(
   leader: LeaderData,
-  waypoints: Waypoint[],
+  path: [number, number, number][],
   dt: number,
 ): void {
+  if (path.length === 0) return;
+
   const maxPitchRad = LEADER_MAX_PITCH * Math.PI / 180;
 
-  if (waypoints.length === 0) return;
+  // Current target point on the path
+  const target = path[leader.waypointIndex];
 
-  const wp = waypoints[leader.waypointIndex];
-
-  const dx = wp.x - leader.x;
-  const dy = wp.y - leader.y;
-  const dz = wp.z - leader.z;
+  // Direction to current target
+  const dx = target[0] - leader.x;
+  const dy = target[1] - leader.y;
+  const dz = target[2] - leader.z;
   const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-  if (dist < WAYPOINT_REACH_DIST) {
-    leader.waypointIndex = (leader.waypointIndex + 1) % waypoints.length;
+  // Advance along path when close enough to current point
+  if (dist < 3.0) {
+    leader.waypointIndex = (leader.waypointIndex + 1) % path.length;
   }
 
+  // Steer toward current path point
   const [ddx, ddy, ddz] = normalize(dx, dy, dz);
-
   const [fx, fy, fz] = quatGetForward(leader.qx, leader.qy, leader.qz, leader.qw);
 
   const dotForward = fx * ddx + fy * ddy + fz * ddz;
@@ -305,14 +292,10 @@ export function updateLeader(
     const rLen = Math.sqrt(rx * rx + ry * ry + rz * rz);
 
     if (rLen > 0.001) {
-      const nrx = rx / rLen;
-      const nry = ry / rLen;
-      const nrz = rz / rLen;
-
       const maxTurn = LEADER_MAX_TURN_RATE * dt;
       const clampedTurn = Math.min(turnAmount, maxTurn);
 
-      const qTurn = quatFromAxisAngle(nrx, nry, nrz, clampedTurn);
+      const qTurn = quatFromAxisAngle(rx / rLen, ry / rLen, rz / rLen, clampedTurn);
       const lq = [leader.qx, leader.qy, leader.qz, leader.qw];
       const r = quatMultiply(qTurn, lq);
       leader.qx = r[0]; leader.qy = r[1]; leader.qz = r[2]; leader.qw = r[3];
@@ -346,9 +329,9 @@ export function updateLeader(
     leader.qz /= qLen; leader.qw /= qLen;
   }
 
+  // Velocity from forward direction
   const [finalFx, finalFy, finalFz] = quatGetForward(leader.qx, leader.qy, leader.qz, leader.qw);
-
-  const velLerp = Math.min(SMOOTH_TURN_FACTOR * dt, 1.0);
+  const velLerp = Math.min(5.0 * dt, 1.0);
   const targetVx = finalFx * LEADER_SPEED;
   const targetVy = finalFy * LEADER_SPEED;
   const targetVz = finalFz * LEADER_SPEED;
@@ -383,7 +366,6 @@ export function updateBoids(
 ): void {
   const forces = new Float32Array(boids.length * 3);
 
-  // Read tuning values once per frame
   const sepRad = tuning.separationRadius;
   const sepW = tuning.separationWeight;
   const percRad = tuning.perceptionRadius;

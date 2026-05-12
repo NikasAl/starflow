@@ -19,42 +19,43 @@ export const tuning = {
 
   // Visual
   boidScale: 0.7,
+
+  // Swarm size (requires restart to apply)
+  boidCount: 150,
 };
 
 // --- Static constants ---
 
-export const BOID_COUNT = 150;
 export const BOID_MIN_SPEED = 3.5;
 export const BOID_MAX_SPEED = 6.0;
+export const BOID_MAX_ALLOC = 500;  // max InstancedMesh buffer size
 
 // --- Leader (autopilot) ---
 export const LEADER_SPEED = 5.0;
-export const LEADER_MAX_TURN_RATE = 2.0;
+export const LEADER_MAX_TURN_RATE = 3.0;
 export const LEADER_MAX_PITCH = 60;
 
-// --- Autopilot ---
-export const WAYPOINT_REACH_DIST = 4.0;
-export const SMOOTH_TURN_FACTOR = 3.0;
-export const WAYPOINT_HEIGHT_OFFSET = 8;  // waypoints placed this far above platform
+// --- Flight path (spline) ---
+export const PATH_SAMPLES = 400;        // dense sampling of the curve
+export const PLATFORM_SPACING = 3;      // how many path points between platforms
+export const PATH_LOOK_AHEAD = 8;       // leader looks this many points ahead
 
 // --- World ---
 export const WORLD_HALF_SIZE = 80;
 
 // --- Platforms ---
-export const PLATFORM_COUNT = 18;
 export const PLATFORM_RADIUS_MIN = 3.0;
 export const PLATFORM_RADIUS_MAX = 5.0;
 export const RING_RADIUS = 2.5;
-export const PLATFORM_HEIGHT_MIN = -8;
-export const PLATFORM_HEIGHT_MAX = 8;
-export const PLATFORM_SPREAD = 55;
+
+// --- Curve shape parameters ---
+export const CURVE_RADIUS_MAIN = 38;   // main loop radius
+export const CURVE_RADIUS_MOD = 14;    // figure-8 modulation
+export const CURVE_HEIGHT_AMP = 10;    // vertical wave amplitude
 
 // --- Camera ---
-// Quaternion convention: q maps +Y → forward
-// So local -Y = behind, local -Z = world-up
-// Offset (0, -dist, -height) → world (0, height, -dist)
-export const CAM_DISTANCE = 10.0;     // behind leader
-export const CAM_HEIGHT = 4.0;        // above leader
+export const CAM_DISTANCE = 10.0;
+export const CAM_HEIGHT = 4.0;
 export const CAM_LOOK_AHEAD = 6.0;
 export const CAM_LERP = 4.0;
 export const CAM_ZOOM_MIN = 4.0;

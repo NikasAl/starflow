@@ -10,7 +10,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import type { GameState, PlatformData } from '../core/types.ts';
 import { tuning } from '../core/boids.ts';
 import {
-  BOID_COUNT,
+  BOID_MAX_ALLOC,
   STAR_COUNT, STAR_SHELL_MIN, STAR_SHELL_MAX,
   CAM_DISTANCE, CAM_HEIGHT, CAM_LOOK_AHEAD, CAM_LERP,
   CAM_ZOOM_MIN, CAM_ZOOM_MAX, CAM_ZOOM_DEFAULT, CAM_ZOOM_SPEED,
@@ -32,7 +32,6 @@ let boidMesh: THREE.InstancedMesh;
 let leaderMesh: THREE.Mesh;
 let leaderLight: THREE.PointLight;
 
-// Platforms
 let platformObjects: THREE.Group[] = [];
 
 // HUD
@@ -52,37 +51,34 @@ const _smoothCamPos = new THREE.Vector3();
 const _smoothLookTarget = new THREE.Vector3();
 const _rotAxis = new THREE.Vector3();
 
-// Waypoint visualization
-let waypointLine: THREE.Line;
+// Path visualization
+let pathLine: THREE.Line;
 
 // Smooth camera
 let _camInitialized = false;
 let _camZoom = CAM_ZOOM_DEFAULT;
 
+// Restart callback
+let _onRestart: (() => void) | null = null;
+
 // ============================================================
-// Robust orientation — NO setFromUnitVectors (avoids NaN)
-// We rotate +Y → forward using cross((0,1,0), dir) as axis.
-// Axis always lies in XZ plane, well-defined unless dir is vertical.
+// Robust orientation
 // ============================================================
 
 function safeQuatFromDir(dir: THREE.Vector3, out: THREE.Quaternion): void {
-  // Axis of rotation = cross((0,1,0), dir) = (dir.z, 0, -dir.x)
   const ax = dir.z;
   const az = -dir.x;
   const aLen = Math.sqrt(ax * ax + az * az);
 
   if (aLen < 0.0001) {
-    // dir is nearly vertical — handle explicitly
     if (dir.y > 0) {
-      out.identity(); // +Y forward = no rotation needed
+      out.identity();
     } else {
-      // -Y forward = 180° around X axis
       out.set(1, 0, 0, 0);
     }
     return;
   }
 
-  // Angle = acos(dot((0,1,0), dir)) = acos(dir.y)
   const dot = Math.max(-1, Math.min(1, dir.y));
   const angle = Math.acos(dot);
 
@@ -91,15 +87,11 @@ function safeQuatFromDir(dir: THREE.Vector3, out: THREE.Quaternion): void {
 }
 
 // ============================================================
-// Initialize the renderer
+// Initialize
 // ============================================================
 
 export function initRenderer(canvas: HTMLCanvasElement): void {
-  renderer = new THREE.WebGLRenderer({
-    canvas,
-    antialias: true,
-    alpha: false,
-  });
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -110,14 +102,8 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
   scene.background = new THREE.Color(0x050518);
   scene.fog = new THREE.FogExp2(0x050518, 0.002);
 
-  camera = new THREE.PerspectiveCamera(
-    60,
-    window.innerWidth / window.innerHeight,
-    0.1,
-    1000,
-  );
+  camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
 
-  // Post-processing
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   bloomPass = new UnrealBloomPass(
@@ -126,14 +112,11 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
   );
   composer.addPass(bloomPass);
 
-  // Lighting
   const ambient = new THREE.AmbientLight(0x202040, 2.5);
   scene.add(ambient);
-
   const dirLight = new THREE.DirectionalLight(0x6688cc, 1.0);
   dirLight.position.set(30, 60, 20);
   scene.add(dirLight);
-
   const dirLight2 = new THREE.DirectionalLight(0x334488, 0.5);
   dirLight2.position.set(-20, 40, -30);
   scene.add(dirLight2);
@@ -149,15 +132,18 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
   window.addEventListener('resize', onResize);
 }
 
+/** Set a callback for restarting the game (e.g., after boidCount change) */
+export function setRestartCallback(cb: () => void): void {
+  _onRestart = cb;
+}
+
 // ============================================================
 // Starfield
 // ============================================================
 
 function createStarfield(): void {
-  const count = STAR_COUNT;
-  const positions = new Float32Array(count * 3);
-
-  for (let i = 0; i < count; i++) {
+  const positions = new Float32Array(STAR_COUNT * 3);
+  for (let i = 0; i < STAR_COUNT; i++) {
     const theta = Math.random() * Math.PI * 2;
     const phi = Math.acos(2 * Math.random() - 1);
     const r = STAR_SHELL_MIN + Math.random() * (STAR_SHELL_MAX - STAR_SHELL_MIN);
@@ -165,19 +151,11 @@ function createStarfield(): void {
     positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
     positions[i * 3 + 2] = r * Math.cos(phi);
   }
-
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-
-  const material = new THREE.PointsMaterial({
-    color: 0x8899cc,
-    size: 0.5,
-    sizeAttenuation: true,
-    transparent: true,
-    opacity: 0.6,
-  });
-
-  scene.add(new THREE.Points(geometry, material));
+  scene.add(new THREE.Points(geometry, new THREE.PointsMaterial({
+    color: 0x8899cc, size: 0.5, sizeAttenuation: true, transparent: true, opacity: 0.6,
+  })));
 }
 
 // ============================================================
@@ -186,48 +164,31 @@ function createStarfield(): void {
 
 function createWorldBounds(): void {
   const size = WORLD_HALF_SIZE * 2;
-  const geo = new THREE.BoxGeometry(size, size, size);
-  const edges = new THREE.EdgesGeometry(geo);
-  const mat = new THREE.LineBasicMaterial({
-    color: 0x1a1a3a,
-    transparent: true,
-    opacity: 0.12,
-  });
-  scene.add(new THREE.LineSegments(edges, mat));
-
-  const gridHelper = new THREE.GridHelper(size, 20, 0x111133, 0x0a0a22);
-  gridHelper.position.y = -WORLD_HALF_SIZE + 1;
-  gridHelper.material.transparent = true;
-  gridHelper.material.opacity = 0.25;
-  scene.add(gridHelper);
+  const edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(size, size, size));
+  scene.add(new THREE.LineSegments(edges, new THREE.LineBasicMaterial({
+    color: 0x1a1a3a, transparent: true, opacity: 0.12,
+  })));
+  const grid = new THREE.GridHelper(size, 20, 0x111133, 0x0a0a22);
+  grid.position.y = -WORLD_HALF_SIZE + 1;
+  grid.material.transparent = true;
+  grid.material.opacity = 0.25;
+  scene.add(grid);
 }
 
 // ============================================================
-// Boid InstancedMesh
+// Boid InstancedMesh (pre-allocated buffer)
 // ============================================================
 
 function createBoidMesh(): void {
-  // Cone tip at +Y — safeQuatFromDir orients +Y → velocity direction
   const geometry = new THREE.ConeGeometry(0.2, 0.8, 4);
-
   const material = new THREE.MeshStandardMaterial({
-    color: 0x55eeff,
-    emissive: 0x33bbdd,
-    emissiveIntensity: 1.5,
-    transparent: true,
-    opacity: 0.95,
-    metalness: 0.7,
-    roughness: 0.2,
+    color: 0x55eeff, emissive: 0x33bbdd, emissiveIntensity: 1.5,
+    transparent: true, opacity: 0.95, metalness: 0.7, roughness: 0.2,
   });
 
-  boidMesh = new THREE.InstancedMesh(geometry, material, BOID_COUNT);
-  boidMesh.count = BOID_COUNT;
+  boidMesh = new THREE.InstancedMesh(geometry, material, BOID_MAX_ALLOC);
+  boidMesh.count = tuning.boidCount;
   boidMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  // CRITICAL: disable frustum culling!
-  // InstancedMesh uses base geometry bounding sphere (radius ~0.2) for culling.
-  // Instances are spread across the entire world — the tiny bounding sphere
-  // causes the ENTIRE mesh to be clipped when camera frustum doesn't contain
-  // the origin area. This made the whole swarm vanish at certain angles.
   boidMesh.frustumCulled = false;
   scene.add(boidMesh);
 }
@@ -238,20 +199,12 @@ function createBoidMesh(): void {
 
 function createLeaderMesh(): void {
   const geometry = new THREE.ConeGeometry(0.35, 1.4, 6);
-
   const material = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    emissive: 0x88eeff,
-    emissiveIntensity: 2.5,
-    transparent: true,
-    opacity: 1.0,
-    metalness: 0.9,
-    roughness: 0.05,
+    color: 0xffffff, emissive: 0x88eeff, emissiveIntensity: 2.5,
+    transparent: true, opacity: 1.0, metalness: 0.9, roughness: 0.05,
   });
-
   leaderMesh = new THREE.Mesh(geometry, material);
   scene.add(leaderMesh);
-
   leaderLight = new THREE.PointLight(0x55ddff, 10, 50);
   scene.add(leaderLight);
 }
@@ -261,9 +214,7 @@ function createLeaderMesh(): void {
 // ============================================================
 
 export function createPlatforms(platforms: PlatformData[]): void {
-  for (const obj of platformObjects) {
-    scene.remove(obj);
-  }
+  for (const obj of platformObjects) scene.remove(obj);
   platformObjects = [];
 
   for (const p of platforms) {
@@ -271,23 +222,15 @@ export function createPlatforms(platforms: PlatformData[]): void {
 
     const discGeo = new THREE.CylinderGeometry(p.radius, p.radius, 0.3, 16);
     const discMat = new THREE.MeshStandardMaterial({
-      color: 0x1a2a44,
-      emissive: 0x0a1525,
-      emissiveIntensity: 0.3,
-      transparent: true,
-      opacity: 0.7,
-      metalness: 0.5,
-      roughness: 0.5,
+      color: 0x1a2a44, emissive: 0x0a1525, emissiveIntensity: 0.3,
+      transparent: true, opacity: 0.7, metalness: 0.5, roughness: 0.5,
     });
     group.add(new THREE.Mesh(discGeo, discMat));
 
     const ringGeo = new THREE.TorusGeometry(p.ringRadius, 0.15, 8, 24);
     const ringMat = new THREE.MeshStandardMaterial({
-      color: 0x44aaff,
-      emissive: 0x2266dd,
-      emissiveIntensity: 1.2,
-      transparent: true,
-      opacity: 0.8,
+      color: 0x44aaff, emissive: 0x2266dd, emissiveIntensity: 1.2,
+      transparent: true, opacity: 0.8,
     });
     const ring = new THREE.Mesh(ringGeo, ringMat);
     ring.rotation.x = Math.PI * 0.5;
@@ -305,31 +248,28 @@ export function createPlatforms(platforms: PlatformData[]): void {
 }
 
 // ============================================================
-// Waypoint path visualization
+// Flight path visualization
 // ============================================================
 
-export function createWaypointPath(waypoints: { x: number; y: number; z: number }[]): void {
-  if (waypointLine) {
-    scene.remove(waypointLine);
-    waypointLine.geometry.dispose();
+export function createPathVisualization(path: [number, number, number][]): void {
+  if (pathLine) {
+    scene.remove(pathLine);
+    pathLine.geometry.dispose();
   }
 
   const points: THREE.Vector3[] = [];
-  for (const wp of waypoints) {
-    points.push(new THREE.Vector3(wp.x, wp.y, wp.z));
+  for (const p of path) {
+    points.push(new THREE.Vector3(p[0], p[1], p[2]));
   }
-  if (waypoints.length > 0) {
-    points.push(new THREE.Vector3(waypoints[0].x, waypoints[0].y, waypoints[0].z));
+  if (path.length > 0) {
+    points.push(new THREE.Vector3(path[0][0], path[0][1], path[0][2]));
   }
 
   const geometry = new THREE.BufferGeometry().setFromPoints(points);
-  const material = new THREE.LineBasicMaterial({
-    color: 0x334466,
-    transparent: true,
-    opacity: 0.15,
-  });
-  waypointLine = new THREE.Line(geometry, material);
-  scene.add(waypointLine);
+  pathLine = new THREE.Line(geometry, new THREE.LineBasicMaterial({
+    color: 0x334466, transparent: true, opacity: 0.12,
+  }));
+  scene.add(pathLine);
 }
 
 // ============================================================
@@ -339,12 +279,9 @@ export function createWaypointPath(waypoints: { x: number; y: number; z: number 
 function createHUD(): void {
   hudDiv = document.createElement('div');
   hudDiv.style.cssText = `
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    pointer-events: none;
-    font-family: 'Segoe UI', system-ui, sans-serif;
-    color: #88ccff;
-    z-index: 10;
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none; font-family: 'Segoe UI', system-ui, sans-serif;
+    color: #88ccff; z-index: 10;
   `;
   hudDiv.innerHTML = `
     <div style="position:absolute; top:16px; left:20px; font-size:20px; font-weight:700; text-shadow: 0 0 10px rgba(68,204,255,0.4);">
@@ -357,7 +294,7 @@ function createHUD(): void {
       <span id="hud-count"></span>
     </div>
     <div style="position:absolute; top:64px; left:20px; font-size:12px; opacity:0.4;">
-      <span id="hud-waypoint"></span>
+      <span id="hud-progress"></span>
     </div>
     <div style="position:absolute; top:84px; left:20px; font-size:12px; opacity:0.3;">
       <span id="hud-pos"></span>
@@ -370,30 +307,22 @@ function createHUD(): void {
 }
 
 // ============================================================
-// Debug panel with sliders for tuning
+// Debug panel
 // ============================================================
 
 function createDebugPanel(): void {
   debugDiv = document.createElement('div');
   debugDiv.style.cssText = `
-    position: fixed;
-    top: 10px; right: 10px;
-    width: 260px;
-    background: rgba(5,5,24,0.92);
-    border: 1px solid rgba(68,136,255,0.25);
-    border-radius: 8px;
-    padding: 14px;
-    font-family: 'Segoe UI', system-ui, sans-serif;
-    font-size: 12px;
-    color: #88aadd;
-    z-index: 20;
-    pointer-events: auto;
-    display: none;
-    max-height: 90vh;
-    overflow-y: auto;
+    position: fixed; top: 10px; right: 10px; width: 260px;
+    background: rgba(5,5,24,0.92); border: 1px solid rgba(68,136,255,0.25);
+    border-radius: 8px; padding: 14px;
+    font-family: 'Segoe UI', system-ui, sans-serif; font-size: 12px;
+    color: #88aadd; z-index: 20; pointer-events: auto;
+    display: none; max-height: 90vh; overflow-y: auto;
   `;
 
-  const sliders: { label: string; key: keyof typeof tuning; min: number; max: number; step: number }[] = [
+  const sliders: { label: string; key: string; min: number; max: number; step: number }[] = [
+    { label: 'Кол-во боидов', key: 'boidCount', min: 20, max: 400, step: 10 },
     { label: 'Разделение (радиус)', key: 'separationRadius', min: 1, max: 10, step: 0.5 },
     { label: 'Разделение (сила)', key: 'separationWeight', min: 0.5, max: 10, step: 0.5 },
     { label: 'Восприятие (радиус)', key: 'perceptionRadius', min: 3, max: 20, step: 1 },
@@ -406,21 +335,30 @@ function createDebugPanel(): void {
     { label: 'Масштаб боидов', key: 'boidScale', min: 0.5, max: 3, step: 0.1 },
   ];
 
-  let html = `<div style="font-size:13px; font-weight:700; margin-bottom:10px; color:#aaccff;">Настройки динамики</div>`;
+  let html = `<div style="font-size:13px; font-weight:700; margin-bottom:10px; color:#aaccff;">Настройки</div>`;
 
   for (const s of sliders) {
     html += `
       <div style="margin-bottom:8px;">
         <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
           <span>${s.label}</span>
-          <span id="val-${s.key}" style="color:#66aaee; min-width:32px; text-align:right;">${tuning[s.key]}</span>
+          <span id="val-${s.key}" style="color:#66aaee; min-width:32px; text-align:right;">${(tuning as Record<string, number>)[s.key]}</span>
         </div>
         <input type="range" id="slider-${s.key}"
-          min="${s.min}" max="${s.max}" step="${s.step}" value="${tuning[s.key]}"
+          min="${s.min}" max="${s.max}" step="${s.step}" value="${(tuning as Record<string, number>)[s.key]}"
           style="width:100%; accent-color:#4488cc; height:4px; cursor:pointer;">
       </div>
     `;
   }
+
+  // Restart button for boidCount
+  html += `
+    <button id="btn-restart" style="
+      width:100%; margin-top:8px; padding:6px 0;
+      background: rgba(68,136,255,0.2); border:1px solid rgba(68,136,255,0.4);
+      color:#88ccff; border-radius:4px; cursor:pointer; font-size:12px;
+    ">Перезапустить (применить кол-во)</button>
+  `;
 
   debugDiv.innerHTML = html;
   document.body.appendChild(debugDiv);
@@ -435,18 +373,28 @@ function createDebugPanel(): void {
         (tuning as Record<string, number>)[s.key] = v;
         valEl.textContent = v.toFixed(s.step < 0.1 ? 2 : 1);
 
-        // Apply boid scale immediately
-        if (s.key === 'boidScale') {
-          _dummy.scale.set(v, v, v);
-          boidMesh.instanceMatrix.needsUpdate = true;
+        if (s.key === 'boidCount') {
+          boidMesh.count = v;
         }
       });
     }
   }
+
+  // Restart button
+  const btn = document.getElementById('btn-restart');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      if (_onRestart) {
+        _onRestart();
+        // Reset camera
+        _camInitialized = false;
+      }
+    });
+  }
 }
 
 // ============================================================
-// Input: zoom + toggle debug panel
+// Input
 // ============================================================
 
 function setupInput(canvas: HTMLCanvasElement): void {
@@ -465,14 +413,14 @@ function setupInput(canvas: HTMLCanvasElement): void {
 }
 
 // ============================================================
-// Sync visuals from game state
+// Sync visuals
 // ============================================================
 
 export function syncVisuals(state: GameState, dt: number): void {
-  const { boids, leader } = state;
+  const { boids, leader, path } = state;
   const boidScale = tuning.boidScale;
 
-  // --- Update boid instances ---
+  // --- Boid instances ---
   for (let i = 0; i < boids.length; i++) {
     const boid = boids[i];
     if (boid.alive) {
@@ -490,20 +438,25 @@ export function syncVisuals(state: GameState, dt: number): void {
     _dummy.updateMatrix();
     boidMesh.setMatrixAt(i, _dummy.matrix);
   }
+  // Hide unused instances
+  for (let i = boids.length; i < boidMesh.count; i++) {
+    _dummy.position.set(0, -9999, 0);
+    _dummy.scale.set(0.01, 0.01, 0.01);
+    _dummy.updateMatrix();
+    boidMesh.setMatrixAt(i, _dummy.matrix);
+  }
   boidMesh.instanceMatrix.needsUpdate = true;
 
-  // --- Update leader ---
+  // --- Leader ---
   leaderMesh.position.set(leader.x, leader.y, leader.z);
   leaderMesh.quaternion.set(leader.qx, leader.qy, leader.qz, leader.qw);
   leaderLight.position.set(leader.x, leader.y, leader.z);
 
-  // --- Camera: behind and above leader ---
-  // Quaternion convention: q maps local +Y → world forward
-  // So local -Y = world behind, local -Z = world up
-  // Offset (0, -dist*zoom, -height*zoom) → world (0, height*zoom, -dist*zoom)
+  // --- Camera: behind and above ---
   const lq = new THREE.Quaternion(leader.qx, leader.qy, leader.qz, leader.qw);
-  const zoomDist = CAM_DISTANCE * (_camZoom / CAM_ZOOM_DEFAULT);
-  const zoomHeight = CAM_HEIGHT * (_camZoom / CAM_ZOOM_DEFAULT);
+  const zoomScale = _camZoom / CAM_ZOOM_DEFAULT;
+  const zoomDist = CAM_DISTANCE * zoomScale;
+  const zoomHeight = CAM_HEIGHT * zoomScale;
 
   _camPos.set(0, -zoomDist, -zoomHeight);
   _camPos.applyQuaternion(lq);
@@ -519,7 +472,6 @@ export function syncVisuals(state: GameState, dt: number): void {
   _smoothCamPos.lerp(_camPos, camSmooth);
   camera.position.copy(_smoothCamPos);
 
-  // Look at: ahead of leader
   const speed = Math.sqrt(leader.vx * leader.vx + leader.vy * leader.vy + leader.vz * leader.vz);
   const fwdX = speed > 0.1 ? leader.vx / speed : 0;
   const fwdY = speed > 0.1 ? leader.vy / speed : 0;
@@ -538,9 +490,10 @@ export function syncVisuals(state: GameState, dt: number): void {
   const countEl = document.getElementById('hud-count');
   if (countEl) countEl.textContent = `Рой: ${state.aliveCount} / ${state.totalCount}`;
 
-  const wpEl = document.getElementById('hud-waypoint');
-  if (wpEl) {
-    wpEl.textContent = `Точка: ${leader.waypointIndex + 1} / ${state.waypoints.length}`;
+  const progEl = document.getElementById('hud-progress');
+  if (progEl) {
+    const pct = ((leader.pathIndex / path.length) * 100).toFixed(0);
+    progEl.textContent = `Круг: ${pct}% (${leader.pathIndex}/${path.length})`;
   }
 
   const posEl = document.getElementById('hud-pos');
@@ -549,22 +502,13 @@ export function syncVisuals(state: GameState, dt: number): void {
   }
 }
 
-// ============================================================
-// Render frame
-// ============================================================
-
 export function renderFrame(): void {
   composer.render();
 }
 
-// ============================================================
-// FPS tracking
-// ============================================================
-
 export function updateFPS(time: number): number {
   fpsFrames++;
   fpsTime += time;
-
   if (fpsTime >= 1000) {
     currentFps = Math.round(fpsFrames * 1000 / fpsTime);
     fpsFrames = 0;
@@ -572,13 +516,8 @@ export function updateFPS(time: number): number {
     const fpsEl = document.getElementById('hud-fps');
     if (fpsEl) fpsEl.textContent = `FPS: ${currentFps}`;
   }
-
   return currentFps;
 }
-
-// ============================================================
-// Resize
-// ============================================================
 
 function onResize(): void {
   const w = window.innerWidth;
