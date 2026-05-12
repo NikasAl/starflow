@@ -24,6 +24,7 @@ export const LEADER_TRAIL_DIST = 6.0; // Boids target this distance behind leade
 export const LEADER_SPEED = 4.5;
 export const LEADER_BOOST_SPEED = 7.0;
 export const LEADER_MAX_TURN_RATE = 2.5; // radians/sec
+export const LEADER_MAX_PITCH = 75;       // degrees — max up/down angle from horizon
 
 // --- World ---
 export const WORLD_HALF_SIZE = 50;

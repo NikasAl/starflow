@@ -9,7 +9,7 @@ import {
   SEPARATION_RADIUS, SEPARATION_WEIGHT,
   PERCEPTION_RADIUS, ALIGNMENT_WEIGHT, COHESION_WEIGHT,
   LEADER_FOLLOW_RADIUS, LEADER_WEIGHT, LEADER_TRAIL_DIST,
-  LEADER_SPEED, LEADER_BOOST_SPEED, LEADER_MAX_TURN_RATE,
+  LEADER_SPEED, LEADER_BOOST_SPEED, LEADER_MAX_TURN_RATE, LEADER_MAX_PITCH,
   WORLD_HALF_SIZE, BOUNDARY_MARGIN, BOUNDARY_STRENGTH,
   SPATIAL_CELL_SIZE,
 } from './constants.ts';
@@ -268,6 +268,9 @@ export function updateLeader(
   input: InputState,
   dt: number,
 ): void {
+  const maxPitchRad = LEADER_MAX_PITCH * Math.PI / 180;
+  const maxSinPitch = Math.sin(maxPitchRad);
+
   // Apply yaw — rotate around world Y axis
   if (input.yaw !== 0) {
     const yawAngle = input.yaw * LEADER_MAX_TURN_RATE * dt;
@@ -277,14 +280,27 @@ export function updateLeader(
     leader.qx = r[0]; leader.qy = r[1]; leader.qz = r[2]; leader.qw = r[3];
   }
 
-  // Apply pitch — rotate around LOCAL right axis (no gimbal lock!)
+  // Apply pitch — but only if we won't exceed the max pitch limit
   if (input.pitch !== 0) {
-    const [rx, ry, rz] = quatGetRight(leader.qx, leader.qy, leader.qz, leader.qw);
-    const pitchAngle = input.pitch * LEADER_MAX_TURN_RATE * dt;
-    const qPitch = quatFromAxisAngle(rx, ry, rz, pitchAngle);
-    const lq = [leader.qx, leader.qy, leader.qz, leader.qw];
-    const r = quatMultiply(qPitch, lq);
-    leader.qx = r[0]; leader.qy = r[1]; leader.qz = r[2]; leader.qw = r[3];
+    const [fx, fy, fz] = quatGetForward(leader.qx, leader.qy, leader.qz, leader.qw);
+
+    // Current pitch = asin(forward.y), clamp it
+    let currentPitch = Math.asin(Math.max(-1, Math.min(1, fy)));
+    let desiredPitch = currentPitch + input.pitch * LEADER_MAX_TURN_RATE * dt;
+
+    // Clamp to allowed range
+    if (desiredPitch > maxPitchRad) desiredPitch = maxPitchRad;
+    if (desiredPitch < -maxPitchRad) desiredPitch = -maxPitchRad;
+
+    // Only apply if there's actual room to move
+    const deltaPitch = desiredPitch - currentPitch;
+    if (Math.abs(deltaPitch) > 0.0001) {
+      const [rx, ry, rz] = quatGetRight(leader.qx, leader.qy, leader.qz, leader.qw);
+      const qPitch = quatFromAxisAngle(rx, ry, rz, deltaPitch);
+      const lq = [leader.qx, leader.qy, leader.qz, leader.qw];
+      const r = quatMultiply(qPitch, lq);
+      leader.qx = r[0]; leader.qy = r[1]; leader.qz = r[2]; leader.qw = r[3];
+    }
   }
 
   // Normalize quaternion to prevent drift
@@ -298,7 +314,7 @@ export function updateLeader(
 
   const speed = input.boost ? LEADER_BOOST_SPEED : LEADER_SPEED;
 
-  // Smooth velocity transition (prevents instant direction snap)
+  // Smooth velocity transition
   const velLerp = Math.min(8.0 * dt, 1.0);
   const targetVx = dx * speed;
   const targetVy = dy * speed;
