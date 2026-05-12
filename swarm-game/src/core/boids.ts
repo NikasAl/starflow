@@ -267,7 +267,7 @@ export function updateLeader(
   const maxPitchRad = LEADER_MAX_PITCH * Math.PI / 180;
 
   // Current target point on the path
-  const target = path[leader.waypointIndex];
+  const target = path[leader.pathIndex];
 
   // Direction to current target
   const dx = target[0] - leader.x;
@@ -277,7 +277,7 @@ export function updateLeader(
 
   // Advance along path when close enough to current point
   if (dist < 3.0) {
-    leader.waypointIndex = (leader.waypointIndex + 1) % path.length;
+    leader.pathIndex = (leader.pathIndex + 1) % path.length;
   }
 
   // Steer toward current path point

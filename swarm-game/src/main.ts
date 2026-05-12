@@ -4,7 +4,7 @@
 // ============================================================
 
 import type { GameState } from './core/types.ts';
-import { SPATIAL_CELL_SIZE } from './core/constants.ts';
+import { SPATIAL_CELL_SIZE, LEADER_SPEED } from './core/constants.ts';
 import { tuning } from './core/constants.ts';
 import {
   createBoids,
@@ -36,10 +36,6 @@ function createGameState(): GameState {
   const { path, platforms } = generateFlightPath();
 
   // Leader starts at path[0], facing along path direction
-  const halfPi = Math.PI * 0.5;
-  const cos = Math.cos(halfPi * 0.5);
-  const sin = Math.sin(halfPi * 0.5);
-
   // Initial forward direction: from path[0] to path[1]
   const [fx, fy, fz] = (() => {
     if (path.length < 2) return [0, 0, 1];
@@ -50,18 +46,33 @@ function createGameState(): GameState {
     return [dx / len, dy / len, dz / len];
   })();
 
+  // Build initial quaternion: rotate (0,1,0) → (fx, fy, fz) via cross-product axis
+  const initQ = (() => {
+    const [ux, uy, uz] = [0, 1, 0]; // unit Y = forward in local space
+    const dot = ux * fx + uy * fy + uz * fz;
+    if (dot > 0.9999) return [0, 0, 0, 1]; // same direction
+    if (dot < -0.9999) return [1, 0, 0, 0]; // opposite
+    const cx = uy * fz - uz * fy;
+    const cy = uz * fx - ux * fz;
+    const cz = ux * fy - uy * fx;
+    const cLen = Math.sqrt(cx * cx + cy * cy + cz * cz) || 1;
+    const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
+    const half = angle * 0.5;
+    const s = Math.sin(half);
+    return [cx / cLen * s, cy / cLen * s, cz / cLen * s, Math.cos(half)];
+  })();
+
   const leader = {
     x: path[0][0],
     y: path[0][1],
     z: path[0][2],
-    vx: fx * 5.0,
-    vy: fy * 5.0,
-    vz: fz * 5.0,
-    // Initial quaternion: rotate (0,1,0) to face along path direction
-    qx: sin,
-    qy: 0,
-    qz: 0,
-    qw: cos,
+    vx: fx * LEADER_SPEED,
+    vy: fy * LEADER_SPEED,
+    vz: fz * LEADER_SPEED,
+    qx: initQ[0],
+    qy: initQ[1],
+    qz: initQ[2],
+    qw: initQ[3],
     pathIndex: 0,
   };
 
