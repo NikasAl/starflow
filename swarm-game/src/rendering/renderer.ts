@@ -199,8 +199,8 @@ function createWorldBounds(): void {
 
 function createBoidMesh(): void {
   // Cone geometry — rocket/drone shape
+  // Tip at +Y (default). Quaternion orients +Y → forward direction.
   const geometry = new THREE.ConeGeometry(0.15, 0.6, 4);
-  geometry.rotateX(Math.PI); // tip points -Y, we orient via quaternion
 
   const material = new THREE.MeshStandardMaterial({
     color: 0x55eeff,
@@ -223,8 +223,8 @@ function createBoidMesh(): void {
 // ============================================================
 
 function createLeaderMesh(): void {
+  // Tip at +Y (default). Quaternion orients +Y → forward direction.
   const geometry = new THREE.ConeGeometry(0.25, 1.0, 4);
-  geometry.rotateX(Math.PI);
 
   const material = new THREE.MeshStandardMaterial({
     color: 0xffffff,
