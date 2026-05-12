@@ -11,7 +11,8 @@ import type { GameState, PlatformData } from '../core/types.ts';
 import {
   BOID_COUNT,
   STAR_COUNT, STAR_SHELL_MIN, STAR_SHELL_MAX,
-  CAM_HEIGHT, CAM_LOOK_AHEAD, CAM_LERP,
+  CAM_OFFSET_Y, CAM_OFFSET_Z, CAM_LOOK_AHEAD, CAM_LERP,
+  CAM_ZOOM_MIN, CAM_ZOOM_MAX, CAM_ZOOM_DEFAULT, CAM_ZOOM_SPEED,
   BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD,
   WORLD_HALF_SIZE,
 } from '../core/constants.ts';
@@ -67,6 +68,7 @@ function safeQuatFromDir(dir: THREE.Vector3, out: THREE.Quaternion): void {
 
 // Smooth camera
 let _camInitialized = false;
+let _camZoom = CAM_ZOOM_DEFAULT;
 
 // ============================================================
 // Initialize the renderer
@@ -135,6 +137,9 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
 
   // --- HUD ---
   createHUD();
+
+  // --- Zoom (mouse wheel) ---
+  setupZoom(canvas);
 
   // --- Resize ---
   window.addEventListener('resize', onResize);
@@ -361,7 +366,7 @@ function createHUD(): void {
       <span id="hud-pos"></span>
     </div>
     <div style="position:absolute; bottom:20px; left:50%; transform:translateX(-50%); font-size:12px; opacity:0.3; text-align:center;">
-      Автопилот — демо-режим
+      Автопилот — демо-режим | Колёсико мыши — зум
     </div>
   `;
   document.body.appendChild(hudDiv);
@@ -397,32 +402,34 @@ export function syncVisuals(state: GameState, dt: number): void {
   leaderMesh.quaternion.set(leader.qx, leader.qy, leader.qz, leader.qw);
   leaderLight.position.set(leader.x, leader.y, leader.z);
 
-  // --- Camera: birds-eye view above the swarm ---
-  // Camera position: directly above leader
-  const targetCamX = leader.x;
-  const targetCamY = leader.y + CAM_HEIGHT;
-  const targetCamZ = leader.z;
+  // --- Camera: behind and above leader, using quaternion ---
+  const lq = new THREE.Quaternion(leader.qx, leader.qy, leader.qz, leader.qw);
+
+  // Camera offset in leader's local space: behind (-Z) and above (+Y)
+  // Zoom scales the distance from leader
+  const zoomScale = _camZoom / Math.abs(CAM_OFFSET_Z);
+  _camPos.set(0, CAM_OFFSET_Y * zoomScale, CAM_OFFSET_Z * zoomScale);
+  _camPos.applyQuaternion(lq);
+  _camPos.add(leaderMesh.position);
 
   if (!_camInitialized) {
-    _smoothCamPos.set(targetCamX, targetCamY, targetCamZ);
+    _smoothCamPos.copy(_camPos);
     _smoothLookTarget.set(leader.x, leader.y, leader.z);
     _camInitialized = true;
   }
 
   // Smooth camera follow
   const camSmooth = Math.min(CAM_LERP * dt, 1);
-  _smoothCamPos.set(
-    _smoothCamPos.x + (targetCamX - _smoothCamPos.x) * camSmooth,
-    _smoothCamPos.y + (targetCamY - _smoothCamPos.y) * camSmooth,
-    _smoothCamPos.z + (targetCamZ - _smoothCamPos.z) * camSmooth,
-  );
+  _smoothCamPos.lerp(_camPos, camSmooth);
   camera.position.copy(_smoothCamPos);
 
-  // Look at: slightly ahead of leader in its forward direction
+  // Look at: ahead of leader in its forward direction
   const speed = Math.sqrt(leader.vx * leader.vx + leader.vy * leader.vy + leader.vz * leader.vz);
-  const lookX = leader.x + (speed > 0.1 ? (leader.vx / speed) * CAM_LOOK_AHEAD : 0);
+  const fwdX = speed > 0.1 ? leader.vx / speed : 0;
+  const fwdZ = speed > 0.1 ? leader.vz / speed : 0;
+  const lookX = leader.x + fwdX * CAM_LOOK_AHEAD;
   const lookY = leader.y;
-  const lookZ = leader.z + (speed > 0.1 ? (leader.vz / speed) * CAM_LOOK_AHEAD : 0);
+  const lookZ = leader.z + fwdZ * CAM_LOOK_AHEAD;
 
   _lookTarget.set(lookX, lookY, lookZ);
   const lookSmooth = Math.min(CAM_LERP * 0.7 * dt, 1);
@@ -470,6 +477,19 @@ export function updateFPS(time: number): number {
   }
 
   return currentFps;
+}
+
+// ============================================================
+// Zoom (mouse wheel)
+// ============================================================
+
+function setupZoom(canvas: HTMLCanvasElement): void {
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    _camZoom += e.deltaY * 0.01 * CAM_ZOOM_SPEED;
+    // Clamp zoom range
+    _camZoom = Math.max(CAM_ZOOM_MIN, Math.min(CAM_ZOOM_MAX, _camZoom));
+  }, { passive: false });
 }
 
 // ============================================================

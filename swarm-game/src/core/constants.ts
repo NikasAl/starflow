@@ -15,9 +15,9 @@ export const PERCEPTION_RADIUS = 6.0;
 export const ALIGNMENT_WEIGHT = 1.0;
 export const COHESION_WEIGHT = 1.0;
 
-export const LEADER_FOLLOW_RADIUS = 30.0;
-export const LEADER_WEIGHT = 2.0;
-export const LEADER_TRAIL_DIST = 8.0;
+export const LEADER_FOLLOW_RADIUS = 18.0;
+export const LEADER_WEIGHT = 3.0;
+export const LEADER_TRAIL_DIST = 3.0;
 
 // --- Leader (autopilot) ---
 export const LEADER_SPEED = 5.0;
@@ -40,10 +40,15 @@ export const PLATFORM_HEIGHT_MIN = -8;
 export const PLATFORM_HEIGHT_MAX = 8;
 export const PLATFORM_SPREAD = 55;  // how far platforms spread in XZ
 
-// --- Camera (birds-eye demo) ---
-export const CAM_HEIGHT = 35;       // height above leader
-export const CAM_LOOK_AHEAD = 15;   // look-ahead distance in front of leader
-export const CAM_LERP = 3.0;
+// --- Camera (behind & above, follow) ---
+export const CAM_OFFSET_Y = 4.0;      // height above leader
+export const CAM_OFFSET_Z = -10.0;    // distance behind leader (in local space)
+export const CAM_LOOK_AHEAD = 6.0;    // look-ahead distance
+export const CAM_LERP = 4.0;
+export const CAM_ZOOM_MIN = 4.0;      // closest zoom
+export const CAM_ZOOM_MAX = 40.0;     // farthest zoom
+export const CAM_ZOOM_DEFAULT = 10.0;
+export const CAM_ZOOM_SPEED = 20.0;   // units per scroll notch
 
 // --- Spatial hash ---
 export const SPATIAL_CELL_SIZE = 8;
