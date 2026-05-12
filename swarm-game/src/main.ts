@@ -5,13 +5,17 @@
 
 import type { GameState } from './core/types.ts';
 import { BOID_COUNT, SPATIAL_CELL_SIZE } from './core/constants.ts';
-import { createBoids, updateLeader, updateBoids, SpatialHash } from './core/boids.ts';
+import {
+  createBoids, createLandmarks, updateLandmarks,
+  updateLeader, updateBoids, SpatialHash,
+} from './core/boids.ts';
 import {
   initRenderer,
   readInput,
   syncVisuals,
   renderFrame,
   updateFPS,
+  createLandmarks as rendererCreateLandmarks,
 } from './rendering/renderer.ts';
 
 // ============================================================
@@ -19,7 +23,12 @@ import {
 // ============================================================
 
 function createGameState(): GameState {
-  // Leader starts at origin, flying in +Z direction
+  // Leader starts at origin, facing +Z
+  // Quaternion: rotate (0,1,0) to (0,0,1) → 90° around X axis
+  const halfPi = Math.PI * 0.5;
+  const cos = Math.cos(halfPi * 0.5);
+  const sin = Math.sin(halfPi * 0.5);
+
   const leader = {
     x: 0,
     y: 0,
@@ -27,14 +36,22 @@ function createGameState(): GameState {
     vx: 0,
     vy: 0,
     vz: 4.5,
+    // Identity quaternion would face (0,1,0), but we want (0,0,1) initially
+    // Rotation of -90° around X axis: (sin(-45°), 0, 0, cos(-45°))
+    qx: sin,
+    qy: 0,
+    qz: 0,
+    qw: cos,
   };
 
   const boids = createBoids(leader);
+  const landmarks = createLandmarks();
 
   return {
     boids,
     leader,
     input: { yaw: 0, pitch: 0, boost: false },
+    landmarks,
     aliveCount: boids.length,
     totalCount: boids.length,
     time: 0,
@@ -56,7 +73,6 @@ function gameLoop(timestamp: number): void {
 
   requestAnimationFrame(gameLoop);
 
-  // Delta time in seconds, clamped to avoid spiral of death
   const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
   lastTime = timestamp;
 
@@ -69,6 +85,9 @@ function gameLoop(timestamp: number): void {
 
   // --- Update leader ---
   updateLeader(state.leader, state.input, dt);
+
+  // --- Update landmarks ---
+  updateLandmarks(state.landmarks, dt);
 
   // --- Rebuild spatial hash ---
   spatialHash.clear();
@@ -107,6 +126,9 @@ function startGame(): void {
   state = createGameState();
   spatialHash = new SpatialHash(SPATIAL_CELL_SIZE);
 
+  // Create 3D landmark objects
+  rendererCreateLandmarks(state.landmarks);
+
   running = true;
   lastTime = performance.now();
   requestAnimationFrame(gameLoop);
@@ -126,5 +148,5 @@ document.addEventListener('DOMContentLoaded', () => {
   initRenderer(canvas);
   startGame();
 
-  console.log('[Swarm] Game started — use WASD to steer, Space to boost');
+  console.log('[Swarm] Game started — WASD to steer, Space to boost');
 });

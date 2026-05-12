@@ -22,6 +22,11 @@ export interface LeaderData {
   vx: number;
   vy: number;
   vz: number;
+  // Quaternion orientation (w, x, y, z) — avoids gimbal lock
+  qx: number;
+  qy: number;
+  qz: number;
+  qw: number;
 }
 
 /** Current input state (set each frame from keyboard / joystick) */
@@ -31,11 +36,23 @@ export interface InputState {
   boost: boolean; // speed boost
 }
 
+/** A landmark object in the world */
+export interface LandmarkData {
+  x: number;
+  y: number;
+  z: number;
+  type: 'ring' | 'pillar' | 'crystal';
+  scale: number;
+  rotation: number; // Y rotation in radians
+  rotSpeed: number; // radians/sec
+}
+
 /** Full game state */
 export interface GameState {
   boids: BoidData[];
   leader: LeaderData;
   input: InputState;
+  landmarks: LandmarkData[];
   aliveCount: number;
   totalCount: number;
   time: number;

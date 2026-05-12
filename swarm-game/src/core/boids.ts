@@ -3,7 +3,7 @@
 // Pure math, no Three.js / DOM dependencies
 // ============================================================
 
-import type { BoidData, LeaderData, InputState, GameState } from './types.ts';
+import type { BoidData, LeaderData, InputState, GameState, LandmarkData } from './types.ts';
 import {
   BOID_COUNT, BOID_MIN_SPEED, BOID_MAX_SPEED, BOID_MAX_FORCE, BOID_MIN_FORCE,
   SEPARATION_RADIUS, SEPARATION_WEIGHT,
@@ -205,7 +205,62 @@ export function createBoids(leader: LeaderData): BoidData[] {
 }
 
 // ============================================================
-// Update leader position based on input
+// Quaternion helpers (no Three.js dependency)
+// ============================================================
+
+function quatFromAxisAngle(
+  ax: number, ay: number, az: number, angle: number,
+): [number, number, number, number] {
+  const halfAngle = angle * 0.5;
+  const sin = Math.sin(halfAngle);
+  return [ax * sin, ay * sin, az * sin, Math.cos(halfAngle)];
+}
+
+function quatMultiply(
+  a: number[], b: number[],
+): [number, number, number, number] {
+  return [
+    a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+    a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+    a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+    a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+  ];
+}
+
+/** Rotate direction (dx,dy,dz) by quaternion (qx,qy,qz,qw) */
+function quatRotateDir(
+  dx: number, dy: number, dz: number,
+  qx: number, qy: number, qz: number, qw: number,
+): [number, number, number] {
+  // Using quaternion inverse: conj = (-qx, -qy, -qz, qw) for unit quat
+  // v' = q * v * q*
+  const tx = 2 * (qy * dz - qz * dy);
+  const ty = 2 * (qz * dx - qx * dz);
+  const tz = 2 * (qx * dy - qy * dx);
+  return [
+    dx + qw * tx + qy * tz - qz * ty,
+    dy + qw * ty + qz * tx - qx * tz,
+    dz + qw * tz + qx * ty - qy * tx,
+  ];
+}
+
+/** Extract forward direction (+Y up convention → we store as pointing along velocity) */
+function quatGetForward(
+  qx: number, qy: number, qz: number, qw: number,
+): [number, number, number] {
+  // Quaternion represents rotation from (0,1,0) to current forward
+  return quatRotateDir(0, 1, 0, qx, qy, qz, qw);
+}
+
+/** Get local right vector from quaternion */
+function quatGetRight(
+  qx: number, qy: number, qz: number, qw: number,
+): [number, number, number] {
+  return quatRotateDir(1, 0, 0, qx, qy, qz, qw);
+}
+
+// ============================================================
+// Update leader position based on input (quaternion-based, no gimbal lock)
 // ============================================================
 
 export function updateLeader(
@@ -213,43 +268,58 @@ export function updateLeader(
   input: InputState,
   dt: number,
 ): void {
-  // Current direction
-  let [dx, dy, dz] = normalize(leader.vx, leader.vy, leader.vz);
-
-  // Apply yaw (A/D) — rotate around world Y axis
+  // Apply yaw — rotate around world Y axis
   if (input.yaw !== 0) {
-    [dx, dy, dz] = rotateAroundAxis(dx, dy, dz, 0, 1, 0, input.yaw * LEADER_MAX_TURN_RATE * dt);
+    const yawAngle = input.yaw * LEADER_MAX_TURN_RATE * dt;
+    const qYaw = quatFromAxisAngle(0, 1, 0, yawAngle);
+    const lq = [leader.qx, leader.qy, leader.qz, leader.qw];
+    const r = quatMultiply(qYaw, lq);
+    leader.qx = r[0]; leader.qy = r[1]; leader.qz = r[2]; leader.qw = r[3];
   }
 
-  // Apply pitch (W/S) — rotate around local right axis
+  // Apply pitch — rotate around LOCAL right axis (no gimbal lock!)
   if (input.pitch !== 0) {
-    const [rx, ry, rz] = cross(dx, dy, dz, 0, 1, 0);
-    // If nearly vertical, use Z axis as fallback
-    if (Math.abs(rx) + Math.abs(ry) + Math.abs(rz) < 0.01) {
-      const [rdx, rdy, rdz] = cross(dx, dy, dz, 0, 0, 1);
-      [dx, dy, dz] = rotateAroundAxis(dx, dy, dz, rdx, rdy, rdz, input.pitch * LEADER_MAX_TURN_RATE * dt);
-    } else {
-      [dx, dy, dz] = rotateAroundAxis(dx, dy, dz, rx, ry, rz, input.pitch * LEADER_MAX_TURN_RATE * dt);
-    }
+    const [rx, ry, rz] = quatGetRight(leader.qx, leader.qy, leader.qz, leader.qw);
+    const pitchAngle = input.pitch * LEADER_MAX_TURN_RATE * dt;
+    const qPitch = quatFromAxisAngle(rx, ry, rz, pitchAngle);
+    const lq = [leader.qx, leader.qy, leader.qz, leader.qw];
+    const r = quatMultiply(qPitch, lq);
+    leader.qx = r[0]; leader.qy = r[1]; leader.qz = r[2]; leader.qw = r[3];
   }
 
-  [dx, dy, dz] = normalize(dx, dy, dz);
+  // Normalize quaternion to prevent drift
+  const qLen = Math.sqrt(leader.qx * leader.qx + leader.qy * leader.qy + leader.qz * leader.qz + leader.qw * leader.qw);
+  if (qLen > 0.001) {
+    leader.qx /= qLen; leader.qy /= qLen; leader.qz /= qLen; leader.qw /= qLen;
+  }
+
+  // Forward direction from quaternion
+  const [dx, dy, dz] = quatGetForward(leader.qx, leader.qy, leader.qz, leader.qw);
 
   const speed = input.boost ? LEADER_BOOST_SPEED : LEADER_SPEED;
 
-  leader.vx = dx * speed;
-  leader.vy = dy * speed;
-  leader.vz = dz * speed;
+  // Smooth velocity transition (prevents instant direction snap)
+  const velLerp = Math.min(8.0 * dt, 1.0);
+  const targetVx = dx * speed;
+  const targetVy = dy * speed;
+  const targetVz = dz * speed;
+  leader.vx += (targetVx - leader.vx) * velLerp;
+  leader.vy += (targetVy - leader.vy) * velLerp;
+  leader.vz += (targetVz - leader.vz) * velLerp;
 
   leader.x += leader.vx * dt;
   leader.y += leader.vy * dt;
   leader.z += leader.vz * dt;
 
-  // Hard clamp to world bounds (with margin)
-  const clamp = WORLD_HALF_SIZE - 3;
-  leader.x = Math.max(-clamp, Math.min(clamp, leader.x));
-  leader.y = Math.max(-clamp, Math.min(clamp, leader.y));
-  leader.z = Math.max(-clamp, Math.min(clamp, leader.z));
+  // Soft boundary — bounce leader gently back
+  const clamp = WORLD_HALF_SIZE - 5;
+  const bounce = 0.5;
+  if (leader.x > clamp) leader.vx -= bounce * (leader.x - clamp);
+  if (leader.x < -clamp) leader.vx -= bounce * (leader.x + clamp);
+  if (leader.y > clamp) leader.vy -= bounce * (leader.y - clamp);
+  if (leader.y < -clamp) leader.vy -= bounce * (leader.y + clamp);
+  if (leader.z > clamp) leader.vz -= bounce * (leader.z - clamp);
+  if (leader.z < -clamp) leader.vz -= bounce * (leader.z + clamp);
 }
 
 // ============================================================
@@ -449,5 +519,36 @@ export function updateBoids(
     boid.x = Math.max(-limit, Math.min(limit, boid.x));
     boid.y = Math.max(-limit, Math.min(limit, boid.y));
     boid.z = Math.max(-limit, Math.min(limit, boid.z));
+  }
+}
+
+// ============================================================
+// Generate landmarks (visual reference points in the world)
+// ============================================================
+
+export function createLandmarks(): LandmarkData[] {
+  const landmarks: LandmarkData[] = [];
+  const types: LandmarkData['type'][] = ['ring', 'pillar', 'crystal'];
+  const spread = WORLD_HALF_SIZE * 0.7;
+
+  for (let i = 0; i < 40; i++) {
+    const type = types[i % 3];
+    landmarks.push({
+      x: (Math.random() - 0.5) * 2 * spread,
+      y: (Math.random() - 0.5) * 2 * spread * 0.5,
+      z: (Math.random() - 0.5) * 2 * spread,
+      type,
+      scale: 0.8 + Math.random() * 1.5,
+      rotation: Math.random() * Math.PI * 2,
+      rotSpeed: (Math.random() - 0.5) * 0.4,
+    });
+  }
+  return landmarks;
+}
+
+/** Update landmark rotations */
+export function updateLandmarks(landmarks: LandmarkData[], dt: number): void {
+  for (let i = 0; i < landmarks.length; i++) {
+    landmarks[i].rotation += landmarks[i].rotSpeed * dt;
   }
 }

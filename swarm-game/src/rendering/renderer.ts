@@ -7,14 +7,13 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import type { GameState, InputState } from '../core/types.ts';
+import type { GameState, InputState, LandmarkData } from '../core/types.ts';
 import {
-  BOID_COUNT, BOID_MAX_SPEED,
-  LEADER_MAX_TURN_RATE,
+  BOID_COUNT,
   STAR_COUNT, STAR_SHELL_MIN, STAR_SHELL_MAX,
   CAM_OFFSET_Y, CAM_OFFSET_Z, CAM_LERP, CAM_LOOK_AHEAD,
   BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD,
-  WORLD_HALF_SIZE, SPATIAL_CELL_SIZE,
+  WORLD_HALF_SIZE,
 } from '../core/constants.ts';
 
 // ============================================================
@@ -31,6 +30,9 @@ let boidMesh: THREE.InstancedMesh;
 let leaderMesh: THREE.Mesh;
 let leaderLight: THREE.PointLight;
 
+// Landmarks
+let landmarkObjects: THREE.Object3D[] = [];
+
 // Input
 const input: InputState = { yaw: 0, pitch: 0, boost: false };
 const keys = new Set<string>();
@@ -44,11 +46,14 @@ let currentFps = 0;
 // Reusable objects (avoid allocations in hot loop)
 const _dummy = new THREE.Object3D();
 const _up = new THREE.Vector3(0, 1, 0);
-const _camTarget = new THREE.Vector3();
 const _camPos = new THREE.Vector3();
 const _lookTarget = new THREE.Vector3();
-const _leaderQuat = new THREE.Quaternion();
+const _smoothLookTarget = new THREE.Vector3();
 const _leaderDir = new THREE.Vector3();
+
+// Smooth camera state
+let _camInitialized = false;
+const _smoothCamPos = new THREE.Vector3(0, 2, -8);
 
 // ============================================================
 // Initialize the renderer
@@ -64,17 +69,17 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.0;
+  renderer.toneMappingExposure = 1.2;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   // --- Scene ---
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x020208);
-  scene.fog = new THREE.FogExp2(0x020208, 0.003);
+  scene.background = new THREE.Color(0x030310);
+  scene.fog = new THREE.FogExp2(0x030310, 0.002);
 
   // --- Camera ---
   camera = new THREE.PerspectiveCamera(
-    65,
+    70,
     window.innerWidth / window.innerHeight,
     0.1,
     1000,
@@ -92,14 +97,14 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
   composer.addPass(bloomPass);
 
   // --- Lighting ---
-  const ambient = new THREE.AmbientLight(0x111122, 0.8);
+  const ambient = new THREE.AmbientLight(0x151525, 1.2);
   scene.add(ambient);
 
-  const dirLight = new THREE.DirectionalLight(0x4466aa, 0.6);
+  const dirLight = new THREE.DirectionalLight(0x5577cc, 0.5);
   dirLight.position.set(20, 40, 30);
   scene.add(dirLight);
 
-  const dirLight2 = new THREE.DirectionalLight(0x2244aa, 0.3);
+  const dirLight2 = new THREE.DirectionalLight(0x3344aa, 0.3);
   dirLight2.position.set(-30, -10, -20);
   scene.add(dirLight2);
 
@@ -132,10 +137,8 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
 function createStarfield(): void {
   const count = STAR_COUNT;
   const positions = new Float32Array(count * 3);
-  const sizes = new Float32Array(count);
 
   for (let i = 0; i < count; i++) {
-    // Random point on a sphere shell
     const theta = Math.random() * Math.PI * 2;
     const phi = Math.acos(2 * Math.random() - 1);
     const r = STAR_SHELL_MIN + Math.random() * (STAR_SHELL_MAX - STAR_SHELL_MIN);
@@ -143,19 +146,17 @@ function createStarfield(): void {
     positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
     positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
     positions[i * 3 + 2] = r * Math.cos(phi);
-    sizes[i] = 0.3 + Math.random() * 0.7;
   }
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
 
   const material = new THREE.PointsMaterial({
-    color: 0xaabbff,
-    size: 0.5,
+    color: 0x99aadd,
+    size: 0.6,
     sizeAttenuation: true,
     transparent: true,
-    opacity: 0.8,
+    opacity: 0.7,
   });
 
   scene.add(new THREE.Points(geometry, material));
@@ -172,17 +173,9 @@ function createWorldBounds(): void {
   const mat = new THREE.LineBasicMaterial({
     color: 0x1a1a3a,
     transparent: true,
-    opacity: 0.3,
+    opacity: 0.25,
   });
-  const wireframe = new THREE.LineSegments(edges, mat);
-  scene.add(wireframe);
-
-  // Subtle grid on the XZ plane (floor reference)
-  const gridHelper = new THREE.GridHelper(size, 20, 0x0a0a20, 0x0a0a15);
-  gridHelper.position.y = -WORLD_HALF_SIZE;
-  gridHelper.material.transparent = true;
-  gridHelper.material.opacity = 0.15;
-  scene.add(gridHelper);
+  scene.add(new THREE.LineSegments(edges, mat));
 }
 
 // ============================================================
@@ -190,18 +183,18 @@ function createWorldBounds(): void {
 // ============================================================
 
 function createBoidMesh(): void {
-  // Cone geometry — rocket/drone shape pointing along +Y (default up)
-  const geometry = new THREE.ConeGeometry(0.12, 0.5, 4);
-  geometry.rotateX(Math.PI); // flip so tip points -Y → we'll orient via quaternion
+  // Cone geometry — rocket/drone shape
+  const geometry = new THREE.ConeGeometry(0.15, 0.6, 4);
+  geometry.rotateX(Math.PI); // tip points -Y, we orient via quaternion
 
   const material = new THREE.MeshStandardMaterial({
-    color: 0x44ddff,
-    emissive: 0x22aadd,
-    emissiveIntensity: 1.2,
+    color: 0x55eeff,
+    emissive: 0x33bbdd,
+    emissiveIntensity: 1.5,
     transparent: true,
-    opacity: 0.9,
-    metalness: 0.6,
-    roughness: 0.3,
+    opacity: 0.95,
+    metalness: 0.7,
+    roughness: 0.2,
   });
 
   boidMesh = new THREE.InstancedMesh(geometry, material, BOID_COUNT);
@@ -211,30 +204,101 @@ function createBoidMesh(): void {
 }
 
 // ============================================================
-// Leader mesh (slightly larger, brighter)
+// Leader mesh (larger, brighter, white-cyan)
 // ============================================================
 
 function createLeaderMesh(): void {
-  const geometry = new THREE.ConeGeometry(0.2, 0.8, 4);
+  const geometry = new THREE.ConeGeometry(0.25, 1.0, 4);
   geometry.rotateX(Math.PI);
 
   const material = new THREE.MeshStandardMaterial({
     color: 0xffffff,
-    emissive: 0x66eeff,
-    emissiveIntensity: 2.0,
+    emissive: 0x88eeff,
+    emissiveIntensity: 2.5,
     transparent: true,
     opacity: 1.0,
-    metalness: 0.8,
-    roughness: 0.1,
+    metalness: 0.9,
+    roughness: 0.05,
   });
 
   leaderMesh = new THREE.Mesh(geometry, material);
   scene.add(leaderMesh);
 
-  // Point light attached to leader for local illumination
-  leaderLight = new THREE.PointLight(0x44ccff, 3, 20);
-  leaderLight.distance = 25;
+  // Stronger point light for leader
+  leaderLight = new THREE.PointLight(0x55ddff, 5, 30);
   scene.add(leaderLight);
+}
+
+// ============================================================
+// Create landmark 3D objects
+// ============================================================
+
+export function createLandmarks(landmarks: LandmarkData[]): void {
+  // Clear existing
+  for (const obj of landmarkObjects) {
+    scene.remove(obj);
+  }
+  landmarkObjects = [];
+
+  for (const lm of landmarks) {
+    let obj: THREE.Object3D;
+
+    if (lm.type === 'ring') {
+      // Glowing ring (torus)
+      const geo = new THREE.TorusGeometry(2 * lm.scale, 0.15 * lm.scale, 8, 24);
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0x3366aa,
+        emissive: 0x2255aa,
+        emissiveIntensity: 0.6,
+        transparent: true,
+        opacity: 0.5,
+        side: THREE.DoubleSide,
+      });
+      obj = new THREE.Mesh(geo, mat);
+    } else if (lm.type === 'pillar') {
+      // Tall thin cylinder
+      const geo = new THREE.CylinderGeometry(
+        0.3 * lm.scale, 0.5 * lm.scale, 8 * lm.scale, 6,
+      );
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0x334466,
+        emissive: 0x1a2244,
+        emissiveIntensity: 0.3,
+        transparent: true,
+        opacity: 0.6,
+      });
+      obj = new THREE.Mesh(geo, mat);
+
+      // Add a small glowing top
+      const topGeo = new THREE.SphereGeometry(0.6 * lm.scale, 8, 6);
+      const topMat = new THREE.MeshStandardMaterial({
+        color: 0x4488ff,
+        emissive: 0x4488ff,
+        emissiveIntensity: 1.0,
+      });
+      const top = new THREE.Mesh(topGeo, topMat);
+      top.position.y = 4 * lm.scale;
+      obj.add(top);
+    } else {
+      // Crystal — octahedron
+      const geo = new THREE.OctahedronGeometry(1.2 * lm.scale, 0);
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0x66aaff,
+        emissive: 0x4477dd,
+        emissiveIntensity: 0.8,
+        transparent: true,
+        opacity: 0.6,
+        metalness: 0.9,
+        roughness: 0.1,
+      });
+      obj = new THREE.Mesh(geo, mat);
+    }
+
+    obj.position.set(lm.x, lm.y, lm.z);
+    obj.rotation.y = lm.rotation;
+    scene.add(obj);
+    landmarkObjects.push(obj);
+  }
 }
 
 // ============================================================
@@ -255,7 +319,7 @@ function createHUD(): void {
     <div style="position:absolute; top:16px; left:20px; font-size:18px; font-weight:600; text-shadow: 0 0 8px rgba(68,204,255,0.5);">
       <span id="hud-title">Рой</span>
     </div>
-    <div style="position:absolute; top:16px; left:80px; font-size:14px; opacity:0.8;">
+    <div style="position:absolute; top:16px; left:70px; font-size:14px; opacity:0.8;">
       <span id="hud-count"></span>
     </div>
     <div style="position:absolute; top:16px; right:20px; font-size:13px; opacity:0.6;">
@@ -265,6 +329,7 @@ function createHUD(): void {
       WASD — управление &nbsp;|&nbsp; Space — ускорение
     </div>
     <div style="position:absolute; bottom:50px; left:50%; transform:translateX(-50%); font-size:12px; opacity:0.3;" id="hud-speed"></div>
+    <div style="position:absolute; bottom:72px; left:50%; transform:translateX(-50%); font-size:11px; opacity:0.25;" id="hud-pos"></div>
   `;
   document.body.appendChild(hudDiv);
 }
@@ -276,7 +341,6 @@ function createHUD(): void {
 function setupInput(canvas: HTMLCanvasElement): void {
   window.addEventListener('keydown', (e) => {
     keys.add(e.code);
-    // Prevent scrolling
     if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
       e.preventDefault();
     }
@@ -286,7 +350,6 @@ function setupInput(canvas: HTMLCanvasElement): void {
     keys.delete(e.code);
   });
 
-  // Prevent context menu on long press (mobile)
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
@@ -308,16 +371,18 @@ export function readInput(): InputState {
 // ============================================================
 
 export function syncVisuals(state: GameState, dt: number): void {
-  const { boids, leader } = state;
+  const { boids, leader, landmarks } = state;
 
   // --- Update boid instances ---
   for (let i = 0; i < boids.length; i++) {
     const boid = boids[i];
     if (boid.alive) {
       _dummy.position.set(boid.x, boid.y, boid.z);
-      // Orient cone tip along velocity direction
-      _leaderDir.set(boid.vx, boid.vy, boid.vz).normalize();
-      _dummy.quaternion.setFromUnitVectors(_up, _leaderDir);
+      _leaderDir.set(boid.vx, boid.vy, boid.vz);
+      if (_leaderDir.lengthSq() > 0.001) {
+        _leaderDir.normalize();
+        _dummy.quaternion.setFromUnitVectors(_up, _leaderDir);
+      }
     } else {
       _dummy.position.set(0, -9999, 0);
     }
@@ -328,38 +393,60 @@ export function syncVisuals(state: GameState, dt: number): void {
 
   // --- Update leader mesh ---
   leaderMesh.position.set(leader.x, leader.y, leader.z);
-  _leaderDir.set(leader.vx, leader.vy, leader.vz).normalize();
-  leaderMesh.quaternion.setFromUnitVectors(_up, _leaderDir);
-
-  // Leader light follows
+  _leaderDir.set(leader.vx, leader.vy, leader.vz);
+  if (_leaderDir.lengthSq() > 0.001) {
+    _leaderDir.normalize();
+    leaderMesh.quaternion.setFromUnitVectors(_up, _leaderDir);
+  }
   leaderLight.position.set(leader.x, leader.y, leader.z);
 
-  // --- Camera follow ---
+  // --- Update landmark objects ---
+  for (let i = 0; i < landmarks.length; i++) {
+    if (landmarkObjects[i]) {
+      landmarkObjects[i].rotation.y = landmarks[i].rotation;
+    }
+  }
+
+  // --- Camera follow (stabilized) ---
   // Desired position: behind and above leader in local space
-  _leaderQuat.setFromUnitVectors(_up, _leaderDir);
-  _camPos.set(0, CAM_OFFSET_Y, CAM_OFFSET_Z).applyQuaternion(_leaderQuat);
+  const lq = new THREE.Quaternion(leader.qx, leader.qy, leader.qz, leader.qw);
+  _camPos.set(0, CAM_OFFSET_Y, CAM_OFFSET_Z).applyQuaternion(lq);
   _camPos.add(leaderMesh.position);
 
-  // Smooth interpolation
-  camera.position.lerp(_camPos, Math.min(CAM_LERP * dt, 1));
+  if (!_camInitialized) {
+    _smoothCamPos.copy(_camPos);
+    _smoothLookTarget.set(leader.x, leader.y, leader.z);
+    _camInitialized = true;
+  }
 
-  // Look at point slightly ahead of leader
+  // Smooth camera position (lerp)
+  const camSmooth = Math.min(CAM_LERP * dt, 1);
+  _smoothCamPos.lerp(_camPos, camSmooth);
+  camera.position.copy(_smoothCamPos);
+
+  // Look at: point ahead of leader (smoothed to avoid jitter)
   _lookTarget.set(
-    leader.x + leader.vx * CAM_LOOK_AHEAD * 0.2,
-    leader.y + leader.vy * CAM_LOOK_AHEAD * 0.2,
-    leader.z + leader.vz * CAM_LOOK_AHEAD * 0.2,
+    leader.x + leader.vx * CAM_LOOK_AHEAD * 0.3,
+    leader.y + leader.vy * CAM_LOOK_AHEAD * 0.3,
+    leader.z + leader.vz * CAM_LOOK_AHEAD * 0.3,
   );
-  camera.lookAt(_lookTarget);
+  const lookSmooth = Math.min(CAM_LERP * 0.8 * dt, 1);
+  _smoothLookTarget.lerp(_lookTarget, lookSmooth);
+  camera.lookAt(_smoothLookTarget);
 
   // --- HUD update ---
   const countEl = document.getElementById('hud-count');
   if (countEl) countEl.textContent = `${state.aliveCount} / ${state.totalCount}`;
 
-  // Speed indicator
   const speed = Math.sqrt(leader.vx * leader.vx + leader.vy * leader.vy + leader.vz * leader.vz);
   const speedEl = document.getElementById('hud-speed');
   if (speedEl) {
     speedEl.textContent = input.boost ? `BOOST ${speed.toFixed(1)}` : `${speed.toFixed(1)} м/с`;
+  }
+
+  const posEl = document.getElementById('hud-pos');
+  if (posEl) {
+    posEl.textContent = `x:${leader.x.toFixed(0)} y:${leader.y.toFixed(0)} z:${leader.z.toFixed(0)}`;
   }
 }
 
@@ -377,7 +464,7 @@ export function renderFrame(): void {
 
 export function updateFPS(time: number): number {
   fpsFrames++;
-  fpsTime += time; // time is already dt in ms
+  fpsTime += time;
 
   if (fpsTime >= 1000) {
     currentFps = Math.round(fpsFrames * 1000 / fpsTime);
