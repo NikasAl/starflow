@@ -50,6 +50,21 @@ const _camPos = new THREE.Vector3();
 const _lookTarget = new THREE.Vector3();
 const _smoothLookTarget = new THREE.Vector3();
 const _leaderDir = new THREE.Vector3();
+const _fallbackAxis = new THREE.Vector3(1, 0, 0);
+
+/** Safe quaternion from two unit vectors — handles near-180° case */
+function safeQuatFromDir(dir: THREE.Vector3, out: THREE.Quaternion): void {
+  const dot = _up.dot(dir);
+  if (dot > 0.9999) {
+    // Nearly same direction
+    out.identity();
+  } else if (dot < -0.9999) {
+    // Nearly opposite — pick any perpendicular axis
+    out.setFromAxisAngle(_fallbackAxis, Math.PI);
+  } else {
+    out.setFromUnitVectors(_up, dir);
+  }
+}
 
 // Smooth camera state
 let _camInitialized = false;
@@ -381,7 +396,7 @@ export function syncVisuals(state: GameState, dt: number): void {
       _leaderDir.set(boid.vx, boid.vy, boid.vz);
       if (_leaderDir.lengthSq() > 0.001) {
         _leaderDir.normalize();
-        _dummy.quaternion.setFromUnitVectors(_up, _leaderDir);
+        safeQuatFromDir(_leaderDir, _dummy.quaternion);
       }
     } else {
       _dummy.position.set(0, -9999, 0);
@@ -391,13 +406,9 @@ export function syncVisuals(state: GameState, dt: number): void {
   }
   boidMesh.instanceMatrix.needsUpdate = true;
 
-  // --- Update leader mesh ---
+  // --- Update leader mesh (use quaternion directly, no setFromUnitVectors) ---
   leaderMesh.position.set(leader.x, leader.y, leader.z);
-  _leaderDir.set(leader.vx, leader.vy, leader.vz);
-  if (_leaderDir.lengthSq() > 0.001) {
-    _leaderDir.normalize();
-    leaderMesh.quaternion.setFromUnitVectors(_up, _leaderDir);
-  }
+  leaderMesh.quaternion.set(leader.qx, leader.qy, leader.qz, leader.qw);
   leaderLight.position.set(leader.x, leader.y, leader.z);
 
   // --- Update landmark objects ---
