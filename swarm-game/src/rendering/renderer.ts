@@ -1,23 +1,23 @@
 // ============================================================
-// Рой (Swarm) — Renderer
-// Three.js scene, camera, InstancedMesh, bloom, input, HUD
+// Рой (Swarm) — Renderer (Demo Mode)
+// Three.js scene, camera, InstancedMesh, bloom, platforms
 // ============================================================
 
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import type { GameState, InputState, LandmarkData } from '../core/types.ts';
+import type { GameState, PlatformData } from '../core/types.ts';
 import {
   BOID_COUNT,
   STAR_COUNT, STAR_SHELL_MIN, STAR_SHELL_MAX,
-  CAM_OFFSET_Y, CAM_OFFSET_Z, CAM_LERP, CAM_LOOK_AHEAD,
+  CAM_HEIGHT, CAM_LOOK_AHEAD, CAM_LERP,
   BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD,
   WORLD_HALF_SIZE,
 } from '../core/constants.ts';
 
 // ============================================================
-// Internal state (module-scoped)
+// Internal state
 // ============================================================
 
 let scene: THREE.Scene;
@@ -30,12 +30,8 @@ let boidMesh: THREE.InstancedMesh;
 let leaderMesh: THREE.Mesh;
 let leaderLight: THREE.PointLight;
 
-// Landmarks
-let landmarkObjects: THREE.Object3D[] = [];
-
-// Input
-const input: InputState = { yaw: 0, pitch: 0, boost: false };
-const keys = new Set<string>();
+// Platforms
+let platformObjects: THREE.Group[] = [];
 
 // HUD
 let hudDiv: HTMLDivElement;
@@ -43,32 +39,34 @@ let fpsFrames = 0;
 let fpsTime = 0;
 let currentFps = 0;
 
-// Reusable objects (avoid allocations in hot loop)
+// Reusable objects
 const _dummy = new THREE.Object3D();
 const _up = new THREE.Vector3(0, 1, 0);
 const _camPos = new THREE.Vector3();
 const _lookTarget = new THREE.Vector3();
+const _smoothCamPos = new THREE.Vector3();
 const _smoothLookTarget = new THREE.Vector3();
-const _leaderDir = new THREE.Vector3();
+const _boidDir = new THREE.Vector3();
 const _fallbackAxis = new THREE.Vector3(1, 0, 0);
 
-/** Safe quaternion from two unit vectors — handles near-180° case */
+// Waypoint visualization
+let waypointLine: THREE.Line;
+let waypointMaterial: THREE.LineBasicMaterial;
+
+/** Safe quaternion from direction — avoids NaN at near-180° */
 function safeQuatFromDir(dir: THREE.Vector3, out: THREE.Quaternion): void {
   const dot = _up.dot(dir);
   if (dot > 0.9999) {
-    // Nearly same direction
     out.identity();
   } else if (dot < -0.9999) {
-    // Nearly opposite — pick any perpendicular axis
     out.setFromAxisAngle(_fallbackAxis, Math.PI);
   } else {
     out.setFromUnitVectors(_up, dir);
   }
 }
 
-// Smooth camera state
+// Smooth camera
 let _camInitialized = false;
-const _smoothCamPos = new THREE.Vector3(0, 2, -8);
 
 // ============================================================
 // Initialize the renderer
@@ -84,23 +82,23 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.2;
+  renderer.toneMappingExposure = 1.0;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   // --- Scene ---
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x030310);
-  scene.fog = new THREE.FogExp2(0x030310, 0.002);
+  scene.background = new THREE.Color(0x050518);
+  scene.fog = new THREE.FogExp2(0x050518, 0.0025);
 
-  // --- Camera ---
+  // --- Camera (top-down view for demo) ---
   camera = new THREE.PerspectiveCamera(
-    70,
+    55,
     window.innerWidth / window.innerHeight,
     0.1,
     1000,
   );
 
-  // --- Post-processing (Bloom) ---
+  // --- Post-processing ---
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   bloomPass = new UnrealBloomPass(
@@ -112,21 +110,21 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
   composer.addPass(bloomPass);
 
   // --- Lighting ---
-  const ambient = new THREE.AmbientLight(0x151525, 1.2);
+  const ambient = new THREE.AmbientLight(0x202040, 2.0);
   scene.add(ambient);
 
-  const dirLight = new THREE.DirectionalLight(0x5577cc, 0.5);
-  dirLight.position.set(20, 40, 30);
+  const dirLight = new THREE.DirectionalLight(0x6688cc, 0.8);
+  dirLight.position.set(30, 60, 20);
   scene.add(dirLight);
 
-  const dirLight2 = new THREE.DirectionalLight(0x3344aa, 0.3);
-  dirLight2.position.set(-30, -10, -20);
+  const dirLight2 = new THREE.DirectionalLight(0x334488, 0.4);
+  dirLight2.position.set(-20, 40, -30);
   scene.add(dirLight2);
 
   // --- Starfield ---
   createStarfield();
 
-  // --- World boundary wireframe ---
+  // --- World boundary ---
   createWorldBounds();
 
   // --- Boid InstancedMesh ---
@@ -138,15 +136,12 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
   // --- HUD ---
   createHUD();
 
-  // --- Input handlers ---
-  setupInput(canvas);
-
-  // --- Resize handler ---
+  // --- Resize ---
   window.addEventListener('resize', onResize);
 }
 
 // ============================================================
-// Starfield background
+// Starfield
 // ============================================================
 
 function createStarfield(): void {
@@ -157,7 +152,6 @@ function createStarfield(): void {
     const theta = Math.random() * Math.PI * 2;
     const phi = Math.acos(2 * Math.random() - 1);
     const r = STAR_SHELL_MIN + Math.random() * (STAR_SHELL_MAX - STAR_SHELL_MIN);
-
     positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
     positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
     positions[i * 3 + 2] = r * Math.cos(phi);
@@ -167,18 +161,18 @@ function createStarfield(): void {
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
 
   const material = new THREE.PointsMaterial({
-    color: 0x99aadd,
-    size: 0.6,
+    color: 0x8899cc,
+    size: 0.5,
     sizeAttenuation: true,
     transparent: true,
-    opacity: 0.7,
+    opacity: 0.6,
   });
 
   scene.add(new THREE.Points(geometry, material));
 }
 
 // ============================================================
-// World boundary wireframe box
+// World boundary wireframe
 // ============================================================
 
 function createWorldBounds(): void {
@@ -188,9 +182,21 @@ function createWorldBounds(): void {
   const mat = new THREE.LineBasicMaterial({
     color: 0x1a1a3a,
     transparent: true,
-    opacity: 0.25,
+    opacity: 0.15,
   });
   scene.add(new THREE.LineSegments(edges, mat));
+
+  // Ground plane — semi-transparent grid for depth reference
+  const gridHelper = new THREE.GridHelper(
+    WORLD_HALF_SIZE * 2,
+    20,
+    0x111133,
+    0x0a0a22,
+  );
+  gridHelper.position.y = -WORLD_HALF_SIZE + 1;
+  gridHelper.material.transparent = true;
+  gridHelper.material.opacity = 0.3;
+  scene.add(gridHelper);
 }
 
 // ============================================================
@@ -198,8 +204,7 @@ function createWorldBounds(): void {
 // ============================================================
 
 function createBoidMesh(): void {
-  // Cone geometry — rocket/drone shape
-  // Tip at +Y (default). Quaternion orients +Y → forward direction.
+  // Cone tip at +Y — quaternion orients +Y → forward
   const geometry = new THREE.ConeGeometry(0.15, 0.6, 4);
 
   const material = new THREE.MeshStandardMaterial({
@@ -219,12 +224,12 @@ function createBoidMesh(): void {
 }
 
 // ============================================================
-// Leader mesh (larger, brighter, white-cyan)
+// Leader mesh
 // ============================================================
 
 function createLeaderMesh(): void {
-  // Tip at +Y (default). Quaternion orients +Y → forward direction.
-  const geometry = new THREE.ConeGeometry(0.25, 1.0, 4);
+  // Cone tip at +Y
+  const geometry = new THREE.ConeGeometry(0.3, 1.2, 6);
 
   const material = new THREE.MeshStandardMaterial({
     color: 0xffffff,
@@ -239,85 +244,94 @@ function createLeaderMesh(): void {
   leaderMesh = new THREE.Mesh(geometry, material);
   scene.add(leaderMesh);
 
-  // Stronger point light for leader
-  leaderLight = new THREE.PointLight(0x55ddff, 5, 30);
+  leaderLight = new THREE.PointLight(0x55ddff, 8, 40);
   scene.add(leaderLight);
 }
 
 // ============================================================
-// Create landmark 3D objects
+// Create platform 3D objects (disc + glowing ring)
 // ============================================================
 
-export function createLandmarks(landmarks: LandmarkData[]): void {
+export function createPlatforms(platforms: PlatformData[]): void {
   // Clear existing
-  for (const obj of landmarkObjects) {
+  for (const obj of platformObjects) {
     scene.remove(obj);
   }
-  landmarkObjects = [];
+  platformObjects = [];
 
-  for (const lm of landmarks) {
-    let obj: THREE.Object3D;
+  for (const p of platforms) {
+    const group = new THREE.Group();
 
-    if (lm.type === 'ring') {
-      // Glowing ring (torus)
-      const geo = new THREE.TorusGeometry(2 * lm.scale, 0.15 * lm.scale, 8, 24);
-      const mat = new THREE.MeshStandardMaterial({
-        color: 0x3366aa,
-        emissive: 0x2255aa,
-        emissiveIntensity: 0.6,
-        transparent: true,
-        opacity: 0.5,
-        side: THREE.DoubleSide,
-      });
-      obj = new THREE.Mesh(geo, mat);
-    } else if (lm.type === 'pillar') {
-      // Tall thin cylinder
-      const geo = new THREE.CylinderGeometry(
-        0.3 * lm.scale, 0.5 * lm.scale, 8 * lm.scale, 6,
-      );
-      const mat = new THREE.MeshStandardMaterial({
-        color: 0x334466,
-        emissive: 0x1a2244,
-        emissiveIntensity: 0.3,
-        transparent: true,
-        opacity: 0.6,
-      });
-      obj = new THREE.Mesh(geo, mat);
+    // Platform disc (flat cylinder)
+    const discGeo = new THREE.CylinderGeometry(p.radius, p.radius, 0.3, 16);
+    const discMat = new THREE.MeshStandardMaterial({
+      color: 0x1a2a44,
+      emissive: 0x0a1525,
+      emissiveIntensity: 0.3,
+      transparent: true,
+      opacity: 0.7,
+      metalness: 0.5,
+      roughness: 0.5,
+    });
+    const disc = new THREE.Mesh(discGeo, discMat);
+    group.add(disc);
 
-      // Add a small glowing top
-      const topGeo = new THREE.SphereGeometry(0.6 * lm.scale, 8, 6);
-      const topMat = new THREE.MeshStandardMaterial({
-        color: 0x4488ff,
-        emissive: 0x4488ff,
-        emissiveIntensity: 1.0,
-      });
-      const top = new THREE.Mesh(topGeo, topMat);
-      top.position.y = 4 * lm.scale;
-      obj.add(top);
-    } else {
-      // Crystal — octahedron
-      const geo = new THREE.OctahedronGeometry(1.2 * lm.scale, 0);
-      const mat = new THREE.MeshStandardMaterial({
-        color: 0x66aaff,
-        emissive: 0x4477dd,
-        emissiveIntensity: 0.8,
-        transparent: true,
-        opacity: 0.6,
-        metalness: 0.9,
-        roughness: 0.1,
-      });
-      obj = new THREE.Mesh(geo, mat);
-    }
+    // Glowing ring (torus) on top of platform
+    const ringGeo = new THREE.TorusGeometry(p.ringRadius, 0.15, 8, 24);
+    const ringMat = new THREE.MeshStandardMaterial({
+      color: 0x44aaff,
+      emissive: 0x2266dd,
+      emissiveIntensity: 1.2,
+      transparent: true,
+      opacity: 0.8,
+    });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = Math.PI * 0.5; // Lay flat
+    ring.position.y = 0.3;
+    group.add(ring);
 
-    obj.position.set(lm.x, lm.y, lm.z);
-    obj.rotation.y = lm.rotation;
-    scene.add(obj);
-    landmarkObjects.push(obj);
+    // Small light on ring
+    const ringLight = new THREE.PointLight(0x4488ff, 2, 15);
+    ringLight.position.y = 1;
+    group.add(ringLight);
+
+    group.position.set(p.x, p.y, p.z);
+    scene.add(group);
+    platformObjects.push(group);
   }
 }
 
 // ============================================================
-// HUD (HTML overlay)
+// Create waypoint path visualization
+// ============================================================
+
+export function createWaypointPath(waypoints: { x: number; y: number; z: number }[]): void {
+  if (waypointLine) {
+    scene.remove(waypointLine);
+    waypointLine.geometry.dispose();
+  }
+
+  // Close the loop
+  const points: THREE.Vector3[] = [];
+  for (const wp of waypoints) {
+    points.push(new THREE.Vector3(wp.x, wp.y, wp.z));
+  }
+  if (waypoints.length > 0) {
+    points.push(new THREE.Vector3(waypoints[0].x, waypoints[0].y, waypoints[0].z));
+  }
+
+  const geometry = new THREE.BufferGeometry().setFromPoints(points);
+  waypointMaterial = new THREE.LineBasicMaterial({
+    color: 0x334466,
+    transparent: true,
+    opacity: 0.2,
+  });
+  waypointLine = new THREE.Line(geometry, waypointMaterial);
+  scene.add(waypointLine);
+}
+
+// ============================================================
+// HUD
 // ============================================================
 
 function createHUD(): void {
@@ -331,54 +345,26 @@ function createHUD(): void {
     z-index: 10;
   `;
   hudDiv.innerHTML = `
-    <div style="position:absolute; top:16px; left:20px; font-size:18px; font-weight:600; text-shadow: 0 0 8px rgba(68,204,255,0.5);">
-      <span id="hud-title">Рой</span>
+    <div style="position:absolute; top:16px; left:20px; font-size:20px; font-weight:700; text-shadow: 0 0 10px rgba(68,204,255,0.4);">
+      <span id="hud-title">РОЙ — ДЕМО</span>
     </div>
-    <div style="position:absolute; top:16px; left:70px; font-size:14px; opacity:0.8;">
-      <span id="hud-count"></span>
-    </div>
-    <div style="position:absolute; top:16px; right:20px; font-size:13px; opacity:0.6;">
+    <div style="position:absolute; top:20px; right:20px; font-size:13px; opacity:0.5;">
       <span id="hud-fps"></span>
     </div>
-    <div style="position:absolute; bottom:20px; left:50%; transform:translateX(-50%); font-size:13px; opacity:0.4; text-align:center; line-height:1.6;">
-      WASD — управление &nbsp;|&nbsp; Space — ускорение
+    <div style="position:absolute; top:44px; left:20px; font-size:13px; opacity:0.6;">
+      <span id="hud-count"></span>
     </div>
-    <div style="position:absolute; bottom:50px; left:50%; transform:translateX(-50%); font-size:12px; opacity:0.3;" id="hud-speed"></div>
-    <div style="position:absolute; bottom:72px; left:50%; transform:translateX(-50%); font-size:11px; opacity:0.25;" id="hud-pos"></div>
+    <div style="position:absolute; top:64px; left:20px; font-size:12px; opacity:0.4;">
+      <span id="hud-waypoint"></span>
+    </div>
+    <div style="position:absolute; top:84px; left:20px; font-size:12px; opacity:0.3;">
+      <span id="hud-pos"></span>
+    </div>
+    <div style="position:absolute; bottom:20px; left:50%; transform:translateX(-50%); font-size:12px; opacity:0.3; text-align:center;">
+      Автопилот — демо-режим
+    </div>
   `;
   document.body.appendChild(hudDiv);
-}
-
-// ============================================================
-// Input handling
-// ============================================================
-
-function setupInput(canvas: HTMLCanvasElement): void {
-  window.addEventListener('keydown', (e) => {
-    keys.add(e.code);
-    if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
-      e.preventDefault();
-    }
-  });
-
-  window.addEventListener('keyup', (e) => {
-    keys.delete(e.code);
-  });
-
-  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-}
-
-export function readInput(): InputState {
-  input.yaw = 0;
-  input.pitch = 0;
-
-  if (keys.has('KeyA') || keys.has('ArrowLeft')) input.yaw = 1;
-  if (keys.has('KeyD') || keys.has('ArrowRight')) input.yaw = -1;
-  if (keys.has('KeyW') || keys.has('ArrowUp')) input.pitch = 1;
-  if (keys.has('KeyS') || keys.has('ArrowDown')) input.pitch = -1;
-  input.boost = keys.has('Space');
-
-  return input;
 }
 
 // ============================================================
@@ -386,17 +372,17 @@ export function readInput(): InputState {
 // ============================================================
 
 export function syncVisuals(state: GameState, dt: number): void {
-  const { boids, leader, landmarks } = state;
+  const { boids, leader } = state;
 
   // --- Update boid instances ---
   for (let i = 0; i < boids.length; i++) {
     const boid = boids[i];
     if (boid.alive) {
       _dummy.position.set(boid.x, boid.y, boid.z);
-      _leaderDir.set(boid.vx, boid.vy, boid.vz);
-      if (_leaderDir.lengthSq() > 0.001) {
-        _leaderDir.normalize();
-        safeQuatFromDir(_leaderDir, _dummy.quaternion);
+      _boidDir.set(boid.vx, boid.vy, boid.vz);
+      if (_boidDir.lengthSq() > 0.001) {
+        _boidDir.normalize();
+        safeQuatFromDir(_boidDir, _dummy.quaternion);
       }
     } else {
       _dummy.position.set(0, -9999, 0);
@@ -406,63 +392,61 @@ export function syncVisuals(state: GameState, dt: number): void {
   }
   boidMesh.instanceMatrix.needsUpdate = true;
 
-  // --- Update leader mesh (use quaternion directly, no setFromUnitVectors) ---
+  // --- Update leader ---
   leaderMesh.position.set(leader.x, leader.y, leader.z);
   leaderMesh.quaternion.set(leader.qx, leader.qy, leader.qz, leader.qw);
   leaderLight.position.set(leader.x, leader.y, leader.z);
 
-  // --- Update landmark objects ---
-  for (let i = 0; i < landmarks.length; i++) {
-    if (landmarkObjects[i]) {
-      landmarkObjects[i].rotation.y = landmarks[i].rotation;
-    }
-  }
-
-  // --- Camera follow (stabilized) ---
-  // Desired position: behind and above leader in local space
-  const lq = new THREE.Quaternion(leader.qx, leader.qy, leader.qz, leader.qw);
-  _camPos.set(0, CAM_OFFSET_Y, CAM_OFFSET_Z).applyQuaternion(lq);
-  _camPos.add(leaderMesh.position);
+  // --- Camera: birds-eye view above the swarm ---
+  // Camera position: directly above leader
+  const targetCamX = leader.x;
+  const targetCamY = leader.y + CAM_HEIGHT;
+  const targetCamZ = leader.z;
 
   if (!_camInitialized) {
-    _smoothCamPos.copy(_camPos);
+    _smoothCamPos.set(targetCamX, targetCamY, targetCamZ);
     _smoothLookTarget.set(leader.x, leader.y, leader.z);
     _camInitialized = true;
   }
 
-  // Smooth camera position (lerp)
+  // Smooth camera follow
   const camSmooth = Math.min(CAM_LERP * dt, 1);
-  _smoothCamPos.lerp(_camPos, camSmooth);
+  _smoothCamPos.set(
+    _smoothCamPos.x + (targetCamX - _smoothCamPos.x) * camSmooth,
+    _smoothCamPos.y + (targetCamY - _smoothCamPos.y) * camSmooth,
+    _smoothCamPos.z + (targetCamZ - _smoothCamPos.z) * camSmooth,
+  );
   camera.position.copy(_smoothCamPos);
 
-  // Look at: point ahead of leader (smoothed to avoid jitter)
-  _lookTarget.set(
-    leader.x + leader.vx * CAM_LOOK_AHEAD * 0.3,
-    leader.y + leader.vy * CAM_LOOK_AHEAD * 0.3,
-    leader.z + leader.vz * CAM_LOOK_AHEAD * 0.3,
-  );
-  const lookSmooth = Math.min(CAM_LERP * 0.8 * dt, 1);
+  // Look at: slightly ahead of leader in its forward direction
+  const speed = Math.sqrt(leader.vx * leader.vx + leader.vy * leader.vy + leader.vz * leader.vz);
+  const lookX = leader.x + (speed > 0.1 ? (leader.vx / speed) * CAM_LOOK_AHEAD : 0);
+  const lookY = leader.y;
+  const lookZ = leader.z + (speed > 0.1 ? (leader.vz / speed) * CAM_LOOK_AHEAD : 0);
+
+  _lookTarget.set(lookX, lookY, lookZ);
+  const lookSmooth = Math.min(CAM_LERP * 0.7 * dt, 1);
   _smoothLookTarget.lerp(_lookTarget, lookSmooth);
   camera.lookAt(_smoothLookTarget);
 
-  // --- HUD update ---
+  // --- HUD ---
   const countEl = document.getElementById('hud-count');
-  if (countEl) countEl.textContent = `${state.aliveCount} / ${state.totalCount}`;
+  if (countEl) countEl.textContent = `Рой: ${state.aliveCount} / ${state.totalCount}`;
 
-  const speed = Math.sqrt(leader.vx * leader.vx + leader.vy * leader.vy + leader.vz * leader.vz);
-  const speedEl = document.getElementById('hud-speed');
-  if (speedEl) {
-    speedEl.textContent = input.boost ? `BOOST ${speed.toFixed(1)}` : `${speed.toFixed(1)} м/с`;
+  const wpEl = document.getElementById('hud-waypoint');
+  if (wpEl) {
+    const total = state.waypoints.length;
+    wpEl.textContent = `Точка: ${leader.waypointIndex + 1} / ${total}`;
   }
 
   const posEl = document.getElementById('hud-pos');
   if (posEl) {
-    posEl.textContent = `x:${leader.x.toFixed(0)} y:${leader.y.toFixed(0)} z:${leader.z.toFixed(0)}`;
+    posEl.textContent = `x:${leader.x.toFixed(0)} y:${leader.y.toFixed(0)} z:${leader.z.toFixed(0)} | v:${speed.toFixed(1)}`;
   }
 }
 
 // ============================================================
-// Render frame (with bloom)
+// Render frame
 // ============================================================
 
 export function renderFrame(): void {
@@ -489,7 +473,7 @@ export function updateFPS(time: number): number {
 }
 
 // ============================================================
-// Resize handler
+// Resize
 // ============================================================
 
 function onResize(): void {

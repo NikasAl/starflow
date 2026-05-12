@@ -14,7 +14,7 @@ export interface BoidData {
   alive: boolean;
 }
 
-/** The player-controlled leader */
+/** The leader (auto-piloted in demo mode) */
 export interface LeaderData {
   x: number;
   y: number;
@@ -22,37 +22,37 @@ export interface LeaderData {
   vx: number;
   vy: number;
   vz: number;
-  // Quaternion orientation (w, x, y, z) — avoids gimbal lock
   qx: number;
   qy: number;
   qz: number;
   qw: number;
+  // Demo autopilot state
+  waypointIndex: number;
 }
 
-/** Current input state (set each frame from keyboard / joystick) */
-export interface InputState {
-  yaw: number;    // -1 left, +1 right
-  pitch: number;  // -1 down, +1 up
-  boost: boolean; // speed boost
-}
-
-/** A landmark object in the world */
-export interface LandmarkData {
+/** A waypoint on the flight path */
+export interface Waypoint {
   x: number;
   y: number;
   z: number;
-  type: 'ring' | 'pillar' | 'crystal';
-  scale: number;
-  rotation: number; // Y rotation in radians
-  rotSpeed: number; // radians/sec
+}
+
+/** A platform with a ring to fly through */
+export interface PlatformData {
+  x: number;
+  y: number;
+  z: number;
+  radius: number;
+  ringRadius: number;
+  passed: boolean;
 }
 
 /** Full game state */
 export interface GameState {
   boids: BoidData[];
   leader: LeaderData;
-  input: InputState;
-  landmarks: LandmarkData[];
+  waypoints: Waypoint[];
+  platforms: PlatformData[];
   aliveCount: number;
   totalCount: number;
   time: number;
