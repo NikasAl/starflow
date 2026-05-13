@@ -1,26 +1,30 @@
 // ============================================================
-// Рой (Swarm) — Main Entry Point (Demo Mode)
+// Рой — Собиратель (Swarm: Collector) — Main Entry Point
 // Game loop, state management, initialization
 // ============================================================
 
-import type { GameState } from './core/types.ts';
-import { SPATIAL_CELL_SIZE, LEADER_SPEED } from './core/constants.ts';
+import type { GameState, LevelConfig } from './core/types.ts';
+import { SPATIAL_CELL_SIZE, LEADER_SPEED, LEVEL_CONFIGS } from './core/constants.ts';
 import { tuning } from './core/constants.ts';
 import {
   createBoids,
-  generateFlightPath,
   updateLeader,
   updateBoids,
+  updateFreeBoids,
+  collectBoids,
+  checkPortal,
+  quatFromDir,
   SpatialHash,
 } from './core/boids.ts';
+import { Controls } from './input/controls.ts';
 import {
   initRenderer,
   syncVisuals,
   renderFrame,
   updateFPS,
-  createPlatforms,
-  createPathVisualization,
   setRestartCallback,
+  showEndScreen,
+  getCameraQuaternion,
 } from './rendering/renderer.ts';
 
 // ============================================================
@@ -29,43 +33,22 @@ import {
 
 let state: GameState;
 let spatialHash: SpatialHash;
+let controls: Controls;
 let lastTime = 0;
 let running = false;
+let currentLevelIndex = 0;
 
-function createGameState(): GameState {
-  const { path, platforms } = generateFlightPath();
+function createGameState(levelIndex: number): GameState {
+  const level = LEVEL_CONFIGS[levelIndex];
 
-  // Leader starts at path[0], facing along path direction
-  // Initial forward direction: from path[0] to path[1]
-  const [fx, fy, fz] = (() => {
-    if (path.length < 2) return [0, 0, 1];
-    const dx = path[1][0] - path[0][0];
-    const dy = path[1][1] - path[0][1];
-    const dz = path[1][2] - path[0][2];
-    const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
-    return [dx / len, dy / len, dz / len];
-  })();
-
-  // Build initial quaternion: rotate (0,1,0) → (fx, fy, fz) via cross-product axis
-  const initQ = (() => {
-    const [ux, uy, uz] = [0, 1, 0]; // unit Y = forward in local space
-    const dot = ux * fx + uy * fy + uz * fz;
-    if (dot > 0.9999) return [0, 0, 0, 1]; // same direction
-    if (dot < -0.9999) return [1, 0, 0, 0]; // opposite
-    const cx = uy * fz - uz * fy;
-    const cy = uz * fx - ux * fz;
-    const cz = ux * fy - uy * fx;
-    const cLen = Math.sqrt(cx * cx + cy * cy + cz * cz) || 1;
-    const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
-    const half = angle * 0.5;
-    const s = Math.sin(half);
-    return [cx / cLen * s, cy / cLen * s, cz / cLen * s, Math.cos(half)];
-  })();
+  // Leader starts at origin, facing +Z
+  const [fx, fy, fz] = [0, 0, 1];
+  const initQ = quatFromDir(fx, fy, fz);
 
   const leader = {
-    x: path[0][0],
-    y: path[0][1],
-    z: path[0][2],
+    x: 0,
+    y: 0,
+    z: 0,
     vx: fx * LEADER_SPEED,
     vy: fy * LEADER_SPEED,
     vz: fz * LEADER_SPEED,
@@ -73,18 +56,34 @@ function createGameState(): GameState {
     qy: initQ[1],
     qz: initQ[2],
     qw: initQ[3],
-    pathIndex: 0,
+    boostCooldown: 0,
+    boostActive: 0,
   };
 
-  const boids = createBoids(leader, tuning.boidCount);
+  const boids = createBoids(level);
+
+  // Count initial collected
+  let collectedCount = 0;
+  for (const b of boids) {
+    if (b.state === 'collected') collectedCount++;
+  }
 
   return {
     boids,
     leader,
-    path,
-    platforms,
-    aliveCount: boids.length,
-    totalCount: boids.length,
+    portal: {
+      x: level.portalPosition[0],
+      y: level.portalPosition[1],
+      z: level.portalPosition[2],
+      radius: 5,
+      rotation: 0,
+    },
+    level,
+    collectedCount,
+    passedCount: 0,
+    score: 0,
+    timeRemaining: level.timeLimit,
+    phase: 'playing',
     time: 0,
     fps: 0,
   };
@@ -102,27 +101,64 @@ function gameLoop(timestamp: number): void {
   lastTime = timestamp;
   if (dt <= 0) return;
 
+  // Always update visuals and render
   state.time += dt;
 
-  // Update leader (follows smooth path)
-  updateLeader(state.leader, state.path, dt);
+  if (state.phase === 'playing') {
+    // Timer
+    state.timeRemaining -= dt;
+    if (state.timeRemaining <= 0) {
+      state.timeRemaining = 0;
+      state.phase = 'won';
+      showEndScreen(state);
+    }
 
-  // Rebuild spatial hash
-  spatialHash.clear();
-  for (let i = 0; i < state.boids.length; i++) {
-    const b = state.boids[i];
-    if (b.alive) spatialHash.insert(i, b.x, b.y, b.z);
+    // Get input
+    const dir = controls.getDirection();
+    const boost = controls.wantsBoost();
+
+    // Camera quaternion for input transformation
+    const camQ = getCameraQuaternion();
+
+    // Update leader (player-controlled)
+    updateLeader(
+      state.leader,
+      dir,
+      boost,
+      camQ.x, camQ.y, camQ.z, camQ.w,
+      dt,
+    );
+
+    // Collect free boids near leader
+    const newCollected = collectBoids(state.boids, state.leader);
+    state.collectedCount += newCollected;
+
+    // Update free boids (inert drifting)
+    updateFreeBoids(state.boids, dt);
+
+    // Rebuild spatial hash (only for collected boids)
+    spatialHash.clear();
+    for (let i = 0; i < state.boids.length; i++) {
+      const b = state.boids[i];
+      if (b.alive && b.state === 'collected') {
+        spatialHash.insert(i, b.x, b.y, b.z);
+      }
+    }
+
+    // Update collected boids (Boids algorithm)
+    updateBoids(state.boids, state.leader, dt, spatialHash);
+
+    // Check portal
+    const result = checkPortal(state.boids, state.portal);
+    state.passedCount += result.passed;
+    state.score += result.score;
+
+    // Recount collected (some may have been passed)
+    state.collectedCount = 0;
+    for (const b of state.boids) {
+      if (b.state === 'collected') state.collectedCount++;
+    }
   }
-
-  // Update boids
-  updateBoids(state.boids, state.leader, dt, spatialHash);
-
-  // Count alive
-  let alive = 0;
-  for (let i = 0; i < state.boids.length; i++) {
-    if (state.boids[i].alive) alive++;
-  }
-  state.aliveCount = alive;
 
   // Sync + render
   syncVisuals(state, dt);
@@ -135,11 +171,8 @@ function gameLoop(timestamp: number): void {
 // ============================================================
 
 function startGame(): void {
-  state = createGameState();
+  state = createGameState(currentLevelIndex);
   spatialHash = new SpatialHash(SPATIAL_CELL_SIZE);
-
-  createPlatforms(state.platforms);
-  createPathVisualization(state.path);
 
   if (!running) {
     running = true;
@@ -149,7 +182,10 @@ function startGame(): void {
     lastTime = performance.now();
   }
 
-  console.log(`[Swarm] Game started — ${tuning.boidCount} boids, ${state.path.length} path points, ${state.platforms.length} platforms`);
+  console.log(
+    `[Swarm:Collector] Level ${currentLevelIndex + 1} "${state.level.name}" started — ` +
+    `${state.level.totalBoids} boids, ${state.level.timeLimit}s time limit`,
+  );
 }
 
 // ============================================================
@@ -159,11 +195,18 @@ function startGame(): void {
 document.addEventListener('DOMContentLoaded', () => {
   const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
   if (!canvas) {
-    console.error('[Swarm] Canvas element #game-canvas not found');
+    console.error('[Swarm:Collector] Canvas element #game-canvas not found');
     return;
   }
 
+  // Initialize controls
+  controls = new Controls();
+  controls.init(canvas);
+
+  // Initialize renderer
   initRenderer(canvas);
   setRestartCallback(startGame);
+
+  // Start first level
   startGame();
 });

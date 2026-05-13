@@ -1,20 +1,24 @@
 // ============================================================
-// Рой (Swarm) — Renderer (Demo Mode)
-// Three.js scene, camera, InstancedMesh, bloom, debug panel
+// Рой — Собиратель (Swarm: Collector) — Renderer
+// Three.js scene, camera, InstancedMesh, bloom, HUD, debug panel
 // ============================================================
 
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import type { GameState, PlatformData } from '../core/types.ts';
+import type { GameState, BoidData } from '../core/types.ts';
 import { tuning } from '../core/boids.ts';
 import {
   BOID_MAX_ALLOC,
+  BOID_COLORS,
+  PORTAL_RADIUS,
   STAR_COUNT, STAR_SHELL_MIN, STAR_SHELL_MAX,
   CAM_DISTANCE, CAM_HEIGHT, CAM_LOOK_AHEAD, CAM_LERP,
   CAM_ZOOM_MIN, CAM_ZOOM_MAX, CAM_ZOOM_DEFAULT, CAM_ZOOM_SPEED,
   BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD,
+  LEADER_BOOST_DURATION, LEADER_BOOST_COOLDOWN,
+  LEADER_SPEED,
   WORLD_HALF_SIZE,
 } from '../core/constants.ts';
 
@@ -31,13 +35,13 @@ let bloomPass: UnrealBloomPass;
 let boidMesh: THREE.InstancedMesh;
 let leaderMesh: THREE.Mesh;
 let leaderLight: THREE.PointLight;
-
-let platformDiscMesh: THREE.InstancedMesh | null = null;
-let platformRingMesh: THREE.InstancedMesh | null = null;
+let portalMesh: THREE.Mesh;
+let portalGlow: THREE.PointLight;
 
 // HUD
 let hudDiv: HTMLDivElement;
 let debugDiv: HTMLDivElement;
+let endScreenDiv: HTMLDivElement;
 let debugVisible = false;
 let fpsFrames = 0;
 let fpsTime = 0;
@@ -50,10 +54,9 @@ const _camPos = new THREE.Vector3();
 const _lookTarget = new THREE.Vector3();
 const _smoothCamPos = new THREE.Vector3();
 const _smoothLookTarget = new THREE.Vector3();
+const _persistentUp = new THREE.Vector3(0, 1, 0);
 const _rotAxis = new THREE.Vector3();
-
-// Path visualization
-let pathLine: THREE.Line;
+const _boidColor = new THREE.Color();
 
 // Smooth camera
 let _camInitialized = false;
@@ -62,8 +65,14 @@ let _camZoom = CAM_ZOOM_DEFAULT;
 // Restart callback
 let _onRestart: (() => void) | null = null;
 
+// Cached colors for boid types
+const _colorCache = new Map<string, THREE.Color>();
+for (const [key, val] of Object.entries(BOID_COLORS)) {
+  _colorCache.set(key, new THREE.Color(val.color));
+}
+
 // ============================================================
-// Robust orientation
+// Robust orientation (cross-product based, NO setFromUnitVectors)
 // ============================================================
 
 function safeQuatFromDir(dir: THREE.Vector3, out: THREE.Quaternion): void {
@@ -126,16 +135,23 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
   createWorldBounds();
   createBoidMesh();
   createLeaderMesh();
+  createPortalMesh();
   createHUD();
   createDebugPanel();
+  createEndScreen();
   setupInput(canvas);
 
   window.addEventListener('resize', onResize);
 }
 
-/** Set a callback for restarting the game (e.g., after boidCount change) */
+/** Set a callback for restarting the game */
 export function setRestartCallback(cb: () => void): void {
   _onRestart = cb;
+}
+
+/** Get camera quaternion for input transformation */
+export function getCameraQuaternion(): THREE.Quaternion {
+  return camera.quaternion;
 }
 
 // ============================================================
@@ -172,25 +188,40 @@ function createWorldBounds(): void {
   const grid = new THREE.GridHelper(size, 20, 0x111133, 0x0a0a22);
   grid.position.y = -WORLD_HALF_SIZE + 1;
   grid.material.transparent = true;
-  grid.material.opacity = 0.25;
+  (grid.material as THREE.Material).opacity = 0.25;
   scene.add(grid);
 }
 
 // ============================================================
-// Boid InstancedMesh (pre-allocated buffer)
+// Boid InstancedMesh with instanceColor
 // ============================================================
 
 function createBoidMesh(): void {
   const geometry = new THREE.ConeGeometry(0.2, 0.8, 4);
   const material = new THREE.MeshStandardMaterial({
-    color: 0x55eeff, emissive: 0x33bbdd, emissiveIntensity: 1.5,
-    transparent: true, opacity: 0.95, metalness: 0.7, roughness: 0.2,
+    vertexColors: true,
+    color: 0xffffff,
+    emissive: 0x55eeff,
+    emissiveIntensity: 1.5,
+    transparent: true,
+    opacity: 0.95,
+    metalness: 0.7,
+    roughness: 0.2,
   });
 
   boidMesh = new THREE.InstancedMesh(geometry, material, BOID_MAX_ALLOC);
-  boidMesh.count = tuning.boidCount;
+  boidMesh.count = BOID_MAX_ALLOC;
   boidMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   boidMesh.frustumCulled = false;
+
+  // Initialize instance colors
+  for (let i = 0; i < BOID_MAX_ALLOC; i++) {
+    boidMesh.setColorAt(i, _colorCache.get('neutron')!);
+  }
+  if (boidMesh.instanceColor) {
+    boidMesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+  }
+
   scene.add(boidMesh);
 }
 
@@ -211,86 +242,28 @@ function createLeaderMesh(): void {
 }
 
 // ============================================================
-// Create platform 3D objects
+// Portal mesh (torus)
 // ============================================================
 
-export function createPlatforms(platforms: PlatformData[]): void {
-  // Remove old platform meshes
-  if (platformDiscMesh) { scene.remove(platformDiscMesh); platformDiscMesh.geometry.dispose(); }
-  if (platformRingMesh) { scene.remove(platformRingMesh); platformRingMesh.geometry.dispose(); }
-
-  if (platforms.length === 0) return;
-
-  // --- Disc InstancedMesh (1 draw call for all platforms) ---
-  const discGeo = new THREE.CylinderGeometry(1, 1, 0.3, 16); // unit radius, scaled per instance
-  const discMat = new THREE.MeshStandardMaterial({
-    color: 0x1a2a44, emissive: 0x0a1525, emissiveIntensity: 0.3,
-    transparent: true, opacity: 0.7, metalness: 0.5, roughness: 0.5,
+function createPortalMesh(): void {
+  const geometry = new THREE.TorusGeometry(PORTAL_RADIUS, 0.3, 16, 48);
+  const material = new THREE.MeshStandardMaterial({
+    color: 0x4488ff,
+    emissive: 0x2266dd,
+    emissiveIntensity: 2.0,
+    transparent: true,
+    opacity: 0.85,
+    metalness: 0.8,
+    roughness: 0.1,
+    side: THREE.DoubleSide,
   });
-  platformDiscMesh = new THREE.InstancedMesh(discGeo, discMat, platforms.length);
-  platformDiscMesh.frustumCulled = false;
+  portalMesh = new THREE.Mesh(geometry, material);
+  portalMesh.frustumCulled = false;
+  scene.add(portalMesh);
 
-  // --- Ring InstancedMesh (1 draw call for all rings) ---
-  const ringGeo = new THREE.TorusGeometry(1, 0.15, 8, 24); // unit radius, scaled per instance
-  const ringMat = new THREE.MeshStandardMaterial({
-    color: 0x44aaff, emissive: 0x2266dd, emissiveIntensity: 1.2,
-    transparent: true, opacity: 0.8,
-  });
-  platformRingMesh = new THREE.InstancedMesh(ringGeo, ringMat, platforms.length);
-  platformRingMesh.frustumCulled = false;
-
-  const mat4 = new THREE.Matrix4();
-  const pos = new THREE.Vector3();
-  const quat = new THREE.Quaternion();
-  const scl = new THREE.Vector3();
-
-  for (let i = 0; i < platforms.length; i++) {
-    const p = platforms[i];
-
-    // Disc: at platform position, scaled by radius
-    pos.set(p.x, p.y, p.z);
-    quat.identity();
-    scl.set(p.radius, 1, p.radius);
-    mat4.compose(pos, quat, scl);
-    platformDiscMesh.setMatrixAt(i, mat4);
-
-    // Ring: above disc, rotated 90° on X, scaled by ringRadius
-    pos.set(p.x, p.y + 0.3, p.z);
-    quat.setFromEuler(new THREE.Euler(Math.PI * 0.5, 0, 0));
-    scl.set(p.ringRadius, p.ringRadius, p.ringRadius);
-    mat4.compose(pos, quat, scl);
-    platformRingMesh.setMatrixAt(i, mat4);
-  }
-
-  platformDiscMesh.instanceMatrix.needsUpdate = true;
-  platformRingMesh.instanceMatrix.needsUpdate = true;
-  scene.add(platformDiscMesh);
-  scene.add(platformRingMesh);
-}
-
-// ============================================================
-// Flight path visualization
-// ============================================================
-
-export function createPathVisualization(path: [number, number, number][]): void {
-  if (pathLine) {
-    scene.remove(pathLine);
-    pathLine.geometry.dispose();
-  }
-
-  const points: THREE.Vector3[] = [];
-  for (const p of path) {
-    points.push(new THREE.Vector3(p[0], p[1], p[2]));
-  }
-  if (path.length > 0) {
-    points.push(new THREE.Vector3(path[0][0], path[0][1], path[0][2]));
-  }
-
-  const geometry = new THREE.BufferGeometry().setFromPoints(points);
-  pathLine = new THREE.Line(geometry, new THREE.LineBasicMaterial({
-    color: 0x334466, transparent: true, opacity: 0.12,
-  }));
-  scene.add(pathLine);
+  // Portal glow light
+  portalGlow = new THREE.PointLight(0x4488ff, 8, 40);
+  scene.add(portalGlow);
 }
 
 // ============================================================
@@ -299,6 +272,7 @@ export function createPathVisualization(path: [number, number, number][]): void 
 
 function createHUD(): void {
   hudDiv = document.createElement('div');
+  hudDiv.id = 'hud';
   hudDiv.style.cssText = `
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
     pointer-events: none; font-family: 'Segoe UI', system-ui, sans-serif;
@@ -306,22 +280,28 @@ function createHUD(): void {
   `;
   hudDiv.innerHTML = `
     <div style="position:absolute; top:16px; left:20px; font-size:20px; font-weight:700; text-shadow: 0 0 10px rgba(68,204,255,0.4);">
-      РОЙ — ДЕМО
+      РОЙ — СОБИРАТЕЛЬ
+    </div>
+    <div style="position:absolute; top:44px; left:20px; font-size:14px; opacity:0.8;">
+      <span id="hud-collected"></span>
+    </div>
+    <div style="position:absolute; top:66px; left:20px; font-size:14px; opacity:0.8;">
+      <span id="hud-passed"></span>
+    </div>
+    <div style="position:absolute; top:88px; left:20px; font-size:14px; opacity:0.8;">
+      <span id="hud-score" style="color:#ffcc33;"></span>
+    </div>
+    <div style="position:absolute; top:110px; left:20px; font-size:14px; opacity:0.8;">
+      <span id="hud-timer"></span>
     </div>
     <div style="position:absolute; top:20px; right:20px; font-size:13px; opacity:0.5;">
       <span id="hud-fps"></span>
     </div>
-    <div style="position:absolute; top:44px; left:20px; font-size:13px; opacity:0.6;">
-      <span id="hud-count"></span>
-    </div>
-    <div style="position:absolute; top:64px; left:20px; font-size:12px; opacity:0.4;">
-      <span id="hud-progress"></span>
-    </div>
-    <div style="position:absolute; top:84px; left:20px; font-size:12px; opacity:0.3;">
-      <span id="hud-pos"></span>
+    <div style="position:absolute; top:136px; left:20px; font-size:12px; opacity:0.3;">
+      <span id="hud-boost"></span>
     </div>
     <div style="position:absolute; bottom:20px; left:50%; transform:translateX(-50%); font-size:12px; opacity:0.25; text-align:center;">
-      Колёсико — зум &nbsp;|&nbsp; T — настройки
+      WASD / стрелки — направление &nbsp;|&nbsp; Space — буст &nbsp;|&nbsp; Колёсико — зум &nbsp;|&nbsp; T — настройки
     </div>
   `;
   document.body.appendChild(hudDiv);
@@ -343,7 +323,6 @@ function createDebugPanel(): void {
   `;
 
   const sliders: { label: string; key: string; min: number; max: number; step: number }[] = [
-    { label: 'Кол-во боидов', key: 'boidCount', min: 20, max: 400, step: 10 },
     { label: 'Разделение (радиус)', key: 'separationRadius', min: 1, max: 10, step: 0.5 },
     { label: 'Разделение (сила)', key: 'separationWeight', min: 0.5, max: 10, step: 0.5 },
     { label: 'Восприятие (радиус)', key: 'perceptionRadius', min: 3, max: 20, step: 1 },
@@ -372,13 +351,12 @@ function createDebugPanel(): void {
     `;
   }
 
-  // Restart button for boidCount
   html += `
     <button id="btn-restart" style="
       width:100%; margin-top:8px; padding:6px 0;
       background: rgba(68,136,255,0.2); border:1px solid rgba(68,136,255,0.4);
       color:#88ccff; border-radius:4px; cursor:pointer; font-size:12px;
-    ">Перезапустить (применить кол-во)</button>
+    ">Перезапустить</button>
   `;
 
   debugDiv.innerHTML = html;
@@ -393,10 +371,6 @@ function createDebugPanel(): void {
         const v = parseFloat(slider.value);
         (tuning as Record<string, number>)[s.key] = v;
         valEl.textContent = v.toFixed(s.step < 0.1 ? 2 : 1);
-
-        if (s.key === 'boidCount') {
-          boidMesh.count = v;
-        }
       });
     }
   }
@@ -407,7 +381,6 @@ function createDebugPanel(): void {
     btn.addEventListener('click', () => {
       if (_onRestart) {
         _onRestart();
-        // Reset camera
         _camInitialized = false;
       }
     });
@@ -415,7 +388,81 @@ function createDebugPanel(): void {
 }
 
 // ============================================================
-// Input
+// End screen overlay
+// ============================================================
+
+function createEndScreen(): void {
+  endScreenDiv = document.createElement('div');
+  endScreenDiv.id = 'end-screen';
+  endScreenDiv.style.cssText = `
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(5,5,24,0.85); z-index: 30;
+    display: none; align-items: center; justify-content: center;
+    font-family: 'Segoe UI', system-ui, sans-serif; color: #88ccff;
+    pointer-events: auto;
+  `;
+  endScreenDiv.innerHTML = `
+    <div style="text-align: center;">
+      <div id="end-title" style="font-size:32px; font-weight:700; margin-bottom:20px; text-shadow: 0 0 15px rgba(68,204,255,0.5);"></div>
+      <div id="end-level" style="font-size:18px; opacity:0.6; margin-bottom:16px;"></div>
+      <div id="end-stats" style="font-size:16px; line-height:1.8; margin-bottom:24px; opacity:0.8;"></div>
+      <div id="end-stars" style="font-size:28px; margin-bottom:24px; color:#ffcc33;"></div>
+      <button id="btn-replay" style="
+        padding: 12px 40px; margin: 0 8px;
+        background: rgba(68,136,255,0.3); border: 2px solid rgba(68,136,255,0.6);
+        color:#88ccff; border-radius:8px; cursor:pointer; font-size:16px;
+        font-weight:600; transition: background 0.2s;
+      " onmouseover="this.style.background='rgba(68,136,255,0.5)'" onmouseout="this.style.background='rgba(68,136,255,0.3)'">
+        Повторить
+      </button>
+    </div>
+  `;
+  document.body.appendChild(endScreenDiv);
+
+  const replayBtn = document.getElementById('btn-replay');
+  if (replayBtn) {
+    replayBtn.addEventListener('click', () => {
+      endScreenDiv.style.display = 'none';
+      if (_onRestart) {
+        _onRestart();
+        _camInitialized = false;
+      }
+    });
+  }
+}
+
+export function showEndScreen(state: GameState): void {
+  const titleEl = document.getElementById('end-title');
+  const levelEl = document.getElementById('end-level');
+  const statsEl = document.getElementById('end-stats');
+  const starsEl = document.getElementById('end-stars');
+
+  const totalFree = state.level.totalBoids;
+  const passedFree = state.passedCount;
+  const pct = totalFree > 0 ? (passedFree / totalFree * 100) : 0;
+
+  // Star rating
+  let stars = 0;
+  let starStr = '';
+  if (pct >= 40) { stars = 1; starStr = '★☆☆'; }
+  if (pct >= 60) { stars = 2; starStr = '★★☆'; }
+  if (pct >= 80) { stars = 3; starStr = '★★★'; }
+  if (pct >= 90) { stars = 4; starStr = '★★★+'; }
+
+  if (titleEl) titleEl.textContent = 'Время вышло!';
+  if (levelEl) levelEl.textContent = `Уровень: ${state.level.name}`;
+  if (statsEl) statsEl.innerHTML = `
+    Собрано: ${state.collectedCount} / ${totalFree}<br>
+    Проведено: ${passedFree} / ${totalFree} (${pct.toFixed(0)}%)<br>
+    Очки: <span style="color:#ffcc33; font-weight:700;">${state.score}</span>
+  `;
+  if (starsEl) starsEl.textContent = starStr;
+
+  endScreenDiv.style.display = 'flex';
+}
+
+// ============================================================
+// Input (zoom + debug toggle)
 // ============================================================
 
 function setupInput(canvas: HTMLCanvasElement): void {
@@ -431,6 +478,9 @@ function setupInput(canvas: HTMLCanvasElement): void {
       debugDiv.style.display = debugVisible ? 'block' : 'none';
     }
   });
+
+  // Prevent context menu for right-click steering
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
 // ============================================================
@@ -438,13 +488,58 @@ function setupInput(canvas: HTMLCanvasElement): void {
 // ============================================================
 
 export function syncVisuals(state: GameState, dt: number): void {
-  const { boids, leader, path } = state;
+  const { boids, leader, portal } = state;
   const boidScale = tuning.boidScale;
 
+  // --- Portal animation ---
+  portal.rotation += dt * 0.8;
+  portalMesh.rotation.x = portal.rotation * 0.3;
+  portalMesh.rotation.y = portal.rotation;
+  portalMesh.rotation.z = portal.rotation * 0.15;
+  portalMesh.position.set(portal.x, portal.y, portal.z);
+  portalGlow.position.set(portal.x, portal.y, portal.z);
+
+  // Pulse glow
+  const glowPulse = 6 + Math.sin(state.time * 3) * 2;
+  portalGlow.intensity = glowPulse;
+
   // --- Boid instances ---
+  let needsColorUpdate = false;
+
+  // Set instance count
+  boidMesh.count = Math.max(boids.length, BOID_MAX_ALLOC);
+
   for (let i = 0; i < boids.length; i++) {
     const boid = boids[i];
-    if (boid.alive) {
+
+    if (boid.state === 'passed') {
+      // Hide passed boids
+      _dummy.position.set(0, -9999, 0);
+      _dummy.scale.set(0.01, 0.01, 0.01);
+      _dummy.updateMatrix();
+      boidMesh.setMatrixAt(i, _dummy.matrix);
+      continue;
+    }
+
+    // Set color by type
+    const color = _colorCache.get(boid.type);
+    if (color) {
+      boidMesh.setColorAt(i, color);
+      needsColorUpdate = true;
+    }
+
+    if (boid.state === 'free') {
+      // Free boids: smaller and dimmer
+      _dummy.position.set(boid.x, boid.y, boid.z);
+      const freeScale = boidScale * 0.5;
+      _dummy.scale.set(freeScale, freeScale, freeScale);
+      _boidDir.set(boid.vx, boid.vy, boid.vz);
+      if (_boidDir.lengthSq() > 0.001) {
+        _boidDir.normalize();
+        safeQuatFromDir(_boidDir, _dummy.quaternion);
+      }
+    } else {
+      // Collected boids: normal scale
       _dummy.position.set(boid.x, boid.y, boid.z);
       _dummy.scale.set(boidScale, boidScale, boidScale);
       _boidDir.set(boid.vx, boid.vy, boid.vz);
@@ -452,33 +547,50 @@ export function syncVisuals(state: GameState, dt: number): void {
         _boidDir.normalize();
         safeQuatFromDir(_boidDir, _dummy.quaternion);
       }
-    } else {
-      _dummy.position.set(0, -9999, 0);
-      _dummy.scale.set(boidScale, boidScale, boidScale);
     }
+
     _dummy.updateMatrix();
     boidMesh.setMatrixAt(i, _dummy.matrix);
   }
+
   // Hide unused instances
-  for (let i = boids.length; i < boidMesh.count; i++) {
+  for (let i = boids.length; i < BOID_MAX_ALLOC; i++) {
     _dummy.position.set(0, -9999, 0);
     _dummy.scale.set(0.01, 0.01, 0.01);
     _dummy.updateMatrix();
     boidMesh.setMatrixAt(i, _dummy.matrix);
   }
+
   boidMesh.instanceMatrix.needsUpdate = true;
+  if (needsColorUpdate && boidMesh.instanceColor) {
+    boidMesh.instanceColor.needsUpdate = true;
+  }
 
   // --- Leader ---
   leaderMesh.position.set(leader.x, leader.y, leader.z);
   leaderMesh.quaternion.set(leader.qx, leader.qy, leader.qz, leader.qw);
+
+  // Boost visual: brighter + larger when boosting
+  if (leader.boostActive > 0) {
+    const boostPct = leader.boostActive / LEADER_BOOST_DURATION;
+    leaderMesh.scale.setScalar(1.0 + boostPct * 0.3);
+    (leaderMesh.material as THREE.MeshStandardMaterial).emissiveIntensity = 3.5 + boostPct * 2;
+    leaderLight.intensity = 15 + boostPct * 10;
+  } else {
+    leaderMesh.scale.setScalar(1.0);
+    (leaderMesh.material as THREE.MeshStandardMaterial).emissiveIntensity = 2.5;
+    leaderLight.intensity = 10;
+  }
   leaderLight.position.set(leader.x, leader.y, leader.z);
 
-  // --- Camera: behind and above ---
+  // --- Camera: behind and above, with persistent up ---
   const lq = new THREE.Quaternion(leader.qx, leader.qy, leader.qz, leader.qw);
   const zoomScale = _camZoom / CAM_ZOOM_DEFAULT;
   const zoomDist = CAM_DISTANCE * zoomScale;
   const zoomHeight = CAM_HEIGHT * zoomScale;
 
+  // Camera offset: (0, -dist, -height) in leader's local space
+  // Leader forward is local +Y, so camera is behind = -Y direction
   _camPos.set(0, -zoomDist, -zoomHeight);
   _camPos.applyQuaternion(lq);
   _camPos.add(leaderMesh.position);
@@ -486,6 +598,7 @@ export function syncVisuals(state: GameState, dt: number): void {
   if (!_camInitialized) {
     _smoothCamPos.copy(_camPos);
     _smoothLookTarget.set(leader.x, leader.y, leader.z);
+    _persistentUp.set(0, 1, 0);
     _camInitialized = true;
   }
 
@@ -493,6 +606,13 @@ export function syncVisuals(state: GameState, dt: number): void {
   _smoothCamPos.lerp(_camPos, camSmooth);
   camera.position.copy(_smoothCamPos);
 
+  // Persistent up vector: lerp toward world (0,1,0)
+  const upLerp = Math.min(2.0 * dt, 1);
+  _persistentUp.lerp(new THREE.Vector3(0, 1, 0), upLerp);
+  _persistentUp.normalize();
+  camera.up.copy(_persistentUp);
+
+  // Look target: ahead of leader
   const speed = Math.sqrt(leader.vx * leader.vx + leader.vy * leader.vy + leader.vz * leader.vz);
   const fwdX = speed > 0.1 ? leader.vx / speed : 0;
   const fwdY = speed > 0.1 ? leader.vy / speed : 0;
@@ -508,18 +628,40 @@ export function syncVisuals(state: GameState, dt: number): void {
   camera.lookAt(_smoothLookTarget);
 
   // --- HUD ---
-  const countEl = document.getElementById('hud-count');
-  if (countEl) countEl.textContent = `Рой: ${state.aliveCount} / ${state.totalCount}`;
+  const collectedEl = document.getElementById('hud-collected');
+  if (collectedEl) collectedEl.textContent = `Собрано: ${state.collectedCount} / ${state.level.totalBoids}`;
 
-  const progEl = document.getElementById('hud-progress');
-  if (progEl) {
-    const pct = ((leader.pathIndex / path.length) * 100).toFixed(0);
-    progEl.textContent = `Круг: ${pct}% (${leader.pathIndex}/${path.length})`;
+  const passedEl = document.getElementById('hud-passed');
+  if (passedEl) passedEl.textContent = `Проведено: ${state.passedCount} / ${state.level.totalBoids}`;
+
+  const scoreEl = document.getElementById('hud-score');
+  if (scoreEl) scoreEl.textContent = `Очки: ${state.score}`;
+
+  const timerEl = document.getElementById('hud-timer');
+  if (timerEl) {
+    const minutes = Math.floor(state.timeRemaining / 60);
+    const seconds = Math.floor(state.timeRemaining % 60);
+    const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    const isLow = state.timeRemaining < 15;
+    timerEl.textContent = `Время: ${timeStr}`;
+    if (isLow) {
+      timerEl.style.color = '#ff6666';
+      timerEl.style.opacity = '1';
+    } else {
+      timerEl.style.color = '#88ccff';
+      timerEl.style.opacity = '0.8';
+    }
   }
 
-  const posEl = document.getElementById('hud-pos');
-  if (posEl) {
-    posEl.textContent = `x:${leader.x.toFixed(0)} y:${leader.y.toFixed(0)} z:${leader.z.toFixed(0)} | v:${speed.toFixed(1)}`;
+  const boostEl = document.getElementById('hud-boost');
+  if (boostEl) {
+    if (leader.boostCooldown > 0) {
+      boostEl.textContent = `Буст: ${leader.boostCooldown.toFixed(1)}с`;
+      boostEl.style.opacity = '0.5';
+    } else {
+      boostEl.textContent = 'Буст: готов';
+      boostEl.style.opacity = '0.3';
+    }
   }
 }
 

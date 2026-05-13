@@ -1,19 +1,21 @@
 // ============================================================
-// Рой (Swarm) — Demo Mode
-// Smooth spline flight path, Boids algorithm, spatial hash
+// Рой — Собиратель (Swarm: Collector) — Core Simulation
+// Boids algorithm, spatial hash, collection, portal
 // Pure math, no Three.js / DOM dependencies
 // ============================================================
 
-import type { BoidData, LeaderData, PlatformData } from './types.ts';
+import type { BoidData, BoidType, BoidState, LeaderData, PortalData, LevelConfig } from './types.ts';
 import {
   tuning,
   BOID_MIN_SPEED, BOID_MAX_SPEED,
   LEADER_SPEED, LEADER_MAX_TURN_RATE, LEADER_MAX_PITCH,
+  LEADER_BOOST_MULT, LEADER_BOOST_DURATION, LEADER_BOOST_COOLDOWN,
+  COLLECTION_RADIUS, PORTAL_CAPTURE_DIST, PORTAL_BONUS_RADIUS,
+  FREE_SPEED_MIN, FREE_SPEED_MAX,
   WORLD_HALF_SIZE,
-  PATH_SAMPLES, PLATFORM_SPACING, PATH_LOOK_AHEAD,
-  PLATFORM_RADIUS_MIN, PLATFORM_RADIUS_MAX, RING_RADIUS,
-  CURVE_RADIUS_MAIN, CURVE_RADIUS_MOD, CURVE_HEIGHT_AMP,
   SPATIAL_CELL_SIZE,
+  randomBoidType,
+  BOID_COLORS,
 } from './constants.ts';
 
 // Re-export tuning for debug panel access
@@ -172,133 +174,305 @@ function quatGetRight(
   return quatRotateDir(1, 0, 0, qx, qy, qz, qw);
 }
 
-// ============================================================
-// Parametric 3D curve — smooth figure-8 with height waves
-// C∞ smooth, no sharp corners possible
-// ============================================================
-
-function curvePoint(t: number): [number, number, number] {
-  const R = CURVE_RADIUS_MAIN;
-  const r = CURVE_RADIUS_MOD;
-  const H = CURVE_HEIGHT_AMP;
-
-  const x = R * Math.sin(t) + r * Math.sin(3 * t);
-  const z = R * Math.cos(t) + r * Math.cos(2 * t);
-  const y = H * Math.sin(2 * t) + 3 * Math.sin(5 * t);
-
-  return [x, y, z];
+/** Build initial quaternion from a direction vector using cross-product axis rotation */
+export function quatFromDir(fx: number, fy: number, fz: number): [number, number, number, number] {
+  const dot = fy; // dot((0,1,0), (fx,fy,fz))
+  if (dot > 0.9999) return [0, 0, 0, 1];
+  if (dot < -0.9999) return [1, 0, 0, 0];
+  const cx = 0 * fz - 1 * fy; // uy*fz - uz*fy = 0*fz - 1*fy = -fy... wait
+  // cross((0,1,0), (fx,fy,fz)) = (1*fz-0*fy, 0*fx-0*fz, 0*fy-1*fx) = (fz, 0, -fx)
+  const ax = fz;
+  const ay = 0;
+  const az = -fx;
+  const aLen = Math.sqrt(ax * ax + ay * ay + az * az) || 1;
+  const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
+  return quatFromAxisAngle(ax / aLen, ay / aLen, az / aLen, angle);
 }
 
 // ============================================================
-// Generate smooth flight path and platform positions
-// Returns { path: dense array of [x,y,z], platforms: PlatformData[] }
+// Create boids for a level
 // ============================================================
 
-export function generateFlightPath(): {
-  path: [number, number, number][];
-  platforms: PlatformData[];
-} {
-  const path: [number, number, number][] = [];
-
-  // Dense sampling of the parametric curve
-  for (let i = 0; i < PATH_SAMPLES; i++) {
-    const t = (i / PATH_SAMPLES) * Math.PI * 2;
-    path.push(curvePoint(t));
-  }
-
-  // Place platforms at equal intervals along the path
-  const platforms: PlatformData[] = [];
-  const interval = Math.floor(PATH_SAMPLES / (PATH_SAMPLES / PLATFORM_SPACING));
-
-  // Spread platforms evenly: total ≈ 18 platforms
-  const platformCount = Math.floor(PATH_SAMPLES / PLATFORM_SPACING);
-  for (let i = 0; i < platformCount; i++) {
-    const idx = i * PLATFORM_SPACING;
-    const [x, y, z] = path[idx];
-
-    platforms.push({
-      x, y, z,
-      radius: PLATFORM_RADIUS_MIN + Math.random() * (PLATFORM_RADIUS_MAX - PLATFORM_RADIUS_MIN),
-      ringRadius: RING_RADIUS,
-      passed: false,
-    });
-  }
-
-  return { path, platforms };
-}
-
-// ============================================================
-// Create initial boid swarm around the leader
-// ============================================================
-
-export function createBoids(leader: LeaderData, count: number): BoidData[] {
+export function createBoids(level: LevelConfig): BoidData[] {
   const boids: BoidData[] = [];
-  for (let i = 0; i < count; i++) {
-    const ox = (Math.random() - 0.5) * 12;
-    const oy = (Math.random() - 0.5) * 6;
-    const oz = (Math.random() - 0.5) * 12;
+  const halfSize = level.worldSize * 0.4;
 
-    const speed = BOID_MIN_SPEED + Math.random() * (BOID_MAX_SPEED - BOID_MIN_SPEED);
-    const spread = 0.3;
+  // Cluster count: roughly 1 cluster per 8-10 boids
+  const clusterCount = Math.max(3, Math.ceil(level.totalBoids / 8));
+
+  // Generate cluster centers (spread around the world, avoiding portal area)
+  const clusters: { x: number; y: number; z: number }[] = [];
+  for (let c = 0; c < clusterCount; c++) {
+    let cx: number, cy: number, cz: number;
+    let attempts = 0;
+    do {
+      cx = (Math.random() - 0.5) * 2 * halfSize;
+      cy = (Math.random() - 0.5) * 2 * halfSize * 0.5; // less vertical spread
+      cz = (Math.random() - 0.5) * 2 * halfSize;
+      attempts++;
+      // Avoid spawning too close to portal
+      const pdx = cx - level.portalPosition[0];
+      const pdy = cy - level.portalPosition[1];
+      const pdz = cz - level.portalPosition[2];
+    } while (
+      Math.sqrt(
+        (cx - level.portalPosition[0]) ** 2 +
+        (cy - level.portalPosition[1]) ** 2 +
+        (cz - level.portalPosition[2]) ** 2,
+      ) < 20 && attempts < 20
+    );
+    clusters.push({ x: cx, y: cy, z: cz });
+  }
+
+  for (let i = 0; i < level.totalBoids; i++) {
+    const type = randomBoidType();
+    const isCollected = i < level.startBoids;
+    const state: BoidState = isCollected ? 'collected' : 'free';
+
+    let bx: number, by: number, bz: number;
+
+    if (isCollected) {
+      // Start near origin
+      bx = (Math.random() - 0.5) * 8;
+      by = (Math.random() - 0.5) * 4;
+      bz = (Math.random() - 0.5) * 8;
+    } else {
+      // Place near a random cluster
+      const cluster = clusters[Math.floor(Math.random() * clusters.length)];
+      bx = cluster.x + (Math.random() - 0.5) * 12;
+      by = cluster.y + (Math.random() - 0.5) * 6;
+      bz = cluster.z + (Math.random() - 0.5) * 12;
+    }
+
+    const speed = isCollected
+      ? BOID_MIN_SPEED + Math.random() * (BOID_MAX_SPEED - BOID_MIN_SPEED) * 0.5
+      : FREE_SPEED_MIN + Math.random() * (FREE_SPEED_MAX - FREE_SPEED_MIN);
+
+    // Random direction for initial velocity
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+
     boids.push({
-      x: leader.x + ox,
-      y: leader.y + oy,
-      z: leader.z + oz,
-      vx: leader.vx + (Math.random() - 0.5) * spread * speed,
-      vy: leader.vy + (Math.random() - 0.5) * spread * speed,
-      vz: leader.vz + (Math.random() - 0.5) * spread * speed,
+      x: bx,
+      y: by,
+      z: bz,
+      vx: Math.sin(phi) * Math.cos(theta) * speed,
+      vy: Math.sin(phi) * Math.sin(theta) * speed,
+      vz: Math.cos(phi) * speed,
       alive: true,
+      type,
+      state,
+      freeWanderAngle: Math.random() * Math.PI * 2,
     });
   }
+
   return boids;
 }
 
 // ============================================================
-// Update leader — follows dense path smoothly
+// Update free boids — inert drifting with slight wandering
+// ============================================================
+
+export function updateFreeBoids(boids: BoidData[], dt: number): void {
+  for (let i = 0; i < boids.length; i++) {
+    const boid = boids[i];
+    if (boid.state !== 'free') continue;
+
+    // Slowly change wander angle
+    boid.freeWanderAngle += (Math.random() - 0.5) * 2.0 * dt;
+
+    // Apply gentle wander force
+    const wanderX = Math.cos(boid.freeWanderAngle) * 0.1;
+    const wanderZ = Math.sin(boid.freeWanderAngle) * 0.1;
+    const wanderY = (Math.random() - 0.5) * 0.05;
+
+    boid.vx += wanderX * dt;
+    boid.vy += wanderY * dt;
+    boid.vz += wanderZ * dt;
+
+    // Clamp speed to free drift range
+    const speed = Math.sqrt(boid.vx * boid.vx + boid.vy * boid.vy + boid.vz * boid.vz);
+    if (speed > FREE_SPEED_MAX) {
+      const scale = FREE_SPEED_MAX / speed;
+      boid.vx *= scale;
+      boid.vy *= scale;
+      boid.vz *= scale;
+    } else if (speed < FREE_SPEED_MIN && speed > 0.001) {
+      const scale = FREE_SPEED_MIN / speed;
+      boid.vx *= scale;
+      boid.vy *= scale;
+      boid.vz *= scale;
+    }
+
+    boid.x += boid.vx * dt;
+    boid.y += boid.vy * dt;
+    boid.z += boid.vz * dt;
+
+    // Soft world boundary for free boids
+    const limit = WORLD_HALF_SIZE - 2;
+    const bounce = 0.3;
+    if (boid.x > limit) { boid.vx -= bounce * (boid.x - limit); }
+    if (boid.x < -limit) { boid.vx -= bounce * (boid.x + limit); }
+    if (boid.y > limit) { boid.vy -= bounce * (boid.y - limit); }
+    if (boid.y < -limit) { boid.vy -= bounce * (boid.y + limit); }
+    if (boid.z > limit) { boid.vz -= bounce * (boid.z - limit); }
+    if (boid.z < -limit) { boid.vz -= bounce * (boid.z + limit); }
+  }
+}
+
+// ============================================================
+// Collect boids — attract free boids within radius, convert to collected
+// ============================================================
+
+export function collectBoids(boids: BoidData[], leader: LeaderData): number {
+  let newCollected = 0;
+
+  for (let i = 0; i < boids.length; i++) {
+    const boid = boids[i];
+    if (boid.state !== 'free') continue;
+
+    const dx = leader.x - boid.x;
+    const dy = leader.y - boid.y;
+    const dz = leader.z - boid.z;
+    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+    if (dist < COLLECTION_RADIUS) {
+      // Attract toward leader
+      const attractionStrength = 8.0 * (1.0 - dist / COLLECTION_RADIUS);
+      if (dist > 0.001) {
+        boid.vx += (dx / dist) * attractionStrength * 0.016; // dt approximation
+        boid.vy += (dy / dist) * attractionStrength * 0.016;
+        boid.vz += (dz / dist) * attractionStrength * 0.016;
+      }
+
+      // When close enough to trail point, convert to collected
+      const trailDist = tuning.leaderTrailDist;
+      if (dist < trailDist) {
+        boid.state = 'collected';
+        // Accelerate to swarm speed
+        const speed = Math.sqrt(boid.vx * boid.vx + boid.vy * boid.vy + boid.vz * boid.vz);
+        if (speed < BOID_MIN_SPEED) {
+          const scale = BOID_MIN_SPEED / Math.max(speed, 0.001);
+          boid.vx *= scale;
+          boid.vy *= scale;
+          boid.vz *= scale;
+        }
+        newCollected++;
+      }
+    }
+  }
+
+  return newCollected;
+}
+
+// ============================================================
+// Check portal — collected boids near portal become passed
+// ============================================================
+
+export function checkPortal(boids: BoidData[], portal: PortalData): { passed: number; score: number } {
+  let passed = 0;
+  let score = 0;
+
+  for (let i = 0; i < boids.length; i++) {
+    const boid = boids[i];
+    if (boid.state !== 'collected') continue;
+
+    const dx = boid.x - portal.x;
+    const dy = boid.y - portal.y;
+    const dz = boid.z - portal.z;
+    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+    if (dist < PORTAL_CAPTURE_DIST) {
+      boid.state = 'passed';
+      boid.x = 0;
+      boid.y = -9999;
+      boid.z = 0;
+
+      // Score: base + bonus for center
+      const typeInfo = BOID_COLORS[boid.type];
+      let points = typeInfo.score;
+      if (dist < PORTAL_BONUS_RADIUS) {
+        points *= 2; // Center bonus
+      }
+      score += points;
+      passed++;
+    }
+  }
+
+  return { passed, score };
+}
+
+// ============================================================
+// Update leader — player-controlled, turns toward input direction
 // ============================================================
 
 export function updateLeader(
   leader: LeaderData,
-  path: [number, number, number][],
+  inputDir: { x: number; y: number },
+  wantsBoost: boolean,
+  cameraQuatX: number, cameraQuatY: number, cameraQuatZ: number, cameraQuatW: number,
   dt: number,
 ): void {
-  if (path.length === 0) return;
-
   const maxPitchRad = LEADER_MAX_PITCH * Math.PI / 180;
+  const currentSpeed = LEADER_SPEED * (leader.boostActive > 0 ? LEADER_BOOST_MULT : 1.0);
 
-  // Current target point on the path
-  const target = path[leader.pathIndex];
-
-  // Direction to current target
-  const dx = target[0] - leader.x;
-  const dy = target[1] - leader.y;
-  const dz = target[2] - leader.z;
-  const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-  // Advance along path when close enough to current point
-  if (dist < 3.0) {
-    leader.pathIndex = (leader.pathIndex + 1) % path.length;
+  // Handle boost cooldown and duration
+  if (wantsBoost && leader.boostCooldown <= 0 && leader.boostActive <= 0) {
+    leader.boostActive = LEADER_BOOST_DURATION;
+    leader.boostCooldown = LEADER_BOOST_COOLDOWN;
+  }
+  if (leader.boostActive > 0) {
+    leader.boostActive -= dt;
+  }
+  if (leader.boostCooldown > 0) {
+    leader.boostCooldown -= dt;
   }
 
-  // Steer toward current path point
-  const [ddx, ddy, ddz] = normalize(dx, dy, dz);
-  const [fx, fy, fz] = quatGetForward(leader.qx, leader.qy, leader.qz, leader.qw);
+  // Transform input direction through camera orientation
+  // Input is relative to screen: x=right, y=up
+  // We need to convert to world direction
+  const inputLen = Math.sqrt(inputDir.x * inputDir.x + inputDir.y * inputDir.y);
 
-  const dotForward = fx * ddx + fy * ddy + fz * ddz;
-  const turnAmount = Math.acos(Math.max(-1, Math.min(1, dotForward)));
+  if (inputLen > 0.05) {
+    // Camera right and up vectors (world space)
+    const [camRightX, camRightY, camRightZ] = quatRotateDir(1, 0, 0, cameraQuatX, cameraQuatY, cameraQuatZ, cameraQuatW);
+    const [camUpX, camUpY, camUpZ] = quatRotateDir(0, 1, 0, cameraQuatX, cameraQuatY, cameraQuatZ, cameraQuatW);
 
-  if (turnAmount > 0.01) {
-    const [rx, ry, rz] = cross(fx, fy, fz, ddx, ddy, ddz);
-    const rLen = Math.sqrt(rx * rx + ry * ry + rz * rz);
+    // Desired world direction from input
+    const normX = inputDir.x / inputLen;
+    const normY = inputDir.y / inputLen;
 
-    if (rLen > 0.001) {
-      const maxTurn = LEADER_MAX_TURN_RATE * dt;
-      const clampedTurn = Math.min(turnAmount, maxTurn);
+    // Mix camera right and up, plus a bit of camera forward for depth
+    // Desired direction in world space
+    const [camFwdX, camFwdY, camFwdZ] = quatRotateDir(0, 0, -1, cameraQuatX, cameraQuatY, cameraQuatZ, cameraQuatW);
 
-      const qTurn = quatFromAxisAngle(rx / rLen, ry / rLen, rz / rLen, clampedTurn);
-      const lq = [leader.qx, leader.qy, leader.qz, leader.qw];
-      const r = quatMultiply(qTurn, lq);
-      leader.qx = r[0]; leader.qy = r[1]; leader.qz = r[2]; leader.qw = r[3];
+    let desiredX = camRightX * normX + camUpX * normY + camFwdX * 0.5;
+    let desiredY = camRightY * normX + camUpY * normY + camFwdY * 0.5;
+    let desiredZ = camRightZ * normX + camUpZ * normY + camFwdZ * 0.5;
+
+    // Remove vertical component for pitch clamping later
+    const [ddx, ddy, ddz] = normalize(desiredX, desiredY, desiredZ);
+
+    // Current forward
+    const [fx, fy, fz] = quatGetForward(leader.qx, leader.qy, leader.qz, leader.qw);
+
+    // Turn toward desired direction
+    const dotForward = fx * ddx + fy * ddy + fz * ddz;
+    const turnAmount = Math.acos(Math.max(-1, Math.min(1, dotForward)));
+
+    if (turnAmount > 0.01) {
+      const [rx, ry, rz] = cross(fx, fy, fz, ddx, ddy, ddz);
+      const rLen = Math.sqrt(rx * rx + ry * ry + rz * rz);
+
+      if (rLen > 0.001) {
+        const maxTurn = LEADER_MAX_TURN_RATE * dt;
+        const clampedTurn = Math.min(turnAmount, maxTurn);
+
+        const qTurn = quatFromAxisAngle(rx / rLen, ry / rLen, rz / rLen, clampedTurn);
+        const lq = [leader.qx, leader.qy, leader.qz, leader.qw];
+        const r = quatMultiply(qTurn, lq);
+        leader.qx = r[0]; leader.qy = r[1]; leader.qz = r[2]; leader.qw = r[3];
+      }
     }
   }
 
@@ -332,9 +506,9 @@ export function updateLeader(
   // Velocity from forward direction
   const [finalFx, finalFy, finalFz] = quatGetForward(leader.qx, leader.qy, leader.qz, leader.qw);
   const velLerp = Math.min(5.0 * dt, 1.0);
-  const targetVx = finalFx * LEADER_SPEED;
-  const targetVy = finalFy * LEADER_SPEED;
-  const targetVz = finalFz * LEADER_SPEED;
+  const targetVx = finalFx * currentSpeed;
+  const targetVy = finalFy * currentSpeed;
+  const targetVz = finalFz * currentSpeed;
   leader.vx += (targetVx - leader.vx) * velLerp;
   leader.vy += (targetVy - leader.vy) * velLerp;
   leader.vz += (targetVz - leader.vz) * velLerp;
@@ -355,7 +529,7 @@ export function updateLeader(
 }
 
 // ============================================================
-// Update all boids (main Boids algorithm)
+// Update collected boids (Boids algorithm)
 // ============================================================
 
 export function updateBoids(
@@ -378,7 +552,7 @@ export function updateBoids(
 
   for (let i = 0; i < boids.length; i++) {
     const boid = boids[i];
-    if (!boid.alive) continue;
+    if (!boid.alive || boid.state !== 'collected') continue;
 
     const neighborIndices = hash.query(boid.x, boid.y, boid.z, percRad);
 
@@ -390,7 +564,7 @@ export function updateBoids(
       const j = neighborIndices[n];
       if (j === i) continue;
       const other = boids[j];
-      if (!other.alive) continue;
+      if (!other.alive || other.state !== 'collected') continue;
 
       const ddx = other.x - boid.x;
       const ddy = other.y - boid.y;
@@ -502,7 +676,7 @@ export function updateBoids(
 
   for (let i = 0; i < boids.length; i++) {
     const boid = boids[i];
-    if (!boid.alive) continue;
+    if (!boid.alive || boid.state !== 'collected') continue;
 
     const fi = i * 3;
     boid.vx += forces[fi];
