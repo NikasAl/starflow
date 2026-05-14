@@ -211,14 +211,28 @@ function createBoidMesh(): void {
   const material = new THREE.MeshStandardMaterial({
     vertexColors: true,
     color: 0xffffff,
-    // Subtle uniform emissive adds 3D depth without washing out instanceColor
-    emissive: 0x222244,
-    emissiveIntensity: 0.6,
+    // Bright white emissive — tinted per-instance via onBeforeCompile
+    emissive: 0xffffff,
+    emissiveIntensity: 1.2,
     transparent: true,
     opacity: 0.95,
-    metalness: 0.5,
+    metalness: 0.3,
     roughness: 0.15,
   });
+
+  // Per-instance emissive glow: make each boid emit its own instanceColor.
+  // Standard InstancedMesh only applies instanceColor to diffuse (color channel).
+  // This shader patch injects vColor into the emissive calculation so each
+  // boid type (neutron/ion/photon/electron/quark) glows with its unique hue.
+  material.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <emissivemap_fragment>',
+      `#include <emissivemap_fragment>
+      #ifdef USE_INSTANCING_COLOR
+        totalEmissiveRadiance *= vColor;
+      #endif`,
+    );
+  };
 
   boidMesh = new THREE.InstancedMesh(geometry, material, BOID_MAX_ALLOC);
   boidMesh.count = BOID_MAX_ALLOC;
