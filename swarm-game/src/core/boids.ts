@@ -443,11 +443,8 @@ export function updateLeader(
   if (Math.abs(inputDir.y) > 0.05) {
     pitch += inputDir.y * LEADER_MAX_TURN_RATE * 0.8 * dt;
     pitch = Math.max(-maxPitchRad, Math.min(maxPitchRad, pitch));
-  } else {
-    // Auto-level: smoothly decay pitch toward horizontal
-    pitch *= Math.exp(-2.5 * dt);
-    if (Math.abs(pitch) < 0.001) pitch = 0;
   }
+  // When no pitch input: pitch stays constant (within clamped range).
 
   // --- Reconstruct quaternion (zero roll) ---
   // Base rotation: maps local +Y (cone tip) to world +Z (horizontal forward).

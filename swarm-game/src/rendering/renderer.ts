@@ -224,10 +224,12 @@ function createBoidMesh(): void {
   // Standard InstancedMesh only applies instanceColor to diffuse (color channel).
   // This shader patch injects vColor into the emissive calculation so each
   // boid type (neutron/ion/photon/electron/quark) glows with its unique hue.
+  // Note: onBeforeCompile receives the shader AFTER all #include directives
+  // have been resolved, so we must search for the resolved code, not the include.
   material.onBeforeCompile = (shader) => {
     shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <emissivemap_fragment>',
-      `#include <emissivemap_fragment>
+      'vec3 totalEmissiveRadiance = emissive * emissiveIntensity;',
+      `vec3 totalEmissiveRadiance = emissive * emissiveIntensity;
       #ifdef USE_INSTANCING_COLOR
         totalEmissiveRadiance *= vColor;
       #endif`,
