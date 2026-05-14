@@ -403,14 +403,16 @@ export function checkPortal(boids: BoidData[], portal: PortalData): { passed: nu
 }
 
 // ============================================================
-// Update leader — player-controlled, turns toward input direction
+// Update leader — player-controlled, separated yaw / pitch
+// Zero roll guaranteed by reconstructing quaternion each frame
+// Auto-levels pitch when no vertical input
 // ============================================================
 
 export function updateLeader(
   leader: LeaderData,
   inputDir: { x: number; y: number },
   wantsBoost: boolean,
-  cameraQuatX: number, cameraQuatY: number, cameraQuatZ: number, cameraQuatW: number,
+  _cameraQuatX: number, _cameraQuatY: number, _cameraQuatZ: number, _cameraQuatW: number,
   dt: number,
 ): void {
   const maxPitchRad = LEADER_MAX_PITCH * Math.PI / 180;
@@ -421,98 +423,63 @@ export function updateLeader(
     leader.boostActive = LEADER_BOOST_DURATION;
     leader.boostCooldown = LEADER_BOOST_COOLDOWN;
   }
-  if (leader.boostActive > 0) {
-    leader.boostActive -= dt;
-  }
-  if (leader.boostCooldown > 0) {
-    leader.boostCooldown -= dt;
-  }
+  if (leader.boostActive > 0) leader.boostActive -= dt;
+  if (leader.boostCooldown > 0) leader.boostCooldown -= dt;
 
-  // Transform input direction through camera orientation
-  // Input is relative to screen: x=right, y=up
-  // We need to convert to world direction
-  const inputLen = Math.sqrt(inputDir.x * inputDir.x + inputDir.y * inputDir.y);
+  // --- Decompose current orientation into yaw and pitch ---
+  // Forward is local +Y of the quaternion
+  const [fx, fy, fz] = quatGetForward(leader.qx, leader.qy, leader.qz, leader.qw);
+  let yaw = Math.atan2(fx, fz);                          // rotation around world Y
+  let pitch = Math.asin(Math.max(-1, Math.min(1, fy)));   // angle above horizontal
 
-  if (inputLen > 0.05) {
-    // Camera right and up vectors (world space)
-    const [camRightX, camRightY, camRightZ] = quatRotateDir(1, 0, 0, cameraQuatX, cameraQuatY, cameraQuatZ, cameraQuatW);
-    const [camUpX, camUpY, camUpZ] = quatRotateDir(0, 1, 0, cameraQuatX, cameraQuatY, cameraQuatZ, cameraQuatW);
-
-    // Desired world direction from input
-    const normX = inputDir.x / inputLen;
-    const normY = inputDir.y / inputLen;
-
-    // Mix camera right and up, plus a bit of camera forward for depth
-    // Desired direction in world space
-    const [camFwdX, camFwdY, camFwdZ] = quatRotateDir(0, 0, -1, cameraQuatX, cameraQuatY, cameraQuatZ, cameraQuatW);
-
-    let desiredX = camRightX * normX + camUpX * normY + camFwdX * 0.5;
-    let desiredY = camRightY * normX + camUpY * normY + camFwdY * 0.5;
-    let desiredZ = camRightZ * normX + camUpZ * normY + camFwdZ * 0.5;
-
-    // Remove vertical component for pitch clamping later
-    const [ddx, ddy, ddz] = normalize(desiredX, desiredY, desiredZ);
-
-    // Current forward
-    const [fx, fy, fz] = quatGetForward(leader.qx, leader.qy, leader.qz, leader.qw);
-
-    // Turn toward desired direction
-    const dotForward = fx * ddx + fy * ddy + fz * ddz;
-    const turnAmount = Math.acos(Math.max(-1, Math.min(1, dotForward)));
-
-    if (turnAmount > 0.01) {
-      const [rx, ry, rz] = cross(fx, fy, fz, ddx, ddy, ddz);
-      const rLen = Math.sqrt(rx * rx + ry * ry + rz * rz);
-
-      if (rLen > 0.001) {
-        const maxTurn = LEADER_MAX_TURN_RATE * dt;
-        const clampedTurn = Math.min(turnAmount, maxTurn);
-
-        const qTurn = quatFromAxisAngle(rx / rLen, ry / rLen, rz / rLen, clampedTurn);
-        const lq = [leader.qx, leader.qy, leader.qz, leader.qw];
-        const r = quatMultiply(qTurn, lq);
-        leader.qx = r[0]; leader.qy = r[1]; leader.qz = r[2]; leader.qw = r[3];
-      }
-    }
+  // --- Yaw input (left / right — always in horizontal plane) ---
+  if (Math.abs(inputDir.x) > 0.05) {
+    yaw += inputDir.x * LEADER_MAX_TURN_RATE * dt;
   }
 
-  // Enforce pitch limit
-  const [newFx, newFy, newFz] = quatGetForward(leader.qx, leader.qy, leader.qz, leader.qw);
-  let currentPitch = Math.asin(Math.max(-1, Math.min(1, newFy)));
-
-  if (Math.abs(currentPitch) > maxPitchRad) {
-    const clampedPitch = Math.sign(currentPitch) * maxPitchRad;
-    const deltaPitch = clampedPitch - currentPitch;
-
-    if (Math.abs(deltaPitch) > 0.0001) {
-      const [rightX, rightY, rightZ] = quatGetRight(leader.qx, leader.qy, leader.qz, leader.qw);
-      const qPitch = quatFromAxisAngle(rightX, rightY, rightZ, deltaPitch);
-      const lq = [leader.qx, leader.qy, leader.qz, leader.qw];
-      const rp = quatMultiply(qPitch, lq);
-      leader.qx = rp[0]; leader.qy = rp[1]; leader.qz = rp[2]; leader.qw = rp[3];
-    }
+  // --- Pitch input (up / down) ---
+  if (Math.abs(inputDir.y) > 0.05) {
+    pitch += inputDir.y * LEADER_MAX_TURN_RATE * 0.8 * dt;
+    pitch = Math.max(-maxPitchRad, Math.min(maxPitchRad, pitch));
+  } else {
+    // Auto-level: smoothly decay pitch toward horizontal
+    pitch *= Math.exp(-2.5 * dt);
+    if (Math.abs(pitch) < 0.001) pitch = 0;
   }
+
+  // --- Reconstruct quaternion (zero roll) ---
+  // Step 1: yaw rotation around world Y
+  const qYaw = quatFromAxisAngle(0, 1, 0, yaw);
+  // Step 2: pitch rotation around the horizontal right vector
+  const rightX = Math.cos(yaw);
+  const rightZ = -Math.sin(yaw);
+  const qPitch = quatFromAxisAngle(rightX, 0, rightZ, pitch);
+  // Combine: first yaw, then pitch
+  const finalQ = quatMultiply(qPitch, qYaw);
+
+  leader.qx = finalQ[0];
+  leader.qy = finalQ[1];
+  leader.qz = finalQ[2];
+  leader.qw = finalQ[3];
 
   // Normalize quaternion
   const qLen = Math.sqrt(
     leader.qx * leader.qx + leader.qy * leader.qy +
-    leader.qz * leader.qz + leader.qw * leader.qw
+    leader.qz * leader.qz + leader.qw * leader.qw,
   );
   if (qLen > 0.001) {
     leader.qx /= qLen; leader.qy /= qLen;
     leader.qz /= qLen; leader.qw /= qLen;
   }
 
-  // Velocity from forward direction
+  // --- Velocity from forward direction ---
   const [finalFx, finalFy, finalFz] = quatGetForward(leader.qx, leader.qy, leader.qz, leader.qw);
   const velLerp = Math.min(5.0 * dt, 1.0);
-  const targetVx = finalFx * currentSpeed;
-  const targetVy = finalFy * currentSpeed;
-  const targetVz = finalFz * currentSpeed;
-  leader.vx += (targetVx - leader.vx) * velLerp;
-  leader.vy += (targetVy - leader.vy) * velLerp;
-  leader.vz += (targetVz - leader.vz) * velLerp;
+  leader.vx += (finalFx * currentSpeed - leader.vx) * velLerp;
+  leader.vy += (finalFy * currentSpeed - leader.vy) * velLerp;
+  leader.vz += (finalFz * currentSpeed - leader.vz) * velLerp;
 
+  // --- Update position ---
   leader.x += leader.vx * dt;
   leader.y += leader.vy * dt;
   leader.z += leader.vz * dt;

@@ -122,12 +122,12 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
   );
   composer.addPass(bloomPass);
 
-  const ambient = new THREE.AmbientLight(0x202040, 2.5);
+  const ambient = new THREE.AmbientLight(0x304060, 3.5);
   scene.add(ambient);
-  const dirLight = new THREE.DirectionalLight(0x6688cc, 1.0);
+  const dirLight = new THREE.DirectionalLight(0x88aadd, 1.5);
   dirLight.position.set(30, 60, 20);
   scene.add(dirLight);
-  const dirLight2 = new THREE.DirectionalLight(0x334488, 0.5);
+  const dirLight2 = new THREE.DirectionalLight(0x4466aa, 0.8);
   dirLight2.position.set(-20, 40, -30);
   scene.add(dirLight2);
 
@@ -201,12 +201,13 @@ function createBoidMesh(): void {
   const material = new THREE.MeshStandardMaterial({
     vertexColors: true,
     color: 0xffffff,
-    emissive: 0x55eeff,
-    emissiveIntensity: 1.5,
+    // No uniform emissive — instanceColor provides per-boid hue via diffuse channel
+    emissive: 0x000000,
+    emissiveIntensity: 0,
     transparent: true,
     opacity: 0.95,
-    metalness: 0.7,
-    roughness: 0.2,
+    metalness: 0.3,
+    roughness: 0.3,
   });
 
   boidMesh = new THREE.InstancedMesh(geometry, material, BOID_MAX_ALLOC);
@@ -214,7 +215,7 @@ function createBoidMesh(): void {
   boidMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   boidMesh.frustumCulled = false;
 
-  // Initialize instance colors
+  // Initialize instance colors (will be overwritten per-frame by syncVisuals)
   for (let i = 0; i < BOID_MAX_ALLOC; i++) {
     boidMesh.setColorAt(i, _colorCache.get('neutron')!);
   }
