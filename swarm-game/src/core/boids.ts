@@ -433,8 +433,10 @@ export function updateLeader(
   let pitch = Math.asin(Math.max(-1, Math.min(1, fy)));   // angle above horizontal
 
   // --- Yaw input (left / right — always in horizontal plane) ---
+  // inputDir.x: Left = -1, Right = +1
+  // yaw = atan2(fx, fz). Decreasing yaw = turn left when viewed from above.
   if (Math.abs(inputDir.x) > 0.05) {
-    yaw += inputDir.x * LEADER_MAX_TURN_RATE * dt;
+    yaw -= inputDir.x * LEADER_MAX_TURN_RATE * dt;
   }
 
   // --- Pitch input (up / down) ---

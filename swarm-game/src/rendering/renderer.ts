@@ -21,6 +21,7 @@ import {
   LEADER_SPEED,
   WORLD_HALF_SIZE,
 } from '../core/constants.ts';
+import type { BoidType } from '../core/types.ts';
 
 // ============================================================
 // Internal state
@@ -110,7 +111,8 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x050518);
-  scene.fog = new THREE.FogExp2(0x050518, 0.002);
+  // Very subtle fog — don't obscure gameplay objects
+  scene.fog = new THREE.FogExp2(0x050518, 0.0008);
 
   camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
 
@@ -122,11 +124,17 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
   );
   composer.addPass(bloomPass);
 
-  const ambient = new THREE.AmbientLight(0x304060, 3.5);
+  // Hemisphere light for even ambient coverage (sky/ground)
+  const hemi = new THREE.HemisphereLight(0x4466aa, 0x111122, 2.0);
+  scene.add(hemi);
+  // Ambient fill
+  const ambient = new THREE.AmbientLight(0x304060, 1.5);
   scene.add(ambient);
-  const dirLight = new THREE.DirectionalLight(0x88aadd, 1.5);
+  // Directional key light
+  const dirLight = new THREE.DirectionalLight(0x99bbee, 2.0);
   dirLight.position.set(30, 60, 20);
   scene.add(dirLight);
+  // Fill light from opposite side
   const dirLight2 = new THREE.DirectionalLight(0x4466aa, 0.8);
   dirLight2.position.set(-20, 40, -30);
   scene.add(dirLight2);
@@ -136,6 +144,7 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
   createBoidMesh();
   createLeaderMesh();
   createPortalMesh();
+  createReferenceBeacons();
   createHUD();
   createDebugPanel();
   createEndScreen();
@@ -197,17 +206,18 @@ function createWorldBounds(): void {
 // ============================================================
 
 function createBoidMesh(): void {
-  const geometry = new THREE.ConeGeometry(0.2, 0.8, 4);
+  // Slightly larger cone for better visibility and 3D appearance
+  const geometry = new THREE.ConeGeometry(0.25, 1.0, 4);
   const material = new THREE.MeshStandardMaterial({
     vertexColors: true,
     color: 0xffffff,
-    // No uniform emissive — instanceColor provides per-boid hue via diffuse channel
-    emissive: 0x000000,
-    emissiveIntensity: 0,
+    // Subtle uniform emissive adds 3D depth without washing out instanceColor
+    emissive: 0x222244,
+    emissiveIntensity: 0.6,
     transparent: true,
     opacity: 0.95,
-    metalness: 0.3,
-    roughness: 0.3,
+    metalness: 0.5,
+    roughness: 0.15,
   });
 
   boidMesh = new THREE.InstancedMesh(geometry, material, BOID_MAX_ALLOC);
@@ -262,9 +272,72 @@ function createPortalMesh(): void {
   portalMesh.frustumCulled = false;
   scene.add(portalMesh);
 
-  // Portal glow light
-  portalGlow = new THREE.PointLight(0x4488ff, 8, 40);
+  // Portal glow light — extended range so it's visible from far away
+  portalGlow = new THREE.PointLight(0x4488ff, 12, 120);
   scene.add(portalGlow);
+}
+
+// ============================================================
+// Static reference beacons for orientation
+// ============================================================
+
+function createReferenceBeacons(): void {
+  const beaconPositions = [
+    { x:  50, y: 0, z:  50, color: 0xff4444, label: 'R' },
+    { x: -50, y: 0, z:  50, color: 0x44ff44, label: 'G' },
+    { x:  50, y: 0, z: -50, color: 0x4488ff, label: 'B' },
+    { x: -50, y: 0, z: -50, color: 0xffaa22, label: 'Y' },
+    { x:   0, y: 0, z:   0, color: 0x888888, label: 'O' },
+  ];
+
+  for (const bp of beaconPositions) {
+    // Tall pillar for visibility
+    const pillarGeo = new THREE.CylinderGeometry(0.3, 0.3, 30, 6);
+    const pillarMat = new THREE.MeshStandardMaterial({
+      color: bp.color,
+      emissive: bp.color,
+      emissiveIntensity: 0.8,
+      transparent: true,
+      opacity: 0.6,
+    });
+    const pillar = new THREE.Mesh(pillarGeo, pillarMat);
+    pillar.position.set(bp.x, 15, bp.z);
+    pillar.frustumCulled = false;
+    scene.add(pillar);
+
+    // Base marker (flat octahedron)
+    const baseGeo = new THREE.OctahedronGeometry(1.5, 0);
+    const baseMat = new THREE.MeshStandardMaterial({
+      color: bp.color,
+      emissive: bp.color,
+      emissiveIntensity: 1.0,
+      metalness: 0.5,
+      roughness: 0.3,
+    });
+    const baseMesh = new THREE.Mesh(baseGeo, baseMat);
+    baseMesh.position.set(bp.x, 0, bp.z);
+    baseMesh.frustumCulled = false;
+    scene.add(baseMesh);
+
+    // Small point light for beacon glow
+    const light = new THREE.PointLight(bp.color, 3, 30);
+    light.position.set(bp.x, 5, bp.z);
+    scene.add(light);
+  }
+
+  // Axis lines from origin for debug orientation
+  const axisLen = 12;
+  const axisMatX = new THREE.LineBasicMaterial({ color: 0xff3333, transparent: true, opacity: 0.5 });
+  const axisMatY = new THREE.LineBasicMaterial({ color: 0x33ff33, transparent: true, opacity: 0.5 });
+  const axisMatZ = new THREE.LineBasicMaterial({ color: 0x3388ff, transparent: true, opacity: 0.5 });
+
+  const lineGeoX = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(axisLen,0,0)]);
+  const lineGeoY = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,axisLen,0)]);
+  const lineGeoZ = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,axisLen)]);
+
+  scene.add(new THREE.Line(lineGeoX, axisMatX));
+  scene.add(new THREE.Line(lineGeoY, axisMatY));
+  scene.add(new THREE.Line(lineGeoZ, axisMatZ));
 }
 
 // ============================================================

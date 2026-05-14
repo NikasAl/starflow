@@ -89,9 +89,9 @@ export const STAR_SHELL_MIN = 200;
 export const STAR_SHELL_MAX = 400;
 
 // --- Bloom ---
-export const BLOOM_STRENGTH = 1.2;
+export const BLOOM_STRENGTH = 1.0;
 export const BLOOM_RADIUS = 0.4;
-export const BLOOM_THRESHOLD = 0.2;
+export const BLOOM_THRESHOLD = 0.45;
 
 // --- Level configurations (GDD §7.1) ---
 export const LEVEL_CONFIGS: LevelConfig[] = [
