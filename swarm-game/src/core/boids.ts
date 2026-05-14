@@ -450,14 +450,22 @@ export function updateLeader(
   }
 
   // --- Reconstruct quaternion (zero roll) ---
-  // Step 1: yaw rotation around world Y
+  // Base rotation: maps local +Y (cone tip) to world +Z (horizontal forward).
+  // Without this, identity quaternion would have forward = (0,1,0) = straight up.
+  const qBase = quatFromAxisAngle(1, 0, 0, Math.PI * 0.5);
+
+  // Yaw: rotate heading around world Y
   const qYaw = quatFromAxisAngle(0, 1, 0, yaw);
-  // Step 2: pitch rotation around the horizontal right vector
+
+  // Pitch: rotate around horizontal right vector.
+  // Negated because the base rotation flips the pitch axis direction.
   const rightX = Math.cos(yaw);
   const rightZ = -Math.sin(yaw);
-  const qPitch = quatFromAxisAngle(rightX, 0, rightZ, pitch);
-  // Combine: first yaw, then pitch
-  const finalQ = quatMultiply(qPitch, qYaw);
+  const qPitch = quatFromAxisAngle(rightX, 0, rightZ, -pitch);
+
+  // Combine: base → yaw → pitch
+  const qYawBase = quatMultiply(qYaw, qBase);
+  const finalQ = quatMultiply(qPitch, qYawBase);
 
   leader.qx = finalQ[0];
   leader.qy = finalQ[1];
