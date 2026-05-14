@@ -58,6 +58,15 @@ export interface LevelConfig {
   timeLimit: number;
   worldSize: number;
   portalPosition: [number, number, number];
+  /** Waypoints defining the flight route ([x,y,z] ...). Boids spawn along this route. */
+  routeWaypoints?: [number, number, number][];
+}
+
+/** A buoy marker along the route */
+export interface BuoyData {
+  x: number;
+  y: number;
+  z: number;
 }
 
 /** Full game state */
@@ -66,6 +75,7 @@ export interface GameState {
   leader: LeaderData;
   portal: PortalData;
   level: LevelConfig;
+  buoys: BuoyData[];
   collectedCount: number;
   passedCount: number;
   score: number;

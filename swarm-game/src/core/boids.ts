@@ -190,78 +190,132 @@ export function quatFromDir(fx: number, fy: number, fz: number): [number, number
 }
 
 // ============================================================
+// Catmull-Rom spline interpolation for route
+// ============================================================
+
+function catmullRomPoint(
+  t: number,
+  p0: number, p1: number, p2: number, p3: number,
+): number {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return 0.5 * (
+    (2 * p1) +
+    (-p0 + p2) * t +
+    (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 +
+    (-p0 + 3 * p1 - 3 * p2 + p3) * t3
+  );
+}
+
+function splinePoint(
+  waypoints: [number, number, number][],
+  t: number, // 0..1 along the whole spline
+): [number, number, number] {
+  const n = waypoints.length - 1;
+  const scaledT = t * n;
+  const i = Math.min(Math.floor(scaledT), n - 1);
+  const frac = scaledT - i;
+
+  // Clamp indices for Catmull-Rom boundary
+  const i0 = Math.max(0, i - 1);
+  const i1 = i;
+  const i2 = Math.min(n, i + 1);
+  const i3 = Math.min(n, i + 2);
+
+  return [
+    catmullRomPoint(frac, waypoints[i0][0], waypoints[i1][0], waypoints[i2][0], waypoints[i3][0]),
+    catmullRomPoint(frac, waypoints[i0][1], waypoints[i1][1], waypoints[i2][1], waypoints[i3][1]),
+    catmullRomPoint(frac, waypoints[i0][2], waypoints[i1][2], waypoints[i2][2], waypoints[i3][2]),
+  ];
+}
+
+/** Default route when level has no custom waypoints */
+const DEFAULT_ROUTE: [number, number, number][] = [
+  [-60, 5, -20],
+  [-30, -5, 30],
+  [0, 8, -10],
+  [25, -3, 35],
+  [50, 5, 10],
+  [35, -8, -30],
+  [10, 3, -50],
+  [-25, 10, -40],
+  [-55, 0, 0],
+  [-30, -5, 25],
+];
+
+/** Get route waypoints for a level (custom or default) */
+export function getRouteWaypoints(level: LevelConfig): [number, number, number][] {
+  return level.routeWaypoints && level.routeWaypoints.length >= 2
+    ? level.routeWaypoints
+    : DEFAULT_ROUTE;
+}
+
+/** Generate buoy positions along the route */
+export function generateBuoys(level: LevelConfig): [number, number, number][] {
+  const waypoints = getRouteWaypoints(level);
+  const buoyCount = Math.max(6, Math.ceil(waypoints.length * 1.5));
+  const buoys: [number, number, number][] = [];
+
+  for (let i = 0; i < buoyCount; i++) {
+    const t = (i + 0.5) / buoyCount;
+    const [bx, by, bz] = splinePoint(waypoints, t);
+    buoys.push([bx, by, bz]);
+  }
+
+  return buoys;
+}
+
+// ============================================================
 // Create boids for a level
 // ============================================================
 
 export function createBoids(level: LevelConfig): BoidData[] {
   const boids: BoidData[] = [];
-  const halfSize = level.worldSize * 0.4;
+  const waypoints = getRouteWaypoints(level);
+  const freeCount = level.totalBoids - level.startBoids;
 
-  // Cluster count: roughly 1 cluster per 8-10 boids
-  const clusterCount = Math.max(3, Math.ceil(level.totalBoids / 8));
-
-  // Generate cluster centers (spread around the world, avoiding portal area)
-  const clusters: { x: number; y: number; z: number }[] = [];
-  for (let c = 0; c < clusterCount; c++) {
-    let cx: number, cy: number, cz: number;
-    let attempts = 0;
-    do {
-      cx = (Math.random() - 0.5) * 2 * halfSize;
-      cy = (Math.random() - 0.5) * 2 * halfSize * 0.5; // less vertical spread
-      cz = (Math.random() - 0.5) * 2 * halfSize;
-      attempts++;
-      // Avoid spawning too close to portal
-      const pdx = cx - level.portalPosition[0];
-      const pdy = cy - level.portalPosition[1];
-      const pdz = cz - level.portalPosition[2];
-    } while (
-      Math.sqrt(
-        (cx - level.portalPosition[0]) ** 2 +
-        (cy - level.portalPosition[1]) ** 2 +
-        (cz - level.portalPosition[2]) ** 2,
-      ) < 20 && attempts < 20
-    );
-    clusters.push({ x: cx, y: cy, z: cz });
-  }
-
-  for (let i = 0; i < level.totalBoids; i++) {
+  // Collected boids: start near leader at origin
+  for (let i = 0; i < level.startBoids; i++) {
     const type = randomBoidType();
-    const isCollected = i < level.startBoids;
-    const state: BoidState = isCollected ? 'collected' : 'free';
-
-    let bx: number, by: number, bz: number;
-
-    if (isCollected) {
-      // Start near origin
-      bx = (Math.random() - 0.5) * 8;
-      by = (Math.random() - 0.5) * 4;
-      bz = (Math.random() - 0.5) * 8;
-    } else {
-      // Place near a random cluster
-      const cluster = clusters[Math.floor(Math.random() * clusters.length)];
-      bx = cluster.x + (Math.random() - 0.5) * 12;
-      by = cluster.y + (Math.random() - 0.5) * 6;
-      bz = cluster.z + (Math.random() - 0.5) * 12;
-    }
-
-    const speed = isCollected
-      ? BOID_MIN_SPEED + Math.random() * (BOID_MAX_SPEED - BOID_MIN_SPEED) * 0.5
-      : FREE_SPEED_MIN + Math.random() * (FREE_SPEED_MAX - FREE_SPEED_MIN);
-
-    // Random direction for initial velocity
+    const bx = (Math.random() - 0.5) * 8;
+    const by = (Math.random() - 0.5) * 4;
+    const bz = (Math.random() - 0.5) * 8;
+    const speed = BOID_MIN_SPEED + Math.random() * (BOID_MAX_SPEED - BOID_MIN_SPEED) * 0.5;
     const theta = Math.random() * Math.PI * 2;
     const phi = Math.acos(2 * Math.random() - 1);
 
     boids.push({
-      x: bx,
-      y: by,
-      z: bz,
+      x: bx, y: by, z: bz,
       vx: Math.sin(phi) * Math.cos(theta) * speed,
       vy: Math.sin(phi) * Math.sin(theta) * speed,
       vz: Math.cos(phi) * speed,
-      alive: true,
-      type,
-      state,
+      alive: true, type, state: 'collected',
+      freeWanderAngle: Math.random() * Math.PI * 2,
+    });
+  }
+
+  // Free boids: distributed evenly along the route with small random offset
+  for (let i = 0; i < freeCount; i++) {
+    const type = randomBoidType();
+    const t = freeCount > 1 ? i / (freeCount - 1) : 0.5;
+    const [sx, sy, sz] = splinePoint(waypoints, t);
+
+    // Small scatter around the route point
+    const scatter = 6;
+    const bx = sx + (Math.random() - 0.5) * scatter * 2;
+    const by = sy + (Math.random() - 0.5) * scatter;
+    const bz = sz + (Math.random() - 0.5) * scatter * 2;
+
+    const speed = FREE_SPEED_MIN + Math.random() * (FREE_SPEED_MAX - FREE_SPEED_MIN);
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+
+    boids.push({
+      x: bx, y: by, z: bz,
+      vx: Math.sin(phi) * Math.cos(theta) * speed,
+      vy: Math.sin(phi) * Math.sin(theta) * speed,
+      vz: Math.cos(phi) * speed,
+      alive: true, type, state: 'free',
       freeWanderAngle: Math.random() * Math.PI * 2,
     });
   }

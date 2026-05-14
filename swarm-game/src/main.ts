@@ -15,6 +15,8 @@ import {
   checkPortal,
   quatFromDir,
   SpatialHash,
+  generateBuoys,
+  getRouteWaypoints,
 } from './core/boids.ts';
 import { Controls } from './input/controls.ts';
 import {
@@ -25,6 +27,7 @@ import {
   setRestartCallback,
   showEndScreen,
   getCameraQuaternion,
+  rebuildBuoys,
 } from './rendering/renderer.ts';
 
 // ============================================================
@@ -61,6 +64,7 @@ function createGameState(levelIndex: number): GameState {
   };
 
   const boids = createBoids(level);
+  const buoyPositions = generateBuoys(level);
 
   // Count initial collected
   let collectedCount = 0;
@@ -79,6 +83,7 @@ function createGameState(levelIndex: number): GameState {
       rotation: 0,
     },
     level,
+    buoys: buoyPositions.map(([x, y, z]) => ({ x, y, z })),
     collectedCount,
     passedCount: 0,
     score: 0,
@@ -173,6 +178,10 @@ function gameLoop(timestamp: number): void {
 function startGame(): void {
   state = createGameState(currentLevelIndex);
   spatialHash = new SpatialHash(SPATIAL_CELL_SIZE);
+
+  // Rebuild buoy meshes and route line for this level
+  const routeWp = getRouteWaypoints(state.level);
+  rebuildBuoys(state.buoys, routeWp);
 
   if (!running) {
     running = true;

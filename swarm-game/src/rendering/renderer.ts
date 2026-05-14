@@ -38,6 +38,8 @@ let leaderMesh: THREE.Mesh;
 let leaderLight: THREE.PointLight;
 let portalMesh: THREE.Mesh;
 let portalGlow: THREE.PointLight;
+let buoyGroup: THREE.Group;
+let routeLine: THREE.Line;
 
 // HUD
 let hudDiv: HTMLDivElement;
@@ -144,6 +146,7 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
   createBoidMesh();
   createLeaderMesh();
   createPortalMesh();
+  createBuoysAndRoute();
   createReferenceBeacons();
   createHUD();
   createDebugPanel();
@@ -291,6 +294,99 @@ function createPortalMesh(): void {
   // Portal glow light — extended range so it's visible from far away
   portalGlow = new THREE.PointLight(0x4488ff, 12, 120);
   scene.add(portalGlow);
+}
+
+// ============================================================
+// Route buoys and path line
+// ============================================================
+
+function createBuoysAndRoute(): void {
+  // Group for buoy meshes (rebuilt each level restart)
+  buoyGroup = new THREE.Group();
+  buoyGroup.frustumCulled = false;
+  scene.add(buoyGroup);
+
+  // Route path line (rebuilt each level restart)
+  const lineGeo = new THREE.BufferGeometry();
+  lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(6), 3));
+  const lineMat = new THREE.LineBasicMaterial({
+    color: 0x335577,
+    transparent: true,
+    opacity: 0.35,
+  });
+  routeLine = new THREE.Line(lineGeo, lineMat);
+  routeLine.frustumCulled = false;
+  scene.add(routeLine);
+}
+
+/** Rebuild buoy meshes and route line from game state (called on restart) */
+export function rebuildBuoys(buoys: { x: number; y: number; z: number }[], routePoints?: [number, number, number][]): void {
+  // Clear old buoys
+  while (buoyGroup.children.length > 0) {
+    const child = buoyGroup.children[0];
+    buoyGroup.remove(child);
+    if (child instanceof THREE.Mesh) {
+      child.geometry.dispose();
+      (child.material as THREE.Material).dispose();
+    }
+  }
+
+  // Shared geometries
+  const buoyGeo = new THREE.OctahedronGeometry(0.8, 0);
+  const buoyMat = new THREE.MeshStandardMaterial({
+    color: 0x44aaff,
+    emissive: 0x2277cc,
+    emissiveIntensity: 1.5,
+    transparent: true,
+    opacity: 0.8,
+    metalness: 0.4,
+    roughness: 0.3,
+  });
+
+  // Vertical line geometry for each buoy
+  const lineGeo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, -3, 0),
+    new THREE.Vector3(0, 3, 0),
+  ]);
+  const lineMat = new THREE.LineBasicMaterial({
+    color: 0x44aaff,
+    transparent: true,
+    opacity: 0.4,
+  });
+
+  for (const b of buoys) {
+    // Buoy sphere
+    const mesh = new THREE.Mesh(buoyGeo, buoyMat);
+    mesh.position.set(b.x, b.y, b.z);
+    mesh.frustumCulled = false;
+    buoyGroup.add(mesh);
+
+    // Vertical guide line
+    const line = new THREE.Line(lineGeo, lineMat);
+    line.position.set(b.x, b.y, b.z);
+    buoyGroup.add(line);
+  }
+
+  // Route path line from dense spline samples
+  if (routePoints && routePoints.length >= 2) {
+    const sampleCount = 200;
+    const positions = new Float32Array(sampleCount * 3);
+    for (let i = 0; i < sampleCount; i++) {
+      // Simple linear interpolation between waypoints for the visual line
+      const t = i / (sampleCount - 1) * (routePoints.length - 1);
+      const idx = Math.min(Math.floor(t), routePoints.length - 2);
+      const frac = t - idx;
+      const [ax, ay, az] = routePoints[idx];
+      const [bx, by, bz] = routePoints[Math.min(idx + 1, routePoints.length - 1)];
+      positions[i * 3] = ax + (bx - ax) * frac;
+      positions[i * 3 + 1] = ay + (by - ay) * frac;
+      positions[i * 3 + 2] = az + (bz - az) * frac;
+    }
+    const geo = new THREE.Float32BufferAttribute(positions, 3);
+    routeLine.geometry.dispose();
+    routeLine.geometry = new THREE.BufferGeometry();
+    routeLine.geometry.setAttribute('position', geo);
+  }
 }
 
 // ============================================================
@@ -592,6 +688,16 @@ export function syncVisuals(state: GameState, dt: number): void {
   // Pulse glow
   const glowPulse = 6 + Math.sin(state.time * 3) * 2;
   portalGlow.intensity = glowPulse;
+
+  // --- Buoy animation (gentle bobbing + rotation) ---
+  for (let i = 0; i < buoyGroup.children.length; i++) {
+    const child = buoyGroup.children[i];
+    if (child instanceof THREE.Mesh) {
+      child.rotation.y += dt * 0.5;
+      child.rotation.x += dt * 0.3;
+      child.position.y += Math.sin(state.time * 2 + i * 1.3) * 0.002;
+    }
+  }
 
   // --- Boid instances ---
   let needsColorUpdate = false;
