@@ -33,14 +33,18 @@ export const OPPOSITE: Record<Direction, Direction> = {
   '+Z': '-Z', '-Z': '+Z',
 };
 
-/** Rotation to align a cone along a direction (THREE.Euler) */
+/**
+ * Rotation to align a ConeGeometry (default +Y axis) along a direction.
+ * Three.js ConeGeometry points along local +Y.
+ * We use quaternion.setFromUnitVectors for correctness.
+ */
 export const DIR_ROTATION: Record<Direction, { x: number; y: number; z: number }> = {
-  '+X': { x: 0, y: -Math.PI / 2, z: 0 },
-  '-X': { x: 0, y: Math.PI / 2, z: 0 },
-  '+Y': { x: 0, y: 0, z: 0 },
-  '-Y': { x: Math.PI, y: 0, z: 0 },
-  '+Z': { x: Math.PI / 2, y: 0, z: 0 },
-  '-Z': { x: -Math.PI / 2, y: 0, z: 0 },
+  '+Y': { x: 0, y: 0, z: 0 },                  // +Y -> no rotation needed
+  '-Y': { x: Math.PI, y: 0, z: 0 },              // flip 180 around X
+  '+Z': { x: Math.PI / 2, y: 0, z: 0 },          // rotate 90 around X: +Y -> +Z
+  '-Z': { x: -Math.PI / 2, y: 0, z: 0 },         // rotate -90 around X: +Y -> -Z
+  '+X': { x: 0, y: 0, z: -Math.PI / 2 },         // rotate -90 around Z: +Y -> +X
+  '-X': { x: 0, y: 0, z: Math.PI / 2 },          // rotate 90 around Z: +Y -> -X
 };
 
 // ============================================================

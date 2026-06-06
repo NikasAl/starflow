@@ -44,6 +44,7 @@ let smoothTarget = {
 };
 
 // Mouse/touch drag state
+let mouseIsDown = false;
 let isDragging = false;
 let dragStartX = 0;
 let dragStartY = 0;
@@ -391,6 +392,7 @@ export function updateAllSnakeVisuals(snakes: Snake[], gridSize: Vec3I): void {
 
 function onPointerDown(e: PointerEvent): void {
   if (suppressPointer) return;
+  mouseIsDown = true;
   isDragging = false;
   dragStartX = e.clientX;
   dragStartY = e.clientY;
@@ -403,8 +405,9 @@ function onPointerDown(e: PointerEvent): void {
 
 function onPointerMove(e: PointerEvent): void {
   if (suppressPointer) return;
+  if (!mouseIsDown) return;
 
-  // Hover detection
+  // Hover detection (always active when mouse is over canvas)
   updateHover(e.clientX, e.clientY);
 
   if (isPinching) return;
@@ -413,19 +416,20 @@ function onPointerMove(e: PointerEvent): void {
   const dy = e.clientY - dragStartY;
   const dist = Math.sqrt(dx * dx + dy * dy);
 
-  if (dist > 5) {
+  if (dist > 10) {
     isDragging = true;
     smoothTarget.active = false;
 
-    // Orbit camera
-    camState.theta = dragStartTheta - dx * 0.008;
-    camState.phi = Math.max(0.15, Math.min(Math.PI / 2 - 0.1, dragStartPhi + dy * 0.008));
+    // Orbit camera only when dragging
+    camState.theta = dragStartTheta - dx * 0.006;
+    camState.phi = Math.max(0.15, Math.min(Math.PI / 2 - 0.1, dragStartPhi + dy * 0.006));
     updateCamera();
   }
 }
 
 function onPointerUp(e: PointerEvent): void {
   if (suppressPointer) return;
+  mouseIsDown = false;
   const elapsed = performance.now() - mouseDownTime;
 
   if (!isDragging && elapsed < 350) {
@@ -598,7 +602,7 @@ export function updateHUD(
           ${isComplete ? '&#127942;' : isStuck ? '&#128560;' : '&#128013;'} SnakeFlow
         </div>
         <div style="font-size:16px; color:rgba(255,255,255,0.8); margin-bottom:8px;">
-          Уровень ${levelIndex + 1} / ${totalLevels}
+          ${levelIndex < totalLevels - 1 ? `Уровень ${levelIndex + 1} / ${totalLevels}` : `Уровень ${levelIndex + 1} (бесконечность)`}
         </div>
         <div style="font-size:20px; font-weight:600; margin-bottom:12px; ${isComplete ? 'color:#44ff88;' : isStuck ? 'color:#ff6644;' : 'color:#ffcc44;'}">
           Освобождено: ${freedCount} / ${totalSnakes}

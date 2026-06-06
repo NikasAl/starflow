@@ -9,7 +9,7 @@ import {
   createPuzzleState, updateSnakes, startSnakeMove,
   undo, resetPuzzle, pushHistory,
 } from '../core/puzzle';
-import { getLevel, LEVELS } from '../core/levels';
+import { getLevel, getBaseLevelCount } from '../core/levels';
 import {
   initRenderer, buildGrid, renderFrame, animateCamera,
   addSnakeVisual, removeSnakeVisual, clearSnakeVisuals,
@@ -55,7 +55,7 @@ export function loadLevel(index: number): void {
   }
 
   // Update HUD
-  updateHUD(state.freedCount, state.totalSnakes, state.moveCount, currentLevelIndex, LEVELS.length, state.phase);
+  updateHUD(state.freedCount, state.totalSnakes, state.moveCount, currentLevelIndex, getBaseLevelCount(), state.phase);
 }
 
 // ============================================================
@@ -104,7 +104,7 @@ function gameLoop(timestamp: number): void {
     }
 
     // Update HUD
-    updateHUD(state.freedCount, state.totalSnakes, state.moveCount, currentLevelIndex, LEVELS.length, state.phase);
+    updateHUD(state.freedCount, state.totalSnakes, state.moveCount, currentLevelIndex, currentLevelIndex + 1, state.phase);
   }
 
   // Update visuals (even when paused — for hover, stuck shake, etc.)
@@ -181,7 +181,7 @@ function handleRestart(): void {
     }
   }
 
-  updateHUD(state.freedCount, state.totalSnakes, state.moveCount, currentLevelIndex, LEVELS.length, state.phase);
+  updateHUD(state.freedCount, state.totalSnakes, state.moveCount, currentLevelIndex, currentLevelIndex + 1, state.phase);
 }
 
 function handleUndo(): void {
@@ -199,7 +199,7 @@ function handleUndo(): void {
     }
   }
 
-  updateHUD(state.freedCount, state.totalSnakes, state.moveCount, currentLevelIndex, LEVELS.length, state.phase);
+  updateHUD(state.freedCount, state.totalSnakes, state.moveCount, currentLevelIndex, currentLevelIndex + 1, state.phase);
 }
 
 function handlePrevLevel(): void {
@@ -209,7 +209,6 @@ function handlePrevLevel(): void {
 }
 
 function handleNextLevel(): void {
-  if (currentLevelIndex < LEVELS.length - 1) {
-    loadLevel(currentLevelIndex + 1);
-  }
+  // Infinite levels — always can go next
+  loadLevel(currentLevelIndex + 1);
 }
