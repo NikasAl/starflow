@@ -375,7 +375,7 @@ export function updateAllSnakeVisuals(snakes: Snake[], gridSize: Vec3I): void {
     // Stuck shake (skip during fly-away)
     if (!snake.isFlyingAway && snake.stuck && snake.stuckTimer < SHAKE_DURATION) {
       applyStuckShake(visual, snake.stuckTimer, SHAKE_DURATION);
-    } else if (snake.stuckTimer >= SHAKE_DURATION) {
+    } else if (!snake.isFlyingAway && snake.stuckTimer >= SHAKE_DURATION) {
       visual.group.position.set(0, 0, 0);
     }
 

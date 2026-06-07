@@ -162,6 +162,7 @@ export function startSnakeMove(state: PuzzleState, snakeId: string): boolean {
     : step.segments;
   snake.isMoving = true;
   snake.stuck = false;
+  snake.stuckTimer = 0;
   snake.moveProgress = 0;
 
   // Mark that this snake will be freed after animation completes
