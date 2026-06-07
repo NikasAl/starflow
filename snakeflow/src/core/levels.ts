@@ -1,5 +1,17 @@
 // ============================================================
-// SnakeFlow — Level Configurations & Procedural Generator
+// SnakeFlow — Level Configurations & Reverse Generator
+//
+// Reverse Generation Algorithm:
+// Instead of generating a random board and solving it (slow, unreliable),
+// we build the level BACKWARDS — placing snakes on an empty board in the
+// REVERSE order that the player will remove them.
+//
+// Key invariant: when placing snake X on a board with existing snakes S:
+//   1. O(X) ∩ O(Y) = ∅  for all Y ∈ S   (bodies don't overlap)
+//   2. M(X) ∩ O(Y) = ∅  for all Y ∈ S   (new snake's exit path is clear)
+//
+// O(X) may overlap M(Y) — this creates the "locks" that make the puzzle.
+// The last-placed snake exits first (player clicks it first).
 // ============================================================
 
 import {
@@ -17,329 +29,205 @@ function v(x: number, y: number, z: number): Vec3I {
   return { x, y, z };
 }
 
+function shuffleArray<T>(arr: T[]): void {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+}
+
 // ============================================================
-// Direction validation
+// Reverse Generation — Core Functions
 // ============================================================
 
-function isDirectionValid(
-  segments: Vec3I[],
-  direction: Direction,
-): boolean {
-  const head = segments[0];
+/**
+ * Compute cells the snake's HEAD will visit on its way out of the grid.
+ * These are all in-bounds cells from (head + direction) to the boundary.
+ * The snake exits when the head reaches the first out-of-bounds cell.
+ */
+function computeExitPath(head: Vec3I, direction: Direction, gridSize: Vec3I): string[] {
   const d = DIR_VECTORS[direction];
-  const next: Vec3I = { x: head.x + d.x, y: head.y + d.y, z: head.z + d.z };
-  for (const seg of segments) {
-    if (vec3Eq(seg, next)) return false;
+  const cells: string[] = [];
+  let x = head.x + d.x;
+  let y = head.y + d.y;
+  let z = head.z + d.z;
+  while (x >= 0 && x < gridSize.x && y >= 0 && y < gridSize.y && z >= 0 && z < gridSize.z) {
+    cells.push(`${x},${y},${z}`);
+    x += d.x;
+    y += d.y;
+    z += d.z;
+  }
+  return cells;
+}
+
+/** Distance from a cell to the grid boundary in a given direction */
+function distToBoundary(cell: Vec3I, dir: Direction, gridSize: Vec3I): number {
+  const d = DIR_VECTORS[dir];
+  if (d.x > 0) return gridSize.x - cell.x;
+  if (d.x < 0) return cell.x + 1;
+  if (d.y > 0) return gridSize.y - cell.y;
+  if (d.y < 0) return cell.y + 1;
+  if (d.z > 0) return gridSize.z - cell.z;
+  return cell.z + 1;
+}
+
+/**
+ * Check if all cells in the exit path are free (not in occupied set).
+ */
+function isExitPathClear(exitPath: string[], occupied: Set<string>): boolean {
+  for (const key of exitPath) {
+    if (occupied.has(key)) return false;
   }
   return true;
 }
 
-// ============================================================
-// BFS Solver (for procedural level verification)
-// ============================================================
-
-interface SimSnake {
-  id: number;
-  segments: Vec3I[];
-  direction: Direction;
-  freed: boolean;
-}
-
-interface SimState {
-  gridSize: Vec3I;
-  snakes: SimSnake[];
-}
-
-function simCellOccupied(cell: Vec3I, snakes: SimSnake[], excludeIdx: number): boolean {
-  for (let i = 0; i < snakes.length; i++) {
-    if (i === excludeIdx || snakes[i].freed) continue;
-    for (const seg of snakes[i].segments) {
-      if (seg.x === cell.x && seg.y === cell.y && seg.z === cell.z) return true;
-    }
-  }
-  return false;
-}
-
-function simMoveSnake(state: SimState, snakeIdx: number): { result: 'freed' | 'blocked' | 'moved'; state: SimState } {
-  const newState: SimState = {
-    gridSize: { ...state.gridSize },
-    snakes: state.snakes.map(s => ({
-      ...s,
-      segments: s.segments.map(seg => ({ ...seg })),
-    })),
-  };
-  const snake = newState.snakes[snakeIdx];
-  if (snake.freed) return { result: 'blocked', state: newState };
-
-  let moved = false;
-  for (let step = 0; step < 100; step++) {
-    const head = snake.segments[0];
-    const d = DIR_VECTORS[snake.direction];
-    const nextHead: Vec3I = { x: head.x + d.x, y: head.y + d.y, z: head.z + d.z };
-
-    if (!inBounds(nextHead, newState.gridSize)) {
-      snake.segments = [nextHead, ...snake.segments.slice(0, -1)];
-      snake.freed = true;
-      return { result: 'freed', state: newState };
-    }
-
-    if (simCellOccupied(nextHead, newState.snakes, snakeIdx)) {
-      return { result: moved ? 'moved' : 'blocked', state: newState };
-    }
-
-    snake.segments = [nextHead, ...snake.segments.slice(0, -1)];
-    moved = true;
-  }
-
-  return { result: moved ? 'moved' : 'blocked', state: newState };
-}
-
-function solvePuzzle(initialState: SimState, maxDepth: number = 40): boolean {
-  interface QueueItem { state: SimState; depth: number; hash: string }
-
-  function stateHash(s: SimState): string {
-    const parts: string[] = [];
-    for (const snake of s.snakes) {
-      if (snake.freed) {
-        parts.push('F');
-      } else {
-        parts.push(snake.segments.map(seg => cellKey(seg)).join('|'));
-      }
-    }
-    return parts.join(';');
-  }
-
-  const visited = new Set<string>();
-  const queue: QueueItem[] = [{ state: initialState, depth: 0, hash: stateHash(initialState) }];
-  visited.add(queue[0].hash);
-
-  let iterations = 0;
-  const maxIterations = 100000;
-
-  while (queue.length > 0 && iterations < maxIterations) {
-    iterations++;
-    const item = queue.shift()!;
-
-    if (item.state.snakes.every(s => s.freed)) return true;
-    if (item.depth >= maxDepth) continue;
-
-    for (let i = 0; i < item.state.snakes.length; i++) {
-      const snake = item.state.snakes[i];
-      if (snake.freed) continue;
-
-      const { result, state: newState } = simMoveSnake(item.state, i);
-
-      if (result === 'freed' || result === 'moved') {
-        const h = stateHash(newState);
-        if (!visited.has(h)) {
-          visited.add(h);
-          queue.push({ state: newState, depth: item.depth + 1, hash: h });
-        }
-      }
-    }
-  }
-
-  return false;
-}
-
-// ============================================================
-// Procedural Snake Placement
-// ============================================================
-
-function growSnake(
-  startCell: Vec3I,
+/**
+ * Generate snake body as a random walk from the head.
+ *
+ * Constraints:
+ *   - Must stay in bounds
+ *   - Cannot enter occupied cells (other snakes)
+ *   - Cannot enter own body cells (no self-intersection)
+ *   - Cannot enter exit path cells (don't block own exit)
+ *   - No U-turns (segment can't go back to the previous segment)
+ */
+function generateBody(
+  head: Vec3I,
+  direction: Direction,
   occupied: Set<string>,
   gridSize: Vec3I,
   minLen: number,
   maxLen: number,
 ): Vec3I[] | null {
-  const segments: Vec3I[] = [startCell];
-  occupied.add(cellKey(startCell));
-
   const targetLen = minLen + Math.floor(Math.random() * (maxLen - minLen + 1));
+  const segments: Vec3I[] = [head];
+  const bodySet = new Set<string>([cellKey(head)]);
+  const exitSet = new Set(computeExitPath(head, direction, gridSize));
+  const d = DIR_VECTORS[direction];
 
   for (let step = 1; step < targetLen; step++) {
-    const head = segments[segments.length - 1];
+    const tail = segments[segments.length - 1];
+    const neighbors: Vec3I[] = [];
 
-    const neighbors: { cell: Vec3I; dir: Vec3I }[] = [];
     for (const dirStr of ALL_DIRECTIONS) {
-      const d = DIR_VECTORS[dirStr];
-      const next: Vec3I = { x: head.x + d.x, y: head.y + d.y, z: head.z + d.z };
+      const dv = DIR_VECTORS[dirStr];
+      const next: Vec3I = { x: tail.x + dv.x, y: tail.y + dv.y, z: tail.z + dv.z };
+      const key = `${next.x},${next.y},${next.z}`;
 
       if (next.x < 0 || next.x >= gridSize.x ||
           next.y < 0 || next.y >= gridSize.y ||
           next.z < 0 || next.z >= gridSize.z) continue;
-      if (occupied.has(cellKey(next))) continue;
+      if (occupied.has(key) || bodySet.has(key)) continue;
+      if (exitSet.has(key)) continue;
 
-      if (segments.length >= 2) {
-        const prev = segments[segments.length - 2];
-        if (vec3Eq(next, prev)) continue;
-      }
+      // No U-turns
+      if (segments.length >= 2 && vec3Eq(next, segments[segments.length - 2])) continue;
 
-      neighbors.push({ cell: next, dir: d });
+      neighbors.push(next);
     }
 
     if (neighbors.length === 0) break;
 
-    let chosen: { cell: Vec3I; dir: Vec3I };
-    if (neighbors.length > 1 && segments.length >= 2) {
-      const prev = segments[segments.length - 2];
-      const head2 = segments[segments.length - 1];
-      const forwardDir: Vec3I = {
-        x: head2.x - prev.x,
-        y: head2.y - prev.y,
-        z: head2.z - prev.z,
-      };
-
-      const straight = neighbors.find(n =>
-        n.dir.x === forwardDir.x && n.dir.y === forwardDir.y && n.dir.z === forwardDir.z
-      );
-      if (straight && Math.random() < 0.6) {
-        chosen = straight;
-      } else {
-        chosen = neighbors[Math.floor(Math.random() * neighbors.length)];
+    // Prefer compact placement: bias toward cells adjacent to existing bodies
+    let chosen: Vec3I;
+    if (neighbors.length > 1 && Math.random() < 0.5) {
+      // Score each neighbor by adjacency to occupied cells
+      let bestScore = -1;
+      let bestIdx = 0;
+      for (let i = 0; i < neighbors.length; i++) {
+        let score = 0;
+        for (const dirStr of ALL_DIRECTIONS) {
+          const dv = DIR_VECTORS[dirStr];
+          const adj = `${neighbors[i].x + dv.x},${neighbors[i].y + dv.y},${neighbors[i].z + dv.z}`;
+          if (occupied.has(adj)) score++;
+        }
+        // Add small randomness to break ties
+        score += Math.random() * 0.5;
+        if (score > bestScore) {
+          bestScore = score;
+          bestIdx = i;
+        }
       }
+      chosen = neighbors[bestIdx];
     } else {
       chosen = neighbors[Math.floor(Math.random() * neighbors.length)];
     }
 
-    segments.push(chosen.cell);
-    occupied.add(cellKey(chosen.cell));
+    segments.push(chosen);
+    bodySet.add(cellKey(chosen));
   }
 
-  if (segments.length < minLen) {
-    for (const seg of segments) {
-      occupied.delete(cellKey(seg));
-    }
-    return null;
+  if (segments.length < minLen) return null;
+
+  // Verify direction validity: head+D should not be in own body
+  const nextHead: Vec3I = { x: head.x + d.x, y: head.y + d.y, z: head.z + d.z };
+  for (const seg of segments) {
+    if (vec3Eq(seg, nextHead)) return null;
   }
+
   return segments;
 }
 
 /**
- * Choose a direction for the snake head.
- * Prefers directions with clear path to boundary.
+ * Try to find a valid snake placement on the current board.
+ * Picks random free cells as head candidates and tries all directions.
+ * Returns a valid snake config or null if no placement found.
  */
-function chooseHeadDirection(
-  segments: Vec3I[],
+function tryPlaceSnake(
   gridSize: Vec3I,
-): Direction {
-  const head = segments[0];
-  const validDirs = ALL_DIRECTIONS.filter(dir => isDirectionValid(segments, dir));
-  if (validDirs.length === 0) return '+Y';
-
-  let bestDir = validDirs[0];
-  let bestScore = -Infinity;
-
-  for (const dir of validDirs) {
-    const d = DIR_VECTORS[dir];
-
-    // Score by distance to boundary in this direction
-    let score = 0;
-    if (d.x > 0) score = gridSize.x - head.x;
-    else if (d.x < 0) score = head.x + 1;
-    else if (d.y > 0) score = gridSize.y - head.y;
-    else if (d.y < 0) score = head.y + 1;
-    else if (d.z > 0) score = gridSize.z - head.z;
-    else if (d.z < 0) score = head.z + 1;
-
-    score += Math.random() * 1.5;
-
-    if (score > bestScore) {
-      bestScore = score;
-      bestDir = dir;
+  occupied: Set<string>,
+  minLen: number,
+  maxLen: number,
+): { segments: Vec3I[]; direction: Direction } | null {
+  // Collect all free cells
+  const freeCells: Vec3I[] = [];
+  for (let x = 0; x < gridSize.x; x++) {
+    for (let y = 0; y < gridSize.y; y++) {
+      for (let z = 0; z < gridSize.z; z++) {
+        const c = v(x, y, z);
+        if (!occupied.has(cellKey(c))) freeCells.push(c);
+      }
     }
   }
 
-  return bestDir;
-}
+  if (freeCells.length < minLen) return null;
+  shuffleArray(freeCells);
 
-// ============================================================
-// Level Generator with Solvability Guarantee
-// ============================================================
+  // Try a limited number of head candidates (performance guard)
+  const maxCandidates = Math.min(40, freeCells.length);
 
-export interface GenerateLevelOptions {
-  gridSize: Vec3I;
-  fillRatio?: number;
-  minSnakeLen?: number;
-  maxSnakeLen?: number;
-  snakeCount?: number;
-}
+  for (let t = 0; t < maxCandidates; t++) {
+    const head = freeCells[t];
 
-/**
- * Generate a solvable level with retry logic.
- */
-function generateSolvableLevel(
-  id: number,
-  name: string,
-  options: GenerateLevelOptions,
-  maxRetries: number = 10,
-): LevelConfig | null {
-  const {
-    gridSize,
-    fillRatio = 0.55,
-    minSnakeLen = 2,
-    maxSnakeLen = 4,
-    snakeCount: overrideCount,
-  } = options;
+    // Sort directions: prefer shorter exit paths (more likely to be clear)
+    const dirs = [...ALL_DIRECTIONS];
+    dirs.sort((a, b) => distToBoundary(head, a, gridSize) - distToBoundary(head, b, gridSize));
 
-  const totalCells = gridSize.x * gridSize.y * gridSize.z;
-  const targetFill = Math.floor(totalCells * fillRatio);
-
-  for (let retry = 0; retry < maxRetries; retry++) {
-    const occupied = new Set<string>();
-    const allCells: Vec3I[] = [];
-    for (let x = 0; x < gridSize.x; x++)
-      for (let y = 0; y < gridSize.y; y++)
-        for (let z = 0; z < gridSize.z; z++)
-          allCells.push(v(x, y, z));
-
-    for (let i = allCells.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [allCells[i], allCells[j]] = [allCells[j], allCells[i]];
-    }
-
-    let filledCells = 0;
-    const avgSnakeLen = (minSnakeLen + maxSnakeLen) / 2;
-    const targetCount = overrideCount ?? Math.max(2, Math.floor(targetFill / avgSnakeLen));
-    const snakes: { segments: Vec3I[]; direction: Direction; color: number }[] = [];
-
-    for (let attempt = 0; attempt < targetCount && filledCells < targetFill; attempt++) {
-      const startIdx = Math.floor(Math.random() * allCells.length);
-      let startFound = false;
-      for (let tries = 0; tries < allCells.length; tries++) {
-        const idx = (startIdx + tries) % allCells.length;
-        const cell = allCells[idx];
-        if (!occupied.has(cellKey(cell))) {
-          const minLen = Math.max(2, minSnakeLen);
-          const maxLen = Math.min(maxSnakeLen, Math.floor((targetFill - filledCells) * 0.6) + minSnakeLen);
-          if (maxLen < minLen) continue;
-          const segments = growSnake(cell, occupied, gridSize, minLen, maxLen);
-          if (segments) {
-            const direction = chooseHeadDirection(segments, gridSize);
-            snakes.push({ segments, direction, color: SNAKE_COLORS[snakes.length % SNAKE_COLORS.length] });
-            filledCells += segments.length;
-            startFound = true;
-          }
-          break;
-        }
+    // Add randomness: occasionally swap directions for variety
+    for (let i = 1; i < dirs.length; i++) {
+      if (Math.random() < 0.35) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [dirs[i], dirs[j]] = [dirs[j], dirs[i]];
       }
-      if (!startFound) break;
     }
 
-    if (snakes.length < 2) continue;
+    for (const dir of dirs) {
+      // Quick check: exit path must be clear of occupied cells
+      const exitPath = computeExitPath(head, dir, gridSize);
+      if (!isExitPathClear(exitPath, occupied)) continue;
 
-    // Verify solvability
-    const simSnakes: SimSnake[] = snakes.map((cfg, i) => ({
-      id: i,
-      segments: cfg.segments.map(s => ({ ...s })),
-      direction: cfg.direction,
-      freed: false,
-    }));
-    const simState: SimState = { gridSize: { ...gridSize }, snakes: simSnakes };
+      // Generate body
+      const segments = generateBody(head, dir, occupied, gridSize, minLen, maxLen);
+      if (!segments) continue;
 
-    if (solvePuzzle(simState)) {
-      return { id, name, gridSize, snakes };
+      // Final validation: body must not overlap occupied cells
+      let valid = true;
+      for (const seg of segments) {
+        if (occupied.has(cellKey(seg))) { valid = false; break; }
+      }
+      if (!valid) continue;
+
+      return { segments, direction: dir };
     }
   }
 
@@ -347,7 +235,84 @@ function generateSolvableLevel(
 }
 
 // ============================================================
-// Hand-crafted levels
+// Reverse Generation Algorithm
+// ============================================================
+
+export interface GenerateLevelOptions {
+  gridSize: Vec3I;
+  minSnakeLen?: number;
+  maxSnakeLen?: number;
+  snakeCount?: number;
+}
+
+/**
+ * Generate a solvable level using reverse generation.
+ *
+ * Places snakes one at a time on an empty board. The last-placed snake
+ * is the one the player should free first. Uses backtracking when
+ * no valid placement can be found.
+ *
+ * GUARANTEES solvability without needing a BFS/A* solver.
+ * Generation time: O(snakeCount * attempts * maxBodyLen) — milliseconds.
+ */
+function generateReverseLevel(
+  id: number,
+  name: string,
+  options: GenerateLevelOptions,
+): LevelConfig | null {
+  const {
+    gridSize,
+    minSnakeLen = 2,
+    maxSnakeLen = 4,
+    snakeCount: targetCount = 8,
+  } = options;
+
+  const occupied = new Set<string>();
+  const snakes: LevelConfig['snakes'] = [];
+
+  const MAX_PLACE_RETRIES = 30;
+  const MAX_BACKTRACKS = 200;
+  let totalBacktracks = 0;
+
+  while (snakes.length < targetCount) {
+    let placed = false;
+
+    // Try to place a snake (multiple attempts with different random state)
+    for (let retry = 0; retry < MAX_PLACE_RETRIES; retry++) {
+      const result = tryPlaceSnake(gridSize, occupied, minSnakeLen, maxSnakeLen);
+      if (result) {
+        // Mark body cells as occupied
+        for (const seg of result.segments) {
+          occupied.add(cellKey(seg));
+        }
+        snakes.push({
+          segments: result.segments,
+          direction: result.direction,
+          color: SNAKE_COLORS[snakes.length % SNAKE_COLORS.length],
+        });
+        placed = true;
+        break;
+      }
+    }
+
+    if (!placed) {
+      // Backtrack: remove the last placed snake and try again
+      if (snakes.length === 0) return null;
+      totalBacktracks++;
+      if (totalBacktracks > MAX_BACKTRACKS) return null;
+
+      const removed = snakes.pop()!;
+      for (const seg of removed.segments) {
+        occupied.delete(cellKey(seg));
+      }
+    }
+  }
+
+  return { id, name, gridSize, snakes };
+}
+
+// ============================================================
+// Hand-crafted Levels
 // ============================================================
 
 function snakeDef(
@@ -368,7 +333,7 @@ const LEVEL_1: LevelConfig = {
   name: 'Два пути',
   gridSize: v(3, 3, 3),
   snakes: [
-    snakeDef([[0, 1, 1], [0, 1, 0]], '+X', 0),
+    snakeDef([[0, 1, 1], [1, 1, 1]], '-X', 0),
     snakeDef([[2, 1, 0], [2, 1, 1], [2, 0, 1]], '-X', 1),
   ],
 };
@@ -423,7 +388,7 @@ const LEVEL_3: LevelConfig = {
 };
 
 // ============================================================
-// Seeded random for deterministic procedural levels
+// Seeded Random (deterministic procedural levels)
 // ============================================================
 
 function seededRandom(seed: number): () => number {
@@ -434,22 +399,31 @@ function seededRandom(seed: number): () => number {
   };
 }
 
-// Procedural configs for levels beyond the 3 hand-crafted ones
+// ============================================================
+// Procedural Level Configs (difficulty progression)
+// ============================================================
+
 const PROCEDURAL_CONFIGS: GenerateLevelOptions[] = [
-  { gridSize: v(5, 5, 5), fillRatio: 0.55, minSnakeLen: 2, maxSnakeLen: 4 },
-  { gridSize: v(6, 4, 5), fillRatio: 0.55, minSnakeLen: 2, maxSnakeLen: 4 },
-  { gridSize: v(5, 5, 6), fillRatio: 0.55, minSnakeLen: 2, maxSnakeLen: 4 },
-  { gridSize: v(6, 5, 5), fillRatio: 0.55, minSnakeLen: 3, maxSnakeLen: 5 },
-  { gridSize: v(5, 6, 5), fillRatio: 0.55, minSnakeLen: 3, maxSnakeLen: 5 },
-  { gridSize: v(6, 6, 6), fillRatio: 0.50, minSnakeLen: 2, maxSnakeLen: 4 },
-  { gridSize: v(7, 5, 6), fillRatio: 0.50, minSnakeLen: 3, maxSnakeLen: 5 },
-  { gridSize: v(6, 6, 7), fillRatio: 0.50, minSnakeLen: 2, maxSnakeLen: 4 },
-  { gridSize: v(7, 6, 6), fillRatio: 0.50, minSnakeLen: 3, maxSnakeLen: 5 },
-  { gridSize: v(7, 7, 7), fillRatio: 0.45, minSnakeLen: 2, maxSnakeLen: 4 },
+  // Gentle intro after hand-crafted levels
+  { gridSize: v(4, 4, 4), snakeCount: 4,  minSnakeLen: 2, maxSnakeLen: 3 },
+  { gridSize: v(5, 4, 4), snakeCount: 5,  minSnakeLen: 2, maxSnakeLen: 3 },
+  { gridSize: v(5, 5, 5), snakeCount: 6,  minSnakeLen: 2, maxSnakeLen: 4 },
+  { gridSize: v(5, 5, 5), snakeCount: 8,  minSnakeLen: 2, maxSnakeLen: 4 },
+  { gridSize: v(5, 5, 5), snakeCount: 10, minSnakeLen: 3, maxSnakeLen: 5 },
+  // Larger grids
+  { gridSize: v(6, 5, 5), snakeCount: 8,  minSnakeLen: 2, maxSnakeLen: 4 },
+  { gridSize: v(6, 5, 5), snakeCount: 12, minSnakeLen: 3, maxSnakeLen: 5 },
+  { gridSize: v(6, 6, 6), snakeCount: 10, minSnakeLen: 3, maxSnakeLen: 5 },
+  { gridSize: v(6, 6, 6), snakeCount: 14, minSnakeLen: 3, maxSnakeLen: 5 },
+  { gridSize: v(7, 6, 6), snakeCount: 12, minSnakeLen: 3, maxSnakeLen: 5 },
+  { gridSize: v(7, 6, 6), snakeCount: 16, minSnakeLen: 3, maxSnakeLen: 6 },
+  { gridSize: v(7, 7, 7), snakeCount: 14, minSnakeLen: 3, maxSnakeLen: 5 },
+  { gridSize: v(7, 7, 7), snakeCount: 18, minSnakeLen: 3, maxSnakeLen: 6 },
+  { gridSize: v(7, 7, 7), snakeCount: 22, minSnakeLen: 3, maxSnakeLen: 6 },
 ];
 
 // ============================================================
-// Level registry
+// Level Registry
 // ============================================================
 
 const BASE_LEVELS: LevelConfig[] = [LEVEL_1, LEVEL_2, LEVEL_3];
@@ -462,45 +436,42 @@ export function getLevel(index: number): LevelConfig | null {
     return BASE_LEVELS[index];
   }
 
-  // Generate procedural level on demand (with solvability check)
+  // Generate procedural level on demand using reverse generation
   const procIndex = index - BASE_LEVELS.length;
   const configIdx = procIndex % PROCEDURAL_CONFIGS.length;
   const seed = (index + 1) * 12345;
   const config = PROCEDURAL_CONFIGS[configIdx];
 
   const originalRandom = Math.random;
-  const rng = seededRandom(seed);
-  Math.random = rng;
-
-  // Try multiple seeds near the base seed
   let level: LevelConfig | null = null;
-  for (let offset = 0; offset < 20 && !level; offset++) {
-    const tweakedSeed = seed + offset * 7919;
-    const rng2 = seededRandom(tweakedSeed);
-    Math.random = rng2;
-    level = generateSolvableLevel(
+
+  // Try multiple seeds for reliability
+  for (let offset = 0; offset < 5 && !level; offset++) {
+    Math.random = seededRandom(seed + offset * 7919);
+    level = generateReverseLevel(
       index + 1,
       `Уровень ${index + 1}`,
       config,
-      8,
     );
+  }
+
+  // Fallback: reduce snake count if needed
+  if (!level) {
+    const fallbackConfig: GenerateLevelOptions = {
+      ...config,
+      snakeCount: Math.max(2, Math.floor((config.snakeCount ?? 8) * 0.6)),
+    };
+    for (let offset = 0; offset < 3 && !level; offset++) {
+      Math.random = seededRandom(seed + offset * 1301 + 5000);
+      level = generateReverseLevel(
+        index + 1,
+        `Уровень ${index + 1}`,
+        fallbackConfig,
+      );
+    }
   }
 
   Math.random = originalRandom;
-
-  // Absolute fallback: generate without solvability check
-  if (!level) {
-    const rng3 = seededRandom(seed);
-    Math.random = rng3;
-    level = generateSolvableLevel(
-      index + 1,
-      `Уровень ${index + 1}`,
-      { ...config, fillRatio: 0.35 },
-      5,
-    );
-    Math.random = originalRandom;
-  }
-
   return level;
 }
 
