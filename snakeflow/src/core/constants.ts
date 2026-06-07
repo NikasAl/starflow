@@ -65,7 +65,7 @@ export const SNAKE_MOVE_SPEED = 3.0;
 
 export const HEAD_RADIUS = 0.32;
 export const BODY_RADIUS = 0.24;
-export const TAIL_RADIUS = 0.18;
+export const TAIL_RADIUS = 0.24;
 export const ARROW_LENGTH = 0.28;
 export const ARROW_RADIUS = 0.16;
 export const EYE_RADIUS = 0.06;

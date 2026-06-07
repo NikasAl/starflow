@@ -25,7 +25,6 @@ const geo = {
   arrow: new THREE.ConeGeometry(ARROW_RADIUS, ARROW_LENGTH, 8),
   eye: new THREE.SphereGeometry(EYE_RADIUS, 8, 6),
   connector: new THREE.CylinderGeometry(BODY_RADIUS * 0.8, BODY_RADIUS * 0.8, 0.7, 8),
-  glowRing: new THREE.RingGeometry(0.45, 0.6, 16),
 };
 
 // ============================================================
@@ -41,7 +40,6 @@ export interface SnakeVisual {
   bodyMeshes: THREE.Mesh[];
   tailMesh: THREE.Mesh;
   connectorMeshes: THREE.Mesh[];
-  glowRing: THREE.Mesh;
 }
 
 /** Build eye positions offset for a given direction */
@@ -165,20 +163,9 @@ export function createSnakeVisual(snake: Snake, gridSize: Vec3I): SnakeVisual {
   const tailMesh = new THREE.Mesh(geo.tail, tailMat);
   group.add(tailMesh);
 
-  // --- Glow ring (for hover / stuck indication) ---
-  const glowMat = new THREE.MeshBasicMaterial({
-    color: snake.color,
-    transparent: true,
-    opacity: 0,
-    side: THREE.DoubleSide,
-  });
-  const glowRing = new THREE.Mesh(geo.glowRing, glowMat);
-  glowRing.rotation.x = -Math.PI / 2;
-  group.add(glowRing);
-
   const visual: SnakeVisual = {
     group, headMesh, arrowMesh, leftEye, rightEye,
-    bodyMeshes, tailMesh, connectorMeshes, glowRing,
+    bodyMeshes, tailMesh, connectorMeshes,
   };
 
   // Set initial positions
@@ -193,7 +180,7 @@ export function updateSnakePositions(
   snake: Snake,
   gridSize: Vec3I,
 ): void {
-  const { headMesh, arrowMesh, leftEye, rightEye, bodyMeshes, tailMesh, connectorMeshes, glowRing } = visual;
+  const { headMesh, arrowMesh, leftEye, rightEye, bodyMeshes, tailMesh, connectorMeshes } = visual;
   const t = snake.isMoving ? snake.moveProgress : 1.0;
 
   // Compute visual positions for each segment
@@ -229,8 +216,7 @@ export function updateSnakePositions(
     leftEye.position.set(hp.x + e1.x, hp.y + e1.y, hp.z + e1.z);
     rightEye.position.set(hp.x + e2.x, hp.y + e2.y, hp.z + e2.z);
 
-    // Glow ring below head
-    glowRing.position.set(hp.x, hp.y - HEAD_RADIUS - 0.06, hp.z);
+
   }
 
   // --- Position body segments ---
@@ -291,7 +277,7 @@ export function setSnakeHover(visual: SnakeVisual, hovered: boolean): void {
   const target = hovered ? 1.12 : 1.0;
   // Smooth scale via lerp is handled in the game loop
   visual.group.scale.setScalar(target);
-  (visual.glowRing.material as THREE.MeshBasicMaterial).opacity = hovered ? 0.65 : 0;
+  // Glow ring removed
 }
 
 /** Apply stuck shake effect */
