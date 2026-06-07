@@ -63,10 +63,10 @@ export const SNAKE_MOVE_SPEED = 3.0;
 
 // === Fly-away animation ===
 
-/** Duration of fly-away animation in seconds */
-export const FLY_AWAY_DURATION = 0.5;
+/** Duration of fly-away animation in seconds (includes straightening phase) */
+export const FLY_AWAY_DURATION = 0.8;
 /** How far (in world units) the snake flies beyond the grid */
-export const FLY_AWAY_DISTANCE = 10;
+export const FLY_AWAY_DISTANCE = 15;
 
 // === Snake visual ===
 

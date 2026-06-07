@@ -199,6 +199,30 @@ export function updateSnakePositions(
     }
   }
 
+  // --- Straighten segments during fly-away ---
+  if (snake.isFlyingAway && snake.flyAwayProgress > 0) {
+    const t = Math.min(snake.flyAwayProgress, 1.0);
+    // Straighten quickly in the first portion of the animation
+    const straightenT = Math.min(t / 0.35, 1.0);
+    const easedStraighten = 1 - Math.pow(1 - straightenT, 2); // ease-out quad
+
+    const d = DIR_VECTORS[snake.direction];
+    const headWorld = cellToWorld(snake.segments[0], gridSize);
+
+    for (let i = 0; i < visualPositions.length; i++) {
+      // Target: each segment in a straight line behind the head, spaced 1 unit apart
+      const sx = headWorld.x - d.x * i;
+      const sy = headWorld.y - d.y * i;
+      const sz = headWorld.z - d.z * i;
+
+      visualPositions[i] = lerpVec3(
+        visualPositions[i].x, visualPositions[i].y, visualPositions[i].z,
+        sx, sy, sz,
+        easedStraighten,
+      );
+    }
+  }
+
   // --- Position head ---
   if (visualPositions.length > 0) {
     const hp = visualPositions[0];
