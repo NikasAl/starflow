@@ -23,7 +23,7 @@ import {
   type GameEvents, DIR_VECTORS,
 } from '../core/types';
 import { inBounds, nextCell, cloneSnakes, isCellOccupied } from './spatial';
-import { SNAKE_MOVE_SPEED } from './constants';
+import { SNAKE_MOVE_SPEED, FLY_AWAY_DURATION } from './constants';
 
 /** Create a fresh PuzzleState from a level config */
 export function createPuzzleState(
@@ -43,6 +43,8 @@ export function createPuzzleState(
     prevSegments: cfg.segments.map(s => ({ ...s })),
     stuckTimer: 0,
     collisionCount: 0,
+    isFlyingAway: false,
+    flyAwayProgress: 0,
   }));
 
   return {
@@ -87,6 +89,8 @@ export function resetPuzzle(state: PuzzleState): void {
     snake.moveProgress = 1.0;
     snake.stuckTimer = 0;
     snake.collisionCount = 0;
+    snake.isFlyingAway = false;
+    snake.flyAwayProgress = 0;
     snake.prevSegments = snake.segments.map(s => ({ ...s }));
   }
   state.phase = 'idle';
@@ -134,7 +138,7 @@ function computeNextStep(
 export function startSnakeMove(state: PuzzleState, snakeId: string): boolean {
   const snake = state.snakes.find(s => s.id === snakeId);
   if (!snake) return false;
-  if (snake.freed || snake.isMoving) return false;
+  if (snake.freed || snake.isMoving || snake.isFlyingAway) return false;
 
   // Save state for undo BEFORE any changes
   pushHistory(state);
@@ -193,13 +197,13 @@ export function updateSnakes(state: PuzzleState, dt: number): GameEvents {
 
     // Check if a full step is completed
     if (snake.moveProgress >= 1.0) {
-      // Check if this snake was marked for freeing
+      // Check if this snake was marked for freeing → start fly-away
       if (snake._pendingFree) {
         snake._pendingFree = false;
-        snake.freed = true;
         snake.isMoving = false;
-        state.freedCount++;
-        events.freed.push(snake.id);
+        snake.isFlyingAway = true;
+        snake.flyAwayProgress = 0;
+        // Don't free yet — let fly-away animation play
         continue;
       }
 
@@ -233,6 +237,21 @@ export function updateSnakes(state: PuzzleState, dt: number): GameEvents {
     }
   }
 
+  // Update fly-away animations
+  for (const snake of state.snakes) {
+    if (!snake.isFlyingAway) continue;
+
+    snake.flyAwayProgress += dt / FLY_AWAY_DURATION;
+
+    if (snake.flyAwayProgress >= 1.0) {
+      snake.flyAwayProgress = 1.0;
+      snake.isFlyingAway = false;
+      snake.freed = true;
+      state.freedCount++;
+      events.freed.push(snake.id);
+    }
+  }
+
   // Update stuck timers
   for (const snake of state.snakes) {
     if (snake.stuck) {
@@ -244,10 +263,10 @@ export function updateSnakes(state: PuzzleState, dt: number): GameEvents {
   if (state.freedCount === state.totalSnakes) {
     state.phase = 'complete';
     events.completed = true;
-  } else if (state.snakes.every(s => !s.isMoving) && state.freedCount < state.totalSnakes) {
+  } else if (state.snakes.every(s => !s.isMoving && !s.isFlyingAway) && state.freedCount < state.totalSnakes) {
     // Check if any remaining snake CAN move
     const anyCanMove = state.snakes.some(s => {
-      if (s.freed || s.isMoving) return false;
+      if (s.freed || s.isMoving || s.isFlyingAway) return false;
       const step = computeNextStep(s, state.gridSize, state.snakes);
       return step.type !== 'blocked';
     });
@@ -267,7 +286,7 @@ export function updateSnakes(state: PuzzleState, dt: number): GameEvents {
  * Used for hover highlighting.
  */
 export function canSnakeMove(snake: Snake, gridSize: Vec3I, snakes: Snake[]): boolean {
-  if (snake.freed || snake.isMoving) return false;
+  if (snake.freed || snake.isMoving || snake.isFlyingAway) return false;
   const step = computeNextStep(snake, gridSize, snakes);
   return step.type !== 'blocked';
 }

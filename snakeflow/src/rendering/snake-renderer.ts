@@ -12,6 +12,7 @@ import { cellToWorld, lerpVec3 } from '../core/spatial';
 import {
   HEAD_RADIUS, BODY_RADIUS, TAIL_RADIUS,
   ARROW_LENGTH, ARROW_RADIUS, EYE_RADIUS, EYE_OFFSET,
+  FLY_AWAY_DISTANCE,
 } from '../core/constants';
 
 // ============================================================
@@ -270,6 +271,43 @@ export function updateSnakePositions(
     bodyMeshes[i].visible = (i + 1) < snake.segments.length;
   }
   tailMesh.visible = snake.segments.length > 1;
+
+  // --- Fly-away animation ---
+  if (snake.isFlyingAway && snake.flyAwayProgress > 0) {
+    const t = Math.min(snake.flyAwayProgress, 1.0);
+    // Ease-out cubic: fast start, slow end
+    const eased = 1 - Math.pow(1 - t, 3);
+    const offset = eased * FLY_AWAY_DISTANCE;
+    const d = DIR_VECTORS[snake.direction];
+
+    // Apply world-space offset to the entire group
+    visual.group.position.set(d.x * offset, d.y * offset, d.z * offset);
+
+    // Fade opacity
+    const opacity = 1 - t;
+    visual.group.traverse((child) => {
+      if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
+        child.material.transparent = true;
+        child.material.opacity = opacity;
+      }
+    });
+
+    // Slight scale-down
+    const scale = 1 - t * 0.3;
+    visual.group.scale.setScalar(scale);
+  } else {
+    // Reset group position/opacity when not flying away
+    visual.group.position.set(0, 0, 0);
+    if (snake.freed || !snake.isFlyingAway) {
+      // Restore opacity if was flying away before
+      visual.group.traverse((child) => {
+        if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
+          child.material.transparent = false;
+          child.material.opacity = 1;
+        }
+      });
+    }
+  }
 }
 
 /** Set hover highlight on/off */

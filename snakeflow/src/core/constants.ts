@@ -61,6 +61,13 @@ export const CAM_LERP_SPEED = 5.0;
 /** Cells per second a snake moves */
 export const SNAKE_MOVE_SPEED = 3.0;
 
+// === Fly-away animation ===
+
+/** Duration of fly-away animation in seconds */
+export const FLY_AWAY_DURATION = 0.5;
+/** How far (in world units) the snake flies beyond the grid */
+export const FLY_AWAY_DISTANCE = 10;
+
 // === Snake visual ===
 
 export const HEAD_RADIUS = 0.32;

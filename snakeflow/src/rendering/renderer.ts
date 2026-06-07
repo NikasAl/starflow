@@ -372,8 +372,8 @@ export function updateAllSnakeVisuals(snakes: Snake[], gridSize: Vec3I): void {
 
     updateSnakePositions(visual, snake, gridSize);
 
-    // Stuck shake
-    if (snake.stuck && snake.stuckTimer < SHAKE_DURATION) {
+    // Stuck shake (skip during fly-away)
+    if (!snake.isFlyingAway && snake.stuck && snake.stuckTimer < SHAKE_DURATION) {
       applyStuckShake(visual, snake.stuckTimer, SHAKE_DURATION);
     } else if (snake.stuckTimer >= SHAKE_DURATION) {
       visual.group.position.set(0, 0, 0);
@@ -381,7 +381,7 @@ export function updateAllSnakeVisuals(snakes: Snake[], gridSize: Vec3I): void {
 
     // Hover
     const isHovered = hoveredSnakeId === snake.id;
-    const canClick = !snake.freed && !snake.isMoving;
+    const canClick = !snake.freed && !snake.isMoving && !snake.isFlyingAway;
     setSnakeHover(visual, isHovered && canClick);
   }
 }

@@ -30,6 +30,9 @@ let animFrameId: number = 0;
 let lastTime = 0;
 let isPaused = false;
 
+// Track snakes that started fly-away (for particle spawn)
+const flyAwayStarted = new Set<string>();
+
 // ============================================================
 // Level Loading
 // ============================================================
@@ -44,6 +47,7 @@ export function loadLevel(index: number): void {
   clearSnakeVisuals();
   disposeAllParticles(getScene());
   resetHudHash();
+  flyAwayStarted.clear();
 
   // Create puzzle state
   state = createPuzzleState(config.gridSize, config.snakes, index);
@@ -82,17 +86,18 @@ function gameLoop(timestamp: number): void {
 
     // Process events
     for (const snakeId of events.freed) {
-      const snake = state.snakes.find(s => s.id === snakeId);
-      if (snake) {
-        // Spawn particles at head position
+      // Fly-away animation complete — remove visual immediately
+      removeSnakeVisual(snakeId);
+      flyAwayStarted.delete(snakeId);
+    }
+
+    // Spawn particles when fly-away starts (detected by checking isFlyingAway)
+    for (const snake of state.snakes) {
+      if (snake.isFlyingAway && !flyAwayStarted.has(snake.id)) {
+        flyAwayStarted.add(snake.id);
         const head = snake.segments[0];
         const hw = cellToWorld(head, state.gridSize);
         spawnFreeParticles(getScene(), hw.x, hw.y, hw.z, snake.color);
-
-        // Delay removal so particles are visible
-        setTimeout(() => {
-          removeSnakeVisual(snakeId);
-        }, 400);
       }
     }
 

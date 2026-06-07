@@ -77,6 +77,10 @@ export interface Snake {
   collisionCount: number;
   /** @internal flag: snake will be freed after current animation completes */
   _pendingFree?: boolean;
+  /** Whether the snake is in fly-away animation (exiting the grid) */
+  isFlyingAway: boolean;
+  /** Fly-away animation progress 0..1 */
+  flyAwayProgress: number;
 }
 
 // ============================================================
