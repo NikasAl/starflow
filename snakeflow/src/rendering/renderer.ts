@@ -394,6 +394,8 @@ function onPointerDown(e: PointerEvent): void {
   if (suppressPointer) return;
   mouseIsDown = true;
   isDragging = false;
+  // Clear hover when starting interaction
+  hoveredSnakeId = null;
   dragStartX = e.clientX;
   dragStartY = e.clientY;
   dragStartTheta = camState.theta;
@@ -405,12 +407,14 @@ function onPointerDown(e: PointerEvent): void {
 
 function onPointerMove(e: PointerEvent): void {
   if (suppressPointer) return;
-  if (!mouseIsDown) return;
-
-  // Hover detection (always active when mouse is over canvas)
-  updateHover(e.clientX, e.clientY);
-
   if (isPinching) return;
+
+  // Only update hover when NOT dragging
+  if (!isDragging && !mouseIsDown) {
+    updateHover(e.clientX, e.clientY);
+  }
+
+  if (!mouseIsDown) return;
 
   const dx = e.clientX - dragStartX;
   const dy = e.clientY - dragStartY;
@@ -436,6 +440,8 @@ function onPointerUp(e: PointerEvent): void {
     handleClick(e.clientX, e.clientY);
   }
   isDragging = false;
+  // Restore hover after interaction ends
+  updateHover(e.clientX, e.clientY);
 }
 
 function handleClick(clientX: number, clientY: number): void {
@@ -582,6 +588,11 @@ function createHTMLHUD(): void {
 }
 
 let lastHudHash = '';
+
+/** Force HUD to refresh on next update */
+export function resetHudHash(): void {
+  lastHudHash = '';
+}
 
 export function updateHUD(
   freedCount: number, totalSnakes: number,

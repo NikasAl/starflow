@@ -16,9 +16,9 @@ import {
   updateAllSnakeVisuals, updateHUD,
   setOnSnakeClick, setOnRestart, setOnUndo,
   setOnPrevLevel, setOnNextLevel,
-  getScene, disposeAll,
+  getScene, disposeAll, resetHudHash,
 } from '../rendering/renderer';
-import { spawnFreeParticles, spawnCollisionSparks, updateParticles } from '../rendering/particles';
+import { spawnFreeParticles, spawnCollisionSparks, updateParticles, disposeAllParticles } from '../rendering/particles';
 
 // ============================================================
 // State
@@ -40,8 +40,10 @@ export function loadLevel(index: number): void {
 
   currentLevelIndex = index;
 
-  // Clear old visuals
+  // Clear old visuals and particles
   clearSnakeVisuals();
+  disposeAllParticles(getScene());
+  resetHudHash();
 
   // Create puzzle state
   state = createPuzzleState(config.gridSize, config.snakes, index);
@@ -170,18 +172,8 @@ function handleSnakeClick(snakeId: string): void {
 
 function handleRestart(): void {
   if (!state) return;
-  clearSnakeVisuals();
-
-  resetPuzzle(state);
-
-  // Recreate visuals for non-freed snakes
-  for (const snake of state.snakes) {
-    if (!snake.freed) {
-      addSnakeVisual(snake, state.gridSize);
-    }
-  }
-
-  updateHUD(state.freedCount, state.totalSnakes, state.moveCount, currentLevelIndex, currentLevelIndex + 1, state.phase);
+  // Fully reload level to avoid any state artifacts
+  loadLevel(currentLevelIndex);
 }
 
 function handleUndo(): void {
