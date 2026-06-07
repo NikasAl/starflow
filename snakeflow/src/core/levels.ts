@@ -399,34 +399,34 @@ function seededRandom(seed: number): () => number {
 // ============================================================
 
 const PROCEDURAL_CONFIGS: GenerateLevelOptions[] = [
-  // Small grids — gentle start
+  // Tutorial-sized grid — short snakes only
   { gridSize: v(3, 3, 3), fillRatio: 0.85, minSnakeLen: 2, maxSnakeLen: 3 },
-  // 4x4x4 — 64 cells, 90% ≈ 58 cells ≈ 23 snakes (len 2-3)
-  { gridSize: v(4, 4, 4), fillRatio: 0.9, minSnakeLen: 2, maxSnakeLen: 3 },
-  // 4x4x5 — 80 cells, 90% ≈ 72 cells ≈ 29 snakes
-  { gridSize: v(4, 4, 5), fillRatio: 0.9, minSnakeLen: 2, maxSnakeLen: 3 },
-  // 5x5x5 — 125 cells, 90% ≈ 113 cells ≈ 38 snakes
-  { gridSize: v(5, 5, 5), fillRatio: 0.9, minSnakeLen: 2, maxSnakeLen: 3 },
-  // 5x5x5 with slightly longer snakes
-  { gridSize: v(5, 5, 5), fillRatio: 0.9, minSnakeLen: 2, maxSnakeLen: 4 },
-  // 5x5x6 — 150 cells, 90% ≈ 135 cells ≈ 45 snakes
-  { gridSize: v(5, 5, 6), fillRatio: 0.9, minSnakeLen: 2, maxSnakeLen: 3 },
-  // 6x5x5 — 150 cells
-  { gridSize: v(6, 5, 5), fillRatio: 0.9, minSnakeLen: 2, maxSnakeLen: 3 },
-  // 6x5x5 with longer snakes
-  { gridSize: v(6, 5, 5), fillRatio: 0.9, minSnakeLen: 2, maxSnakeLen: 5 },
-  // 6x6x6 — 216 cells
-  { gridSize: v(6, 6, 6), fillRatio: 0.9, minSnakeLen: 2, maxSnakeLen: 3 },
-  // 6x6x6 with longer snakes
-  { gridSize: v(6, 6, 6), fillRatio: 0.9, minSnakeLen: 2, maxSnakeLen: 5 },
-  // 7x6x6 — 252 cells
-  { gridSize: v(7, 6, 6), fillRatio: 0.9, minSnakeLen: 2, maxSnakeLen: 3 },
-  // 7x6x6 with longer snakes
-  { gridSize: v(7, 6, 6), fillRatio: 0.9, minSnakeLen: 2, maxSnakeLen: 5 },
-  // 7x7x7 — 343 cells
-  { gridSize: v(7, 7, 7), fillRatio: 0.9, minSnakeLen: 2, maxSnakeLen: 3 },
-  // 7x7x7 with longer snakes
-  { gridSize: v(7, 7, 7), fillRatio: 0.9, minSnakeLen: 2, maxSnakeLen: 5 },
+  // 4x4x4 — short snakes
+  { gridSize: v(4, 4, 4), fillRatio: 0.9, minSnakeLen: 2, maxSnakeLen: 5 },
+  // 4x4x5 — medium variety
+  { gridSize: v(4, 4, 5), fillRatio: 0.9, minSnakeLen: 2, maxSnakeLen: 6 },
+  // 5x5x5 — mix of short and long
+  { gridSize: v(5, 5, 5), fillRatio: 0.9, minSnakeLen: 2, maxSnakeLen: 6 },
+  // 5x5x5 — longer snakes, more puzzle complexity
+  { gridSize: v(5, 5, 5), fillRatio: 0.9, minSnakeLen: 3, maxSnakeLen: 8 },
+  // 5x5x6
+  { gridSize: v(5, 5, 6), fillRatio: 0.9, minSnakeLen: 2, maxSnakeLen: 7 },
+  // 6x5x5
+  { gridSize: v(6, 5, 5), fillRatio: 0.9, minSnakeLen: 2, maxSnakeLen: 7 },
+  // 6x5x5 — long snakes
+  { gridSize: v(6, 5, 5), fillRatio: 0.9, minSnakeLen: 3, maxSnakeLen: 9 },
+  // 6x6x6
+  { gridSize: v(6, 6, 6), fillRatio: 0.9, minSnakeLen: 2, maxSnakeLen: 8 },
+  // 6x6x6 — long snakes
+  { gridSize: v(6, 6, 6), fillRatio: 0.9, minSnakeLen: 3, maxSnakeLen: 10 },
+  // 7x6x6
+  { gridSize: v(7, 6, 6), fillRatio: 0.9, minSnakeLen: 2, maxSnakeLen: 8 },
+  // 7x6x6 — long snakes
+  { gridSize: v(7, 6, 6), fillRatio: 0.9, minSnakeLen: 3, maxSnakeLen: 10 },
+  // 7x7x7
+  { gridSize: v(7, 7, 7), fillRatio: 0.9, minSnakeLen: 2, maxSnakeLen: 8 },
+  // 7x7x7 — long snakes (max variety)
+  { gridSize: v(7, 7, 7), fillRatio: 0.9, minSnakeLen: 3, maxSnakeLen: 12 },
 ];
 
 // ============================================================
